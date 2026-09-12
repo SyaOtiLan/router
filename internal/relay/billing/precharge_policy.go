@@ -15,8 +15,8 @@ type PrechargePolicyResolution struct {
 }
 
 // ResolvePrechargePolicy converts the published model billing specification
-// into the runtime policy. A missing or invalid model policy safely falls back
-// to the legacy global reserve.
+// into the runtime policy. A missing or invalid model policy uses the global
+// default policy so every request still has an explicit reservation rule.
 func ResolvePrechargePolicy(spec *adminmodel.ProviderModelSpecification, fallback int64) PrechargePolicyResolution {
 	if spec != nil && spec.Billing != nil {
 		configured := spec.Billing
@@ -35,10 +35,10 @@ func ResolvePrechargePolicy(spec *adminmodel.ProviderModelSpecification, fallbac
 			return PrechargePolicyResolution{Policy: policy, Source: "model_specification", Version: fmt.Sprintf("billing-v%d", version)}
 		}
 	}
-	// Preserve the legacy behavior (global reserve + prompt + requested output)
-	// when no model policy is configured.
+	// Use the global default (global reserve + prompt + requested output) when no
+	// model policy is configured.
 	policy, _ := NormalizePrechargePolicy(PrechargePolicy{Type: PrechargeTokenizerEstimate, MinimumReserve: fallback}, fallback)
-	return PrechargePolicyResolution{Policy: policy, Source: "global_fallback", Version: "global-v1"}
+	return PrechargePolicyResolution{Policy: policy, Source: "global_default", Version: "global-v1"}
 }
 
 // PrechargePolicy describes request-time quota reservation. It deliberately

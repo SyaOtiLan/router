@@ -121,7 +121,7 @@ func RelayTextHelper(c *gin.Context) *model.ErrorWithStatusCode {
 	// explainable after an administrator changes the model policy.
 	policyResolution, policyErr := resolveTextPrechargePolicy(meta, pricing)
 	if policyErr != nil {
-		logger.Warnf(ctx, "resolve model precharge policy failed; using global fallback model=%s provider=%s err=%s", strings.TrimSpace(meta.ActualModelName), strings.TrimSpace(pricing.Provider), policyErr.Error())
+		logger.Warnf(ctx, "resolve model precharge policy failed; using global default model=%s provider=%s err=%s", strings.TrimSpace(meta.ActualModelName), strings.TrimSpace(pricing.Provider), policyErr.Error())
 	}
 	// pre-consume quota
 	rawRequestBody, err := prepareTextBillingRequestBody(c, meta, validatedRawBody)

@@ -13,7 +13,7 @@ import (
 
 func TestTextPrechargePolicyFallbackKeepsLegacyReserve(t *testing.T) {
 	resolved := billing.ResolvePrechargePolicy(nil, config.PreConsumedQuota)
-	if resolved.Source != "global_fallback" || resolved.Policy.Type != billing.PrechargeTokenizerEstimate {
+	if resolved.Source != "global_default" || resolved.Policy.Type != billing.PrechargeTokenizerEstimate {
 		t.Fatalf("fallback resolution = %+v", resolved)
 	}
 	if got := resolved.Policy.ReserveTokens(120, 80); got != config.PreConsumedQuota+200 {

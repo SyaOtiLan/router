@@ -164,7 +164,7 @@ func ComputeTextPreConsumedBillingSnapshot(promptTokens int, maxCompletionTokens
 }
 
 // ComputeTextPreConsumedBillingSnapshotWithReservedTokens uses an explicit
-// request-time reserve instead of the legacy global reserve.
+// request-time reserve instead of the global default reserve.
 func ComputeTextPreConsumedBillingSnapshotWithReservedTokens(promptTokens int, maxCompletionTokens int, reservedTokens int64, pricing model.ResolvedModelPricing, groupRatio float64) (BillingSnapshot, error) {
 	if reservedTokens < 0 {
 		reservedTokens = 0

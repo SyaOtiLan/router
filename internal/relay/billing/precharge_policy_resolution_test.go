@@ -11,7 +11,7 @@ func TestResolvePrechargePolicyUsesModelSpecAndFallback(t *testing.T) {
 		t.Fatalf("resolved=%+v", resolved)
 	}
 	fallback := ResolvePrechargePolicy(nil, 500)
-	if fallback.Source != "global_fallback" || fallback.Policy.MinimumReserve != 500 || fallback.Policy.Type != PrechargeTokenizerEstimate {
+	if fallback.Source != "global_default" || fallback.Policy.MinimumReserve != 500 || fallback.Policy.Type != PrechargeTokenizerEstimate {
 		t.Fatalf("fallback=%+v", fallback)
 	}
 }

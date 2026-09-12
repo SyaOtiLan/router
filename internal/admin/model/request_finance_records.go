@@ -18,6 +18,16 @@ type FinanceConsistencySummary struct {
 	Consistent           bool  `json:"consistent"`
 }
 
+// FinanceConsistencyIssue identifies one request-level discrepancy. A log may
+// produce more than one issue when multiple normalized records are absent.
+type FinanceConsistencyIssue struct {
+	IssueType        string `json:"issue_type"`
+	RequestLogID     string `json:"request_log_id"`
+	CreatedAt        int64  `json:"created_at"`
+	PromptTokens     int    `json:"prompt_tokens"`
+	CompletionTokens int    `json:"completion_tokens"`
+}
+
 var financeColumnsPendingRemoval = []string{
 	"billing_input_quantity", "billing_output_quantity", "billing_cache_read_quantity", "billing_cache_write_quantity",
 	"billing_input_amount", "billing_output_amount", "billing_cache_read_amount", "billing_cache_write_amount",
@@ -384,11 +394,70 @@ func InspectFinanceConsistency(db *gorm.DB, startAt, endAt int64) (FinanceConsis
 	if err := db.Raw("SELECT COUNT(*) FROM event_logs el LEFT JOIN procurement_attributions pa ON pa.request_log_id = el.id WHERE el.type = ? AND pa.request_log_id IS NULL AND (? = 0 OR el.created_at >= ?) AND (? = 0 OR el.created_at <= ?)", LogTypeConsume, startAt, startAt, endAt, endAt).Scan(&result.MissingAttributions).Error; err != nil {
 		return result, err
 	}
-	if err := db.Raw("SELECT COUNT(*) FROM event_logs el JOIN billing_settlements bs ON bs.request_log_id = el.id WHERE el.type = ? AND (el.prompt_tokens <> bs.prompt_tokens OR el.completion_tokens <> bs.completion_tokens) AND (? = 0 OR el.created_at >= ?) AND (? = 0 OR el.created_at <= ?)", LogTypeConsume, startAt, startAt, endAt, endAt).Scan(&result.SettlementMismatches).Error; err != nil {
+	// Compare only fields that remain durably stored on event_logs. Monetary
+	// components live exclusively in billing_settlements after the finance
+	// table split, so comparing removed columns here would make the check
+	// database-schema dependent and silently fail after cleanup.
+	const settlementMismatchPredicate = `
+		COALESCE(el.prompt_tokens, 0) <> COALESCE(bs.prompt_tokens, 0) OR
+		COALESCE(el.completion_tokens, 0) <> COALESCE(bs.completion_tokens, 0) OR
+		COALESCE(el.billing_settlement_mode, '') <> COALESCE(bs.settlement_mode, '') OR
+		COALESCE(el.billing_settlement_truth_mode, '') <> COALESCE(bs.settlement_truth_mode, '') OR
+		COALESCE(el.estimated_prompt_tokens, 0) <> COALESCE(bs.estimated_prompt_tokens, 0) OR
+		COALESCE(el.estimated_output_tokens, 0) <> COALESCE(bs.estimated_output_tokens, 0) OR
+		COALESCE(el.estimated_charge_amount, 0) <> COALESCE(bs.estimated_charge_amount, 0) OR
+		COALESCE(el.billing_prompt_token_delta, 0) <> COALESCE(bs.prompt_token_delta, 0) OR
+		COALESCE(el.billing_output_token_delta, 0) <> COALESCE(bs.output_token_delta, 0) OR
+		COALESCE(el.billing_charge_delta_amount, 0) <> COALESCE(bs.charge_delta_amount, 0)`
+	query := "SELECT COUNT(*) FROM event_logs el JOIN billing_settlements bs ON bs.request_log_id = el.id WHERE el.type = ? AND (" + settlementMismatchPredicate + ") AND (? = 0 OR el.created_at >= ?) AND (? = 0 OR el.created_at <= ?)"
+	if err := db.Raw(query, LogTypeConsume, startAt, startAt, endAt, endAt).Scan(&result.SettlementMismatches).Error; err != nil {
 		return result, err
 	}
 	result.Consistent = result.MissingSettlements == 0 && result.MissingAttributions == 0 && result.SettlementMismatches == 0
 	return result, nil
+}
+
+// ListFinanceConsistencyIssues returns actionable discrepancies for an admin
+// audit window. Results are bounded so an unhealthy historical dataset cannot
+// overload the admin API.
+func ListFinanceConsistencyIssues(db *gorm.DB, startAt, endAt int64, limit int) ([]FinanceConsistencyIssue, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database handle is nil")
+	}
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	const mismatch = `
+		COALESCE(el.prompt_tokens, 0) <> COALESCE(bs.prompt_tokens, 0) OR
+		COALESCE(el.completion_tokens, 0) <> COALESCE(bs.completion_tokens, 0) OR
+		COALESCE(el.billing_settlement_mode, '') <> COALESCE(bs.settlement_mode, '') OR
+		COALESCE(el.billing_settlement_truth_mode, '') <> COALESCE(bs.settlement_truth_mode, '') OR
+		COALESCE(el.estimated_prompt_tokens, 0) <> COALESCE(bs.estimated_prompt_tokens, 0) OR
+		COALESCE(el.estimated_output_tokens, 0) <> COALESCE(bs.estimated_output_tokens, 0) OR
+		COALESCE(el.estimated_charge_amount, 0) <> COALESCE(bs.estimated_charge_amount, 0) OR
+		COALESCE(el.billing_prompt_token_delta, 0) <> COALESCE(bs.prompt_token_delta, 0) OR
+		COALESCE(el.billing_output_token_delta, 0) <> COALESCE(bs.output_token_delta, 0) OR
+		COALESCE(el.billing_charge_delta_amount, 0) <> COALESCE(bs.charge_delta_amount, 0)`
+	window := " AND (? = 0 OR el.created_at >= ?) AND (? = 0 OR el.created_at <= ?)"
+	query := `SELECT issue_type, request_log_id, created_at, prompt_tokens, completion_tokens FROM (
+		SELECT 'missing_settlement' AS issue_type, el.id AS request_log_id, el.created_at, el.prompt_tokens, el.completion_tokens
+		FROM event_logs el LEFT JOIN billing_settlements bs ON bs.request_log_id = el.id
+		WHERE el.type = ? AND bs.request_log_id IS NULL` + window + `
+		UNION ALL
+		SELECT 'missing_attribution', el.id, el.created_at, el.prompt_tokens, el.completion_tokens
+		FROM event_logs el LEFT JOIN procurement_attributions pa ON pa.request_log_id = el.id
+		WHERE el.type = ? AND pa.request_log_id IS NULL` + window + `
+		UNION ALL
+		SELECT 'settlement_mismatch', el.id, el.created_at, el.prompt_tokens, el.completion_tokens
+		FROM event_logs el JOIN billing_settlements bs ON bs.request_log_id = el.id
+		WHERE el.type = ? AND (` + mismatch + `)` + window + `
+	) issues ORDER BY created_at DESC, request_log_id ASC LIMIT ?`
+	args := []any{LogTypeConsume, startAt, startAt, endAt, endAt, LogTypeConsume, startAt, startAt, endAt, endAt, LogTypeConsume, startAt, startAt, endAt, endAt, limit}
+	rows := make([]FinanceConsistencyIssue, 0, limit)
+	if err := db.Raw(query, args...).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 // CanDropFinanceColumns is the explicit gate for the cleanup migration. It
