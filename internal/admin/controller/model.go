@@ -314,7 +314,7 @@ func loadDashboardProtocolModels(channelProtocol int) ([]string, error) {
 func buildDashboardChannelModelMap() map[int][]string {
 	result := make(map[int][]string)
 	for i := 1; i < relaychannel.Dummy; i++ {
-		if i == relaychannel.OpenAICompatible {
+		if strings.TrimSpace(relaychannel.ChannelProtocolNames[i]) == "" {
 			continue
 		}
 		models, err := loadProviderProtocolModelsFn(i)
