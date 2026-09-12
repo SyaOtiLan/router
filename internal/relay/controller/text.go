@@ -251,9 +251,9 @@ func RelayTextHelper(c *gin.Context) *model.ErrorWithStatusCode {
 }
 
 func resolveTextPrechargePolicy(relayMeta *meta.Meta, pricing adminmodel.ResolvedModelPricing) (billing.PrechargePolicyResolution, error) {
-	fallback := billing.ResolvePrechargePolicy(nil, config.PreConsumedQuota)
+	defaultResolution := billing.ResolvePrechargePolicy(nil, config.PreConsumedQuota)
 	if relayMeta == nil {
-		return fallback, nil
+		return defaultResolution, nil
 	}
 	selected, selectedOK := adminmodel.FindSelectedChannelModelConfig(
 		relayMeta.ChannelModelConfigs,
@@ -274,7 +274,7 @@ func resolveTextPrechargePolicy(relayMeta *meta.Meta, pricing adminmodel.Resolve
 	if provider != "" {
 		specification, err := adminmodel.LoadProviderModelSpecificationWithDB(adminmodel.DB, provider, modelName)
 		if err != nil {
-			return fallback, err
+			return defaultResolution, err
 		}
 		return billing.ResolvePrechargePolicy(specification, config.PreConsumedQuota), nil
 	}
@@ -283,18 +283,18 @@ func resolveTextPrechargePolicy(relayMeta *meta.Meta, pricing adminmodel.Resolve
 	// behavior only when the catalog proves that the model identity is unique.
 	providerMap, err := adminmodel.LoadUniqueProviderMapByModelsWithDB(adminmodel.DB, []string{modelName})
 	if err != nil {
-		return fallback, err
+		return defaultResolution, err
 	}
 	specifications, err := adminmodel.LoadProviderModelSpecificationMapByModelsWithDB(adminmodel.DB, providerMap, []string{modelName})
 	if err != nil {
-		return fallback, err
+		return defaultResolution, err
 	}
 	for _, candidate := range adminmodel.NormalizeProviderLookupCandidates(modelName) {
 		if specification, ok := specifications[candidate]; ok {
 			return billing.ResolvePrechargePolicy(specification, config.PreConsumedQuota), nil
 		}
 	}
-	return fallback, nil
+	return defaultResolution, nil
 }
 
 func prepareTextBillingRequestBody(c *gin.Context, meta *meta.Meta, rawRequestBody []byte) ([]byte, error) {
@@ -335,16 +335,16 @@ func prepareTextBillingRequestBody(c *gin.Context, meta *meta.Meta, rawRequestBo
 	}
 }
 
-func parseTextRequestForBillingEstimate(rawRequestBody []byte, fallback *model.GeneralOpenAIRequest) (*model.GeneralOpenAIRequest, error) {
-	if len(rawRequestBody) == 0 || fallback == nil {
-		return fallback, nil
+func parseTextRequestForBillingEstimate(rawRequestBody []byte, baseRequest *model.GeneralOpenAIRequest) (*model.GeneralOpenAIRequest, error) {
+	if len(rawRequestBody) == 0 || baseRequest == nil {
+		return baseRequest, nil
 	}
 	parsed := &model.GeneralOpenAIRequest{}
 	if err := json.Unmarshal(rawRequestBody, parsed); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(fallback.Model) != "" {
-		parsed.Model = fallback.Model
+	if strings.TrimSpace(baseRequest.Model) != "" {
+		parsed.Model = baseRequest.Model
 	}
 	return parsed, nil
 }

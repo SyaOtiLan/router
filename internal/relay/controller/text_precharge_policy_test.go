@@ -11,13 +11,13 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestTextPrechargePolicyFallbackKeepsLegacyReserve(t *testing.T) {
+func TestTextPrechargePolicyGlobalDefaultKeepsConfiguredReserve(t *testing.T) {
 	resolved := billing.ResolvePrechargePolicy(nil, config.PreConsumedQuota)
 	if resolved.Source != "global_default" || resolved.Policy.Type != billing.PrechargeTokenizerEstimate {
-		t.Fatalf("fallback resolution = %+v", resolved)
+		t.Fatalf("global default resolution = %+v", resolved)
 	}
 	if got := resolved.Policy.ReserveTokens(120, 80); got != config.PreConsumedQuota+200 {
-		t.Fatalf("fallback reserve = %d, want %d", got, config.PreConsumedQuota+200)
+		t.Fatalf("global default reserve = %d, want %d", got, config.PreConsumedQuota+200)
 	}
 }
 
