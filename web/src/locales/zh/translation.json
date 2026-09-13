@@ -3689,6 +3689,13 @@
         "title": "当前范围计费收支趋势",
         "financials": "计费收入 {{revenue}} / 成本 {{cost}} / 毛利 {{profit}}"
       },
+      "consistency": {
+        "title": "财务一致性明细",
+        "summary": "当前范围 {{count}} 项异常",
+        "empty": "当前范围未发现财务一致性异常",
+        "columns": { "type": "问题类型", "request": "请求日志", "created_at": "发生时间", "prompt_tokens": "输入 Token", "completion_tokens": "输出 Token" },
+        "types": { "missing_settlement": "缺失结算", "missing_attribution": "缺失采购归因", "settlement_mismatch": "结算快照不一致" }
+      },
       "channel_placeholder": "筛选渠道",
       "model_placeholder": "筛选模型"
     },
