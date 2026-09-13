@@ -108,18 +108,17 @@ scripts/config_backup.sh
 
 主要行为：
 
-- 读取 `scripts/backup.conf` 中的备份开关、文件名前缀和后缀配置。
+- 读取 `/data/${MODULE_NAME}/backup.conf` 中的备份开关、文件名前缀和后缀配置，其中 `MODULE_NAME` 为当前部署目录名。
 - 将项目根目录下的 `config.yaml` 复制到临时目录。
 - 如果存在 `/etc/nginx/conf.d/router.conf` 或 `/etc/nginx/conf.d/test-router.conf`，也会复制到临时目录并与 `config.yaml` 同级打包。
-- 使用 `gpg` 和 `scripts/.passphrase-file` 生成加密备份文件。
+- 使用 `gpg` 和 `/data/${MODULE_NAME}/.passphrase-file` 生成加密备份文件。
 - 备份文件默认写入 `/opt/backup`。
 - 若目标备份文件已经存在，脚本会跳过并返回 `255`。
 
 相关文件：
 
-- `scripts/backup.conf.template`：备份配置模板。
-- `scripts/.passphrase-file.template`：加密口令文件模板。
-- `scripts/.passphrase-file`：实际加密口令文件，运行环境中需要存在且非空。
+- `scripts/backup.conf.template`：备份配置模板，运行环境中的实际配置文件位于 `/data/${MODULE_NAME}/backup.conf`。
+- `scripts/.passphrase-file.template`：加密口令文件模板，运行环境中的实际口令文件位于 `/data/${MODULE_NAME}/.passphrase-file`，需要存在且非空。
 
 ## 健康检查
 
@@ -212,9 +211,8 @@ scripts/test_provider_latency.sh <domain> <key> <count> [model]
 
 | 文件 | 用途 |
 | --- | --- |
-| `scripts/backup.conf.template` | `config_backup.sh` 的配置模板，控制是否备份、备份文件名前缀和后缀。 |
-| `scripts/.passphrase-file.template` | GPG 对称加密口令文件模板。 |
-| `scripts/.passphrase-file` | 当前环境实际使用的 GPG 加密口令文件，不应作为公开配置传播。 |
+| `scripts/backup.conf.template` | `config_backup.sh` 的配置模板，控制是否备份、备份文件名前缀和后缀；实际运行配置位于 `/data/${MODULE_NAME}/backup.conf`。 |
+| `scripts/.passphrase-file.template` | GPG 对称加密口令文件模板；实际运行口令位于 `/data/${MODULE_NAME}/.passphrase-file`。 |
 
 ## 返回值约定
 
