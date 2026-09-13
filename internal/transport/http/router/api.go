@@ -260,6 +260,7 @@ func SetApiRouter(engine *gin.Engine) {
 			adminBillingRoute.GET("/currencies", adminbilling.GetBillingCurrencies)
 			adminBillingRoute.GET("/health", adminbilling.GetBillingHealth)
 			adminBillingRoute.GET("/finance/consistency", adminbilling.GetFinanceConsistency)
+			adminBillingRoute.GET("/finance/consistency/issues", adminbilling.GetFinanceConsistencyIssues)
 			adminBillingRoute.GET("/procurement-report", adminbilling.GetProcurementReport)
 			adminBillingRoute.GET("/procurement-trend", adminbilling.GetProcurementTrend)
 			adminBillingRoute.GET("/procurement-batches", adminbilling.GetProcurementBatches)

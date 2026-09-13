@@ -90,6 +90,63 @@ func TestDropFinanceColumnsFailsOnMismatch(t *testing.T) {
 	}
 }
 
+func TestFinanceConsistencyDetectsSnapshotMetadataMismatch(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:finance-consistency-metadata?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&Log{}, &BillingSettlement{}, &ProcurementAttribution{}); err != nil {
+		t.Fatalf("migrate records: %v", err)
+	}
+	log := &Log{Id: "metadata-mismatch", Type: LogTypeConsume, CreatedAt: 100, BillingSettlementMode: "usage_final"}
+	if err := db.Create(log).Error; err != nil {
+		t.Fatalf("create log: %v", err)
+	}
+	if err := db.Create(&BillingSettlement{RequestLogID: log.Id, SettlementMode: "estimate_only"}).Error; err != nil {
+		t.Fatalf("create settlement: %v", err)
+	}
+	if err := db.Create(&ProcurementAttribution{RequestLogID: log.Id, Status: ProcurementCostAttributionStatusNone}).Error; err != nil {
+		t.Fatalf("create attribution: %v", err)
+	}
+	result, err := InspectFinanceConsistency(db, 0, 0)
+	if err != nil {
+		t.Fatalf("inspect consistency: %v", err)
+	}
+	if result.SettlementMismatches != 1 || result.Consistent {
+		t.Fatalf("consistency result = %+v, want one metadata mismatch", result)
+	}
+}
+
+func TestListFinanceConsistencyIssuesReturnsTypedRows(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:finance-consistency-issues?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&Log{}, &BillingSettlement{}, &ProcurementAttribution{}); err != nil {
+		t.Fatalf("migrate records: %v", err)
+	}
+	rows := []Log{
+		{Id: "missing-settlement", Type: LogTypeConsume, CreatedAt: 100, PromptTokens: 1},
+		{Id: "missing-attribution", Type: LogTypeConsume, CreatedAt: 101, PromptTokens: 2},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatalf("create logs: %v", err)
+	}
+	if err := db.Create(&BillingSettlement{RequestLogID: rows[1].Id, PromptTokens: 2}).Error; err != nil {
+		t.Fatalf("create settlement: %v", err)
+	}
+	if err := db.Create(&ProcurementAttribution{RequestLogID: rows[0].Id, Status: ProcurementCostAttributionStatusNone}).Error; err != nil {
+		t.Fatalf("create attribution: %v", err)
+	}
+	issues, err := ListFinanceConsistencyIssues(db, 0, 0, 10)
+	if err != nil {
+		t.Fatalf("list issues: %v", err)
+	}
+	if len(issues) != 2 || issues[0].IssueType != "missing_attribution" || issues[1].IssueType != "missing_settlement" {
+		t.Fatalf("issues = %+v", issues)
+	}
+}
+
 func TestDropFinanceColumnsRejectsBoundedWindow(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:finance-cleanup-window?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {

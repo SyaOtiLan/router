@@ -21,9 +21,6 @@ const normalizeProtocolName = (value) => {
   if (raw === '') {
     return '';
   }
-  if (raw === 'openai-compatible') {
-    return 'openai';
-  }
   return raw;
 };
 

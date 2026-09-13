@@ -642,6 +642,18 @@ func GetFinanceConsistency(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": result})
 }
 
+func GetFinanceConsistencyIssues(c *gin.Context) {
+	startAt := parseBillingReportTimestamp(c.Query("start_at"))
+	endAt := parseBillingReportTimestamp(c.Query("end_at"))
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	issues, err := model.ListFinanceConsistencyIssues(model.LOG_DB, startAt, endAt, limit)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "加载财务不一致明细失败: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"items": issues, "total": len(issues)}})
+}
+
 func GetProcurementReport(c *gin.Context) {
 	startAt := parseBillingReportTimestamp(c.Query("start_at"))
 	if startAt == 0 {

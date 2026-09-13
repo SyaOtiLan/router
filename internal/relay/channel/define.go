@@ -50,13 +50,11 @@ const (
 	Replicate
 	BaiduV2
 	XunfeiV2
-	legacyVolcengineRealtimeReserved
-	OpenAICompatible
+	reservedProtocol49
+	reservedProtocol50
 	GeminiOpenAICompatible
 	Dummy
 )
-
-const LegacyVolcengineRealtimeProtocolID = 49
 
 // ChannelProtocolNames maps channel protocol id to its canonical protocol name.
 // Index aligns exactly with the const list above; keep length == Dummy.

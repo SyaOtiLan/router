@@ -588,7 +588,7 @@ func refreshAndPersistChannelBillingEntitlements(channel *model.Channel, profile
 	requestURLs := splitChannelBillingRequestURLs(snapshot.RequestURL)
 	now := time.Now().Unix()
 	if shouldDisableChannelForBillingEntitlements(collected, items, now) {
-		if err := monitor.DisableChannelForInsufficientBalance(channel.Id, channel.DisplayName(), collected.PrimaryAmount); err != nil {
+		if err := monitor.NotifyChannelBalanceWarning(channel.Id, channel.DisplayName(), collected.PrimaryAmount); err != nil {
 			return collected.PrimaryAmount, requestURLs, err
 		}
 		return collected.PrimaryAmount, requestURLs, nil

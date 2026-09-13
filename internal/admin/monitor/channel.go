@@ -144,14 +144,10 @@ func DisableChannel(channelId string, channelName string, reason string) {
 	_ = notifyRootUser(subject, content)
 }
 
-// DisableChannelForInsufficientBalance keeps the legacy function name for callers,
-// but intentionally no longer changes channel status.
-//
-// Upstream billing APIs and provider quota errors are often advisory or scoped to
-// a single upstream account/model. Disabling the whole channel here causes route
-// flapping when recovery probes succeed on a different model or after transient
-// billing API inconsistencies.
-func DisableChannelForInsufficientBalance(channelId string, channelName string, balance float64) error {
+// NotifyChannelBalanceWarning records an upstream balance warning without
+// disabling the whole channel. Balance errors may be scoped to one account or
+// model and are not sufficient evidence for a channel-wide route change.
+func NotifyChannelBalanceWarning(channelId string, channelName string, balance float64) error {
 	logger.SysLog(fmt.Sprintf("channel #%s reported insufficient balance, status unchanged: %.4f", channelId, balance))
 	subject := fmt.Sprintf("渠道余额不足提醒")
 	content := message.EmailTemplate(
