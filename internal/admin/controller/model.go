@@ -643,7 +643,7 @@ func buildOpenAIModelsForRequest(c *gin.Context) ([]OpenAIModels, map[string]Ope
 	providers := make([]string, 0, len(providerByModel))
 	providerSet := make(map[string]struct{}, len(providerByModel))
 	for _, provider := range providerByModel {
-		provider = strings.TrimSpace(provider)
+		provider = model.NormalizeGroupModelProviderValue(provider)
 		if provider != "" {
 			if _, ok := providerSet[provider]; !ok {
 				providerSet[provider] = struct{}{}
@@ -658,6 +658,7 @@ func buildOpenAIModelsForRequest(c *gin.Context) ([]OpenAIModels, map[string]Ope
 			return nil, nil, err
 		}
 		for provider, details := range detailsByProvider {
+			provider = model.NormalizeGroupModelProviderValue(provider)
 			for _, detail := range details {
 				if _, exists := detailsByModel[provider+"\x00"+detail.Model]; !exists {
 					detailsByModel[provider+"\x00"+detail.Model] = detail
@@ -686,7 +687,8 @@ func buildOpenAIModelsForRequest(c *gin.Context) ([]OpenAIModels, map[string]Ope
 			Root:               modelName,
 			Parent:             nil,
 		}
-		if detail, ok := detailsByModel[providerByModel[modelName]+"\x00"+modelName]; ok {
+		providerKey := model.NormalizeGroupModelProviderValue(providerByModel[modelName])
+		if detail, ok := detailsByModel[providerKey+"\x00"+modelName]; ok {
 			item.Pricing = openRouterPricing(detail)
 			item.Architecture, item.SupportedParameters = openRouterCapabilities(detail.Specification)
 		}
