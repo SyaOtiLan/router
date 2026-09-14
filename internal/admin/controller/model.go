@@ -85,6 +85,22 @@ type OpenAIModels struct {
 	Permission         []OpenAIModelPermission           `json:"permission"`
 	Root               string                            `json:"root"`
 	Parent             *string                           `json:"parent"`
+	// The following fields are optional OpenRouter-compatible catalog metadata.
+	// They let SDKs and client UIs discover billing and capability information
+	// without changing the OpenAI model contract.
+	Pricing             *OpenRouterModelPricing      `json:"pricing,omitempty"`
+	Architecture        *OpenRouterModelArchitecture `json:"architecture,omitempty"`
+	SupportedParameters []string                     `json:"supported_parameters,omitempty"`
+}
+
+type OpenRouterModelPricing struct {
+	Prompt     string `json:"prompt"`
+	Completion string `json:"completion"`
+}
+
+type OpenRouterModelArchitecture struct {
+	InputModalities  []string `json:"input_modalities,omitempty"`
+	OutputModalities []string `json:"output_modalities,omitempty"`
 }
 
 type UserModelStatusPoint = healthtrend.Point
@@ -152,6 +168,65 @@ var loadProviderModelSpecificationsFn = model.LoadProviderModelSpecificationMapB
 var loadProviderProtocolModelsFn = loadDashboardProtocolModels
 var loadSatisfiedChannelsFn = model.CacheListSatisfiedChannels
 var buildRequestUserEntitlementModelsFn = model.BuildUserEntitlementModels
+
+func openRouterPricing(detail model.ProviderModelDetail) *OpenRouterModelPricing {
+	input, output := detail.InputPrice, detail.OutputPrice
+	switch strings.ToLower(strings.TrimSpace(detail.PriceUnit)) {
+	case "", "per_1k_tokens":
+		input /= 1000
+		output /= 1000
+	case "per_1m_tokens":
+		input /= 1000000
+		output /= 1000000
+	}
+	if input < 0 || output < 0 {
+		return nil
+	}
+	return &OpenRouterModelPricing{
+		Prompt:     fmt.Sprintf("%.12g", input),
+		Completion: fmt.Sprintf("%.12g", output),
+	}
+}
+
+func openRouterCapabilities(spec *model.ProviderModelSpecification) (*OpenRouterModelArchitecture, []string) {
+	if spec == nil || len(spec.Endpoints) == 0 {
+		return nil, nil
+	}
+	inputSet := make(map[string]struct{})
+	outputSet := make(map[string]struct{})
+	parameterSet := make(map[string]struct{})
+	for _, endpoint := range spec.Endpoints {
+		for _, modality := range endpoint.InputModalities {
+			if value := strings.TrimSpace(modality); value != "" {
+				inputSet[value] = struct{}{}
+			}
+		}
+		for _, modality := range endpoint.OutputModalities {
+			if value := strings.TrimSpace(modality); value != "" {
+				outputSet[value] = struct{}{}
+			}
+		}
+		for parameter := range endpoint.Parameters {
+			if value := strings.TrimSpace(parameter); value != "" {
+				parameterSet[value] = struct{}{}
+			}
+		}
+	}
+	toSorted := func(values map[string]struct{}) []string {
+		result := make([]string, 0, len(values))
+		for value := range values {
+			result = append(result, value)
+		}
+		sort.Strings(result)
+		return result
+	}
+	input, output, parameters := toSorted(inputSet), toSorted(outputSet), toSorted(parameterSet)
+	var architecture *OpenRouterModelArchitecture
+	if len(input) > 0 || len(output) > 0 {
+		architecture = &OpenRouterModelArchitecture{InputModalities: input, OutputModalities: output}
+	}
+	return architecture, parameters
+}
 
 type requestAvailableModels struct {
 	ModelNames          []string
@@ -563,6 +638,33 @@ func buildOpenAIModelsForRequest(c *gin.Context) ([]OpenAIModels, map[string]Ope
 	if err != nil {
 		return nil, nil, err
 	}
+	// Load catalog details once so model discovery exposes pricing and capability
+	// metadata in the same response used by OpenAI-compatible clients.
+	providers := make([]string, 0, len(providerByModel))
+	providerSet := make(map[string]struct{}, len(providerByModel))
+	for _, provider := range providerByModel {
+		provider = strings.TrimSpace(provider)
+		if provider != "" {
+			if _, ok := providerSet[provider]; !ok {
+				providerSet[provider] = struct{}{}
+				providers = append(providers, provider)
+			}
+		}
+	}
+	detailsByModel := make(map[string]model.ProviderModelDetail, len(modelNames))
+	if model.DB != nil {
+		detailsByProvider, err := model.LoadProviderModelDetailsMapForProviders(model.DB, providers)
+		if err != nil {
+			return nil, nil, err
+		}
+		for provider, details := range detailsByProvider {
+			for _, detail := range details {
+				if _, exists := detailsByModel[provider+"\x00"+detail.Model]; !exists {
+					detailsByModel[provider+"\x00"+detail.Model] = detail
+				}
+			}
+		}
+	}
 	items := make([]OpenAIModels, 0, len(modelNames))
 	itemMap := make(map[string]OpenAIModels, len(modelNames))
 	missingProviderModels := make([]string, 0)
@@ -583,6 +685,10 @@ func buildOpenAIModelsForRequest(c *gin.Context) ([]OpenAIModels, map[string]Ope
 			Permission:         cloneDefaultModelPermissions(),
 			Root:               modelName,
 			Parent:             nil,
+		}
+		if detail, ok := detailsByModel[providerByModel[modelName]+"\x00"+modelName]; ok {
+			item.Pricing = openRouterPricing(detail)
+			item.Architecture, item.SupportedParameters = openRouterCapabilities(detail.Specification)
 		}
 		items = append(items, item)
 		itemMap[modelName] = item
