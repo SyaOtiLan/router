@@ -44,6 +44,7 @@ func TestShouldRetrySkipsStatefulResponses(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	c.Request = req
 	c.Set(ctxkey.ResponsesStatefulRequest, true)
+	c.Set(ctxkey.ResponsesPreviousResponseID, "resp_existing")
 
 	err := &relaymodel.ErrorWithStatusCode{
 		StatusCode: http.StatusTooManyRequests,

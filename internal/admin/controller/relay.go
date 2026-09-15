@@ -104,8 +104,8 @@ func Relay(c *gin.Context) {
 	retryable := shouldRetry(c, bizErr)
 	if !retryable {
 		skipReason := "status_not_retryable"
-		if isStatefulResponsesRequest(c) {
-			skipReason = "stateful_responses_request"
+		if isPinnedResponsesRequest(c) {
+			skipReason = "pinned_responses_request"
 		}
 		logger.RelayWarnf(ctx, relaylogging.NewFields("RETRY").
 			String("decision", "skip").
@@ -290,6 +290,25 @@ func isStatefulResponsesRequest(c *gin.Context) bool {
 	return getEffectiveRelayMode(c) == relaymode.Responses && c.GetBool(ctxkey.ResponsesStatefulRequest)
 }
 
+// Responses requests can carry tool output without belonging to a known
+// upstream conversation. Only requests with an actual response/item ID must
+// stay pinned; an initial request may safely move to another healthy channel
+// when the selected provider reports an account-quota error.
+func isPinnedResponsesRequest(c *gin.Context) bool {
+	if !isStatefulResponsesRequest(c) {
+		return false
+	}
+	if strings.TrimSpace(c.GetString(ctxkey.ResponsesPreviousResponseID)) != "" {
+		return true
+	}
+	if value, ok := c.Get(ctxkey.ResponsesItemIDs); ok {
+		if ids, ok := value.([]string); ok && len(ids) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func shouldRetry(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {
 	if bizErr == nil {
 		return false
@@ -298,7 +317,7 @@ func shouldRetry(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {
 	case relaymode.ImagesGenerations, relaymode.ImagesEdits:
 		return false
 	}
-	if isStatefulResponsesRequest(c) {
+	if isPinnedResponsesRequest(c) {
 		return false
 	}
 	if _, ok := c.Get(ctxkey.SpecificChannelId); ok {
