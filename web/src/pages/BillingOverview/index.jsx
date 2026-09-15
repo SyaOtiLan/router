@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { API, showError } from '../../helpers';
+import { API, showError, timestamp2string } from '../../helpers';
 import { formatDecimalNumber } from '../../helpers/render';
 import {
   AppButton,
@@ -122,6 +122,7 @@ function BillingOverview() {
   const [modelReport, setModelReport] = useState(() => normalize({}));
   const [health, setHealth] = useState({ status: 'ok', issues: [], critical_count: 0, warning_count: 0 });
   const [trend, setTrend] = useState([]);
+  const [consistencyIssues, setConsistencyIssues] = useState([]);
   const [startAt, setStartAt] = useState(initialContext.startAt);
   const [endAt, setEndAt] = useState(initialContext.endAt);
   const [channelID, setChannelID] = useState(initialContext.channelID);
@@ -167,13 +168,14 @@ function BillingOverview() {
     try {
       const filters = { start_at: startAt, end_at: endAt, channel_id: channelID, model: modelName };
       const optionRange = recentRange();
-      const [reportResponse, filteredModelResponse, modelOptionsResponse, channelOptionsResponse, healthResponse, trendResponse] = await Promise.all([
+      const [reportResponse, filteredModelResponse, modelOptionsResponse, channelOptionsResponse, healthResponse, trendResponse, consistencyResponse] = await Promise.all([
         API.get('/api/v1/admin/billing/procurement-report', { params: { ...filters, group_by: 'channel', cost_scope: 'all' } }),
         API.get('/api/v1/admin/billing/procurement-report', { params: { ...filters, group_by: 'model', cost_scope: 'all' } }),
         API.get('/api/v1/admin/billing/procurement-report', { params: { ...optionRange, group_by: 'model', cost_scope: 'all' } }),
         API.get('/api/v1/admin/billing/procurement-report', { params: { ...optionRange, group_by: 'channel', cost_scope: 'all' } }),
         API.get('/api/v1/admin/billing/health'),
         API.get('/api/v1/admin/billing/procurement-trend', { params: filters }),
+        API.get('/api/v1/admin/billing/finance/consistency/issues', { params: { start_at: startAt, end_at: endAt, limit: 200 } }),
       ]);
       if (!reportResponse.data?.success) throw new Error(reportResponse.data?.message);
       setReport(normalize(reportResponse.data.data));
@@ -188,6 +190,7 @@ function BillingOverview() {
       }
       if (healthResponse.data?.success) setHealth(healthResponse.data.data || {});
       if (trendResponse.data?.success) setTrend(Array.isArray(trendResponse.data?.data?.items) ? trendResponse.data.data.items : []);
+      if (consistencyResponse.data?.success) setConsistencyIssues(Array.isArray(consistencyResponse.data?.data?.items) ? consistencyResponse.data.data.items : []);
     } catch (error) {
       showError(error?.message || t('billing.overview.load_failed'));
     } finally {
@@ -318,6 +321,13 @@ function BillingOverview() {
 
   const activeDimensionRows = dimension === 'channel' ? report.items.slice(0, 10) : modelReport.items.slice(0, 10);
   const activeDimensionColumns = dimension === 'channel' ? channelColumns : modelColumns;
+  const consistencyIssueColumns = [
+    { title: t('billing.overview.consistency.columns.type'), dataIndex: 'issue_type', width: 180, render: (value) => t(`billing.overview.consistency.types.${value}`, { defaultValue: value || '-' }) },
+    { title: t('billing.overview.consistency.columns.request'), dataIndex: 'request_log_id', width: 280, render: (value) => <Link to={`/admin/log/${encodeURIComponent(value || '')}`}>{value || '-'}</Link> },
+    { title: t('billing.overview.consistency.columns.created_at'), dataIndex: 'created_at', width: 180, render: (value) => (value ? timestamp2string(value) : '-') },
+    { title: t('billing.overview.consistency.columns.prompt_tokens'), dataIndex: 'prompt_tokens', width: 120, align: 'right', render: formatCount },
+    { title: t('billing.overview.consistency.columns.completion_tokens'), dataIndex: 'completion_tokens', width: 120, align: 'right', render: formatCount },
+  ];
 
   return (
     <div className='dashboard-container billing-overview-page'>
@@ -344,6 +354,10 @@ function BillingOverview() {
         <section className='billing-overview-section'>
           <div className='billing-overview-section-heading'><h2>{t('billing.overview.trend.title')}</h2></div>
           <div className='billing-overview-trend'>{trend.map((item) => <div className='billing-overview-trend-row' key={item.day}><span>{item.day}</span><span>{t('billing.overview.trend.financials', { revenue: formatCNY(item.sell_base_amount), cost: formatCNY(item.procurement_cost_base_amount), profit: formatCNY(item.gross_profit_base_amount) })}</span></div>)}</div>
+        </section>
+        <section className='billing-overview-section'>
+          <div className='billing-overview-section-heading'><h2>{t('billing.overview.consistency.title')}</h2><span>{t('billing.overview.consistency.summary', { count: formatCount(consistencyIssues.length) })}</span></div>
+          <AppTable className='router-detail-table' size='small' pagination={false} rowKey={(row) => `${row.issue_type}-${row.request_log_id}`} dataSource={consistencyIssues} columns={consistencyIssueColumns} scroll={{ x: 900 }} locale={{ emptyText: t('billing.overview.consistency.empty') }} />
         </section>
       </AppSpin>
     </div>

@@ -44,12 +44,40 @@ func TestShouldRetrySkipsStatefulResponses(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	c.Request = req
 	c.Set(ctxkey.ResponsesStatefulRequest, true)
+	c.Set(ctxkey.ResponsesPreviousResponseID, "resp_existing")
 
 	err := &relaymodel.ErrorWithStatusCode{
 		StatusCode: http.StatusTooManyRequests,
 	}
 	if shouldRetry(c, err) {
 		t.Fatal("shouldRetry returned true for stateful responses request, want false")
+	}
+}
+
+func TestShouldRetryInitialResponsesOnUpstreamQuota(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set(ctxkey.ResponsesStatefulRequest, true)
+	err := &relaymodel.ErrorWithStatusCode{StatusCode: http.StatusForbidden}
+	err.Error.Code = "insufficient_user_quota"
+	err.Error.Type = "new_api_error"
+	err.Error.Message = "用户额度不足"
+	if !shouldRetry(c, err) {
+		t.Fatal("initial responses request should retry provider quota failures")
+	}
+}
+
+func TestShouldRetrySkipsLocalUserBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	err := &relaymodel.ErrorWithStatusCode{StatusCode: http.StatusForbidden}
+	err.Error.Code = "insufficient_user_balance"
+	if shouldRetry(c, err) {
+		t.Fatal("local user balance failures must not retry another provider")
 	}
 }
 

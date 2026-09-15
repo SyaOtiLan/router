@@ -42,11 +42,17 @@ type providerListData struct {
 
 type publicProviderModelDetail struct {
 	Model              string                            `json:"model"`
+	Type               string                            `json:"type,omitempty"`
 	Tags               []string                          `json:"tags,omitempty"`
 	Status             string                            `json:"status,omitempty"`
 	Description        string                            `json:"description,omitempty"`
 	Specification      *model.ProviderModelSpecification `json:"specification,omitempty"`
 	SupportedEndpoints []string                          `json:"supported_endpoints,omitempty"`
+	InputPrice         float64                           `json:"input_price,omitempty"`
+	OutputPrice        float64                           `json:"output_price,omitempty"`
+	PriceUnit          string                            `json:"price_unit,omitempty"`
+	Currency           string                            `json:"currency,omitempty"`
+	Source             string                            `json:"source,omitempty"`
 }
 
 type publicProviderModelItem struct {
@@ -528,11 +534,17 @@ func listPublicProviderModels() ([]publicProviderModelItem, error) {
 		for _, detail := range item.ModelDetails {
 			details = append(details, publicProviderModelDetail{
 				Model:              strings.TrimSpace(detail.Model),
+				Type:               strings.TrimSpace(detail.Type),
 				Tags:               detail.Tags,
 				Status:             strings.TrimSpace(detail.Status),
 				Description:        strings.TrimSpace(detail.Description),
 				Specification:      detail.Specification,
 				SupportedEndpoints: detail.SupportedEndpoints,
+				InputPrice:         detail.InputPrice,
+				OutputPrice:        detail.OutputPrice,
+				PriceUnit:          detail.PriceUnit,
+				Currency:           detail.Currency,
+				Source:             detail.Source,
 			})
 		}
 		result = append(result, publicProviderModelItem{

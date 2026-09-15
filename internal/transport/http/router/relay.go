@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/yeying-community/router/internal/admin/controller"
+	channel "github.com/yeying-community/router/internal/admin/controller/channel"
 	"github.com/yeying-community/router/internal/transport/http/middleware"
 )
 
@@ -16,6 +17,13 @@ func SetRelayRouter(engine *gin.Engine) {
 		modelsRouter.GET("", controller.ListModels)
 		modelsRouter.GET("/:model", controller.RetrieveModel)
 	}
+
+	// Provider catalog discovery is useful to OpenRouter/LiteLLM-style clients.
+	// Keep the existing token-authenticated catalog handler and expose it beside
+	// the standard model endpoints.
+	providerCatalogRouter := engine.Group("/v1/providers")
+	providerCatalogRouter.Use(middleware.TokenAuth())
+	providerCatalogRouter.GET("/models", channel.GetPublicProviderModels)
 
 	relayV1Router := engine.Group("/v1")
 	relayV1Router.Use(middleware.RelayLogger(), middleware.TokenAuth(), middleware.Distribute())
