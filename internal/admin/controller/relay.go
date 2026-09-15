@@ -326,6 +326,18 @@ func shouldRetry(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {
 	if controller.IsGroupDailyQuotaExceededError(bizErr) {
 		return false
 	}
+	// User/token balance failures are local policy decisions and retrying them
+	// against another channel cannot succeed. Provider account quota failures,
+	// however, are channel-scoped and should select another eligible channel.
+	if isUpstreamQuotaRelayError(bizErr) && strings.EqualFold(strings.TrimSpace(bizErr.Type), "new_api_error") {
+		return true
+	}
+	if isLocalQuotaRelayError(bizErr) {
+		return false
+	}
+	if isUpstreamQuotaRelayError(bizErr) {
+		return true
+	}
 	if isRelayCapabilityError(bizErr) {
 		return true
 	}
