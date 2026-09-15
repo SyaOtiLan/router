@@ -42,6 +42,7 @@ type providerListData struct {
 
 type publicProviderModelDetail struct {
 	Model              string                            `json:"model"`
+	Type               string                            `json:"type,omitempty"`
 	Tags               []string                          `json:"tags,omitempty"`
 	Status             string                            `json:"status,omitempty"`
 	Description        string                            `json:"description,omitempty"`
@@ -533,6 +534,7 @@ func listPublicProviderModels() ([]publicProviderModelItem, error) {
 		for _, detail := range item.ModelDetails {
 			details = append(details, publicProviderModelDetail{
 				Model:              strings.TrimSpace(detail.Model),
+				Type:               strings.TrimSpace(detail.Type),
 				Tags:               detail.Tags,
 				Status:             strings.TrimSpace(detail.Status),
 				Description:        strings.TrimSpace(detail.Description),
