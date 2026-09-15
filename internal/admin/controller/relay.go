@@ -329,9 +329,6 @@ func shouldRetry(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {
 	// User/token balance failures are local policy decisions and retrying them
 	// against another channel cannot succeed. Provider account quota failures,
 	// however, are channel-scoped and should select another eligible channel.
-	if isUpstreamQuotaRelayError(bizErr) && strings.EqualFold(strings.TrimSpace(bizErr.Type), "new_api_error") {
-		return true
-	}
 	if isLocalQuotaRelayError(bizErr) {
 		return false
 	}
@@ -445,7 +442,6 @@ func isLocalQuotaRelayError(err *model.ErrorWithStatusCode) bool {
 	switch code {
 	case "group_daily_quota_exceeded",
 		"user_quota_limit_exceeded",
-		"insufficient_user_quota",
 		"insufficient_user_balance",
 		"pre_consume_token_quota_failed":
 		return true
@@ -466,7 +462,7 @@ func isUpstreamQuotaRelayError(err *model.ErrorWithStatusCode) bool {
 		return true
 	}
 	lowerCode := strings.ToLower(errorCodeString(err.Code))
-	if lowerCode == "insufficient_quota" || lowerCode == "billing_hard_limit_reached" || lowerCode == "1113" {
+	if lowerCode == "insufficient_quota" || lowerCode == "insufficient_user_quota" || lowerCode == "billing_hard_limit_reached" || lowerCode == "1113" {
 		return true
 	}
 	lowerMessage := strings.ToLower(strings.TrimSpace(err.Message))
