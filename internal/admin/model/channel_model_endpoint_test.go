@@ -3,6 +3,7 @@ package model
 import (
 	"testing"
 
+	"github.com/yeying-community/router/common/config"
 	relaychannel "github.com/yeying-community/router/internal/relay/channel"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -442,6 +443,121 @@ func TestBuildDisabledChannelModelEndpointRowsMarksOnlyTargetEndpoint(t *testing
 	if got[1].DisabledReason != "unsupported endpoint" || got[1].DisabledBy != "runtime" || got[1].DisabledAt == 0 {
 		t.Fatalf("responses endpoint disable metadata = reason:%q by:%q at:%d, want populated", got[1].DisabledReason, got[1].DisabledBy, got[1].DisabledAt)
 	}
+}
+
+func TestDisableChannelModelEndpointRefreshesRequestCandidates(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:channel_model_endpoint_runtime_disable?mode=memory&cache=private"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	if err := db.AutoMigrate(
+		&Channel{},
+		&ChannelModel{},
+		&ChannelModelEndpoint{},
+		&ChannelModelEndpointPolicy{},
+		&ChannelModelEndpointTestResult{},
+		&ChannelModelPriceComponent{},
+		&GroupModelChannel{},
+	); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	channels := []Channel{
+		{Id: "facai-01", Name: "facai-01", Protocol: "openai", Status: ChannelStatusEnabled},
+		{Id: "hanbbq-1", Name: "hanbbq-1", Protocol: "openai", Status: ChannelStatusEnabled},
+	}
+	if err := db.Create(&channels).Error; err != nil {
+		t.Fatalf("create channels: %v", err)
+	}
+	channelModels := []ChannelModel{
+		{ChannelId: "facai-01", Model: "gpt-5.5", UpstreamModel: "gpt-5.5", Provider: "openai", Type: ProviderModelTypeText, Selected: true},
+		{ChannelId: "hanbbq-1", Model: "gpt-5.5", UpstreamModel: "gpt-5.5", Provider: "openai", Type: ProviderModelTypeText, Selected: true},
+	}
+	if err := db.Create(&channelModels).Error; err != nil {
+		t.Fatalf("create channel models: %v", err)
+	}
+	endpoints := []ChannelModelEndpoint{
+		{ChannelId: "facai-01", Model: "gpt-5.5", Endpoint: ChannelModelEndpointResponses, Enabled: true},
+		{ChannelId: "hanbbq-1", Model: "gpt-5.5", Endpoint: ChannelModelEndpointResponses, Enabled: true},
+	}
+	if err := db.Create(&endpoints).Error; err != nil {
+		t.Fatalf("create channel model endpoints: %v", err)
+	}
+	if err := db.Create(&[]GroupModelChannel{
+		{Group: "default", Model: "gpt-5.5", ChannelId: "facai-01", UpstreamModel: "gpt-5.5", Provider: "openai"},
+		{Group: "default", Model: "gpt-5.5", ChannelId: "hanbbq-1", UpstreamModel: "gpt-5.5", Provider: "openai"},
+	}).Error; err != nil {
+		t.Fatalf("create group model channels: %v", err)
+	}
+
+	originalDB := DB
+	originalMemoryCacheEnabled := config.MemoryCacheEnabled
+	DB = db
+	config.MemoryCacheEnabled = true
+	InitChannelCache()
+	t.Cleanup(func() {
+		DB = originalDB
+		config.MemoryCacheEnabled = originalMemoryCacheEnabled
+		if originalDB != nil && originalMemoryCacheEnabled {
+			InitChannelCache()
+		}
+	})
+
+	before, err := CacheListSatisfiedChannelsForRequest("default", "gpt-5.5", "/v1/responses")
+	if err != nil {
+		t.Fatalf("list request candidates before disable: %v", err)
+	}
+	if len(before) != 2 {
+		t.Fatalf("request candidates before disable = %d, want 2", len(before))
+	}
+
+	disabled, err := DisableChannelModelRequestEndpointCapabilityWithReason(
+		"facai-01",
+		"gpt-5.5",
+		"/v1/responses",
+		"上游额度不足",
+		"runtime",
+	)
+	if err != nil {
+		t.Fatalf("disable channel model endpoint: %v", err)
+	}
+	if !disabled {
+		t.Fatal("disable channel model endpoint = false, want true")
+	}
+
+	var disabledRow ChannelModelEndpoint
+	if err := db.Where("channel_id = ? AND model = ? AND endpoint = ?", "facai-01", "gpt-5.5", ChannelModelEndpointResponses).First(&disabledRow).Error; err != nil {
+		t.Fatalf("load disabled endpoint row: %v", err)
+	}
+	if disabledRow.Enabled || disabledRow.DisabledBy != "runtime" || disabledRow.DisabledAt == 0 {
+		t.Fatalf("disabled endpoint metadata = %+v, want runtime disabled row", disabledRow)
+	}
+
+	after, err := CacheListSatisfiedChannelsForRequest("default", "gpt-5.5", "/v1/responses")
+	if err != nil {
+		t.Fatalf("list request candidates after disable: %v", err)
+	}
+	if len(after) != 1 || after[0].Id != "hanbbq-1" {
+		t.Fatalf("request candidates after disable = %#v, want only hanbbq-1", channelIDsForTest(after))
+	}
+
+	selected, stats, err := CacheSelectRandomSatisfiedChannelForRequestExcluding("default", "gpt-5.5", "/v1/responses", false, nil)
+	if err != nil {
+		t.Fatalf("select request candidate after disable: %v", err)
+	}
+	if selected == nil || selected.Id != "hanbbq-1" {
+		t.Fatalf("selected request candidate = %v, want hanbbq-1 (stats=%+v)", selected, stats)
+	}
+}
+
+func channelIDsForTest(channels []*Channel) []string {
+	ids := make([]string, 0, len(channels))
+	for _, channel := range channels {
+		if channel != nil {
+			ids = append(ids, channel.Id)
+		}
+	}
+	return ids
 }
 
 func TestNormalizeRequestedChannelModelEndpointMessagesMapsToMessages(t *testing.T) {

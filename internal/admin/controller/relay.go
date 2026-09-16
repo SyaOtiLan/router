@@ -96,7 +96,7 @@ func Relay(c *gin.Context) {
 	appendFallbackFailureAttempt(c, 1, bizErr)
 	go processChannelRelayError(ctx, userId, group, channelId, channelName, originalModel, requestPath, *bizErr)
 	traceID := c.GetString(helper.TraceIDKey)
-	retryAllRemainingCandidates := config.RetryTimes > 0 || monitor.IsHardChannelFailure(&bizErr.Error, bizErr.StatusCode)
+	retryAllRemainingCandidates := shouldRetryRemainingCandidates(bizErr)
 	if policy.RetryScope == routing.RetryScopeNone {
 		retryAllRemainingCandidates = false
 	}
@@ -355,6 +355,24 @@ func shouldRetry(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {
 		return false
 	}
 	return true
+}
+
+// Some channel-scoped failures must try another eligible channel even when
+// the operator has disabled general request retries. In particular, an
+// upstream account quota failure is not recoverable by repeating the same
+// channel, so leaving it in the candidate pool would keep returning the same
+// provider error to users.
+func shouldRetryRemainingCandidates(err *model.ErrorWithStatusCode) bool {
+	if config.RetryTimes > 0 {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	if isLocalQuotaRelayError(err) {
+		return false
+	}
+	return monitor.IsHardChannelFailure(&err.Error, err.StatusCode) || isUpstreamQuotaRelayError(err)
 }
 
 func markClientAbortIfNeeded(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/yeying-community/router/common/config"
 	"github.com/yeying-community/router/common/ctxkey"
 	relaymodel "github.com/yeying-community/router/internal/relay/model"
 	"github.com/yeying-community/router/internal/relay/routeobs"
@@ -66,6 +67,34 @@ func TestShouldRetryInitialResponsesOnUpstreamQuota(t *testing.T) {
 	err.Error.Message = "用户额度不足"
 	if !shouldRetry(c, err) {
 		t.Fatal("initial responses request should retry provider quota failures")
+	}
+}
+
+func TestShouldRetryRemainingCandidatesForUpstreamQuotaWithoutGeneralRetries(t *testing.T) {
+	originalRetryTimes := config.RetryTimes
+	config.RetryTimes = 0
+	t.Cleanup(func() { config.RetryTimes = originalRetryTimes })
+
+	err := &relaymodel.ErrorWithStatusCode{StatusCode: http.StatusForbidden}
+	err.Error.Type = "new_api_error"
+	err.Error.Code = "insufficient_user_quota"
+	err.Error.Message = "用户额度不足, 剩余额度: $-0.095574"
+	if !shouldRetryRemainingCandidates(err) {
+		t.Fatal("upstream user quota failure should switch channels when RetryTimes=0")
+	}
+}
+
+func TestShouldRetryRemainingCandidatesSkipsLocalQuotaWithoutGeneralRetries(t *testing.T) {
+	originalRetryTimes := config.RetryTimes
+	config.RetryTimes = 0
+	t.Cleanup(func() { config.RetryTimes = originalRetryTimes })
+
+	err := &relaymodel.ErrorWithStatusCode{StatusCode: http.StatusForbidden}
+	err.Error.Type = "one_api_error"
+	err.Error.Code = "insufficient_user_balance"
+	err.Error.Message = "用户余额不足"
+	if shouldRetryRemainingCandidates(err) {
+		t.Fatal("local user quota failure should not switch channels when RetryTimes=0")
 	}
 }
 
