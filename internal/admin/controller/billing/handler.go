@@ -136,7 +136,7 @@ func loadProcurementReportChannelNames(channelIDs []string) map[string]string {
 }
 
 func procurementReportUnconfiguredCostCondition() string {
-	return "pa.status = ?"
+	return "(pa.request_log_id IS NULL OR LOWER(TRIM(COALESCE(pa.status, ''))) = 'unconfigured')"
 }
 
 func loadProcurementReportUnconfiguredModelChannels(summary model.ProcurementReportSummary) map[string][]procurementReportRelatedChannel {
@@ -152,17 +152,20 @@ func loadProcurementReportUnconfiguredModelChannels(summary model.ProcurementRep
 	}
 	rows := make([]modelChannelRow, 0)
 	query := model.LOG_DB.Table(model.EventLogsTableName+" el").
-		Joins("JOIN "+model.ProcurementAttributionsTableName+" pa ON pa.request_log_id = el.id").
+		Joins("LEFT JOIN "+model.ProcurementAttributionsTableName+" pa ON pa.request_log_id = el.id").
 		Select(`
-			COALESCE(NULLIF(TRIM(el.model_name), ''), '-') AS model_key,
+			COALESCE(NULLIF(TRIM(el.actual_model_name), ''), NULLIF(TRIM(el.model_name), ''), NULLIF(TRIM(el.request_model_name), ''), '-') AS model_key,
 			COALESCE(NULLIF(TRIM(el.channel_id), ''), '-') AS channel_id,
 			COUNT(1) AS request_count,
 			COALESCE(MAX(el.created_at), 0) AS last_request_at
 		`).
 		Where("el.type = ? AND el.created_at BETWEEN ? AND ?", model.LogTypeConsume, summary.StartAt, summary.EndAt).
-		Where(procurementReportUnconfiguredCostCondition(), model.ProcurementCostAttributionStatusUnconfigured)
+		Where(procurementReportUnconfiguredCostCondition())
 	if summary.GroupID != "" {
 		query = query.Where("el.group_id = ?", summary.GroupID)
+	}
+	if summary.Provider != "" {
+		query = query.Where("LOWER(TRIM(COALESCE(el.provider, ''))) = ?", strings.ToLower(summary.Provider))
 	}
 	err := query.
 		Group("model_key, channel_id").
@@ -670,6 +673,7 @@ func GetProcurementReport(c *gin.Context) {
 		CostScope: c.Query("cost_scope"),
 		GroupID:   strings.TrimSpace(c.Query("group_id")),
 		ChannelID: strings.TrimSpace(c.Query("channel_id")),
+		Provider:  strings.TrimSpace(c.Query("provider")),
 		Model:     strings.TrimSpace(c.Query("model")),
 	})
 	if err != nil {
@@ -689,7 +693,7 @@ func GetProcurementReport(c *gin.Context) {
 func GetProcurementTrend(c *gin.Context) {
 	startAt := parseBillingReportTimestamp(c.Query("start_at"))
 	endAt := parseBillingReportTimestamp(c.Query("end_at"))
-	rows, err := model.ListProcurementTrendWithDB(model.LOG_DB, model.ProcurementTrendQuery{StartAt: startAt, EndAt: endAt, GroupID: c.Query("group_id"), ChannelID: c.Query("channel_id"), Model: c.Query("model")})
+	rows, err := model.ListProcurementTrendWithDB(model.LOG_DB, model.ProcurementTrendQuery{StartAt: startAt, EndAt: endAt, GroupID: c.Query("group_id"), ChannelID: c.Query("channel_id"), Provider: c.Query("provider"), Model: c.Query("model")})
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "加载计费趋势失败: " + err.Error()})
 		return
@@ -728,6 +732,9 @@ func GetProcurementRetries(c *gin.Context) {
 	}
 	if channelID := strings.TrimSpace(c.Query("channel_id")); channelID != "" {
 		query = query.Where("el.channel_id = ?", channelID)
+	}
+	if provider := model.NormalizeGroupModelProviderValue(c.Query("provider")); provider != "" {
+		query = query.Where("LOWER(TRIM(COALESCE(el.provider, ''))) = ?", strings.ToLower(provider))
 	}
 	if modelName := strings.TrimSpace(c.Query("model")); modelName != "" {
 		query = query.Where("COALESCE(NULLIF(TRIM(el.actual_model_name), ''), NULLIF(TRIM(el.model_name), ''), NULLIF(TRIM(el.request_model_name), '')) = ?", modelName)

@@ -3730,6 +3730,7 @@
       },
       "filters": {
         "group": "筛选分组",
+        "provider": "筛选供应商",
         "model": "筛选模型"
       },
       "summary": {

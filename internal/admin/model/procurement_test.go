@@ -987,6 +987,7 @@ func TestListProcurementReportWithDB(t *testing.T) {
 			BillingProcurementCostSource:     ProcurementCostSourceActual,
 			BillingProcurementCostStatus:     ProcurementCostAttributionStatusActual,
 			BillingGrossProfitBaseAmount:     6,
+			Provider:                         "OpenAI",
 		},
 		{
 			Id:                           "log-2",
@@ -1002,6 +1003,7 @@ func TestListProcurementReportWithDB(t *testing.T) {
 			BillingSellBaseAmount:        8,
 			BillingProcurementCostSource: ProcurementCostSourceNone,
 			BillingProcurementCostStatus: ProcurementCostAttributionStatusUnconfigured,
+			Provider:                     "anthropic",
 		},
 		{
 			Id:                           "log-3",
@@ -1076,6 +1078,15 @@ func TestListProcurementReportWithDB(t *testing.T) {
 	if filteredReport.RequestCount != 2 || len(filteredReport.Items) != 1 || filteredReport.Items[0].DimensionKey != "gpt-5-routed" {
 		t.Fatalf("unexpected filtered report: requests=%d items=%+v", filteredReport.RequestCount, filteredReport.Items)
 	}
+	providerReport, err := ListProcurementReportWithDB(db, ProcurementReportQuery{
+		StartAt: 90, EndAt: 140, GroupBy: ProcurementReportGroupByChannel, Provider: " OPENAI ",
+	})
+	if err != nil {
+		t.Fatalf("list provider report: %v", err)
+	}
+	if providerReport.Provider != "openai" || providerReport.RequestCount != 1 || len(providerReport.Items) != 1 || providerReport.Items[0].DimensionKey != "channel-1" {
+		t.Fatalf("unexpected provider report: %+v", providerReport)
+	}
 
 	endpointReport, err := ListProcurementReportWithDB(db, ProcurementReportQuery{
 		StartAt: 90,
@@ -1112,6 +1123,51 @@ func TestListProcurementReportWithDB(t *testing.T) {
 	}
 	if unconfiguredReport.GrossProfitBaseAmount != 0 {
 		t.Fatalf("unconfigured GrossProfitBaseAmount=%v, want 0", unconfiguredReport.GrossProfitBaseAmount)
+	}
+}
+
+func TestListProcurementReportClassifiesMissingAttributionAsUnconfigured(t *testing.T) {
+	db := newProcurementTestDB(t)
+	logRow := &Log{
+		Id:        "log-missing-attribution",
+		Type:      LogTypeConsume,
+		CreatedAt: 100,
+		ChannelId: "channel-missing",
+		ModelName: "gpt-5.6",
+		Provider:  "openai",
+	}
+	if err := db.Create(logRow).Error; err != nil {
+		t.Fatalf("create log: %v", err)
+	}
+	if err := db.Create(&BillingSettlement{
+		RequestLogID:   logRow.Id,
+		CreatedAt:      logRow.CreatedAt,
+		SellBaseAmount: 12.5,
+		ChargeAmount:   125,
+	}).Error; err != nil {
+		t.Fatalf("create settlement: %v", err)
+	}
+	report, err := ListProcurementReportWithDB(db, ProcurementReportQuery{
+		StartAt: 90, EndAt: 110, GroupBy: ProcurementReportGroupByChannel,
+	})
+	if err != nil {
+		t.Fatalf("list report: %v", err)
+	}
+	if report.RequestCount != 1 || report.UnconfiguredCostRequestCount != 1 || report.ConfiguredCostRequestCount != 0 {
+		t.Fatalf("unexpected missing-attribution counts: %+v", report)
+	}
+	if report.UnconfiguredSellBaseAmount != 12.5 {
+		t.Fatalf("UnconfiguredSellBaseAmount=%v, want 12.5", report.UnconfiguredSellBaseAmount)
+	}
+	unconfigured, err := ListProcurementReportWithDB(db, ProcurementReportQuery{
+		StartAt: 90, EndAt: 110, GroupBy: ProcurementReportGroupByChannel,
+		CostScope: ProcurementReportCostScopeUnconfigured,
+	})
+	if err != nil {
+		t.Fatalf("list unconfigured report: %v", err)
+	}
+	if unconfigured.RequestCount != 1 || unconfigured.UnconfiguredCostRequestCount != 1 {
+		t.Fatalf("missing-attribution cost scope excluded request: %+v", unconfigured)
 	}
 }
 

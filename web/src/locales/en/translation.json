@@ -3738,6 +3738,7 @@
       },
       "filters": {
         "group": "Filter group",
+        "provider": "Filter provider",
         "model": "Filter model"
       },
       "summary": {

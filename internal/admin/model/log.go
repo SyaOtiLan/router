@@ -80,6 +80,7 @@ type Log struct {
 	PromptTokens                     int     `json:"prompt_tokens" gorm:"default:0"`
 	CompletionTokens                 int     `json:"completion_tokens" gorm:"default:0"`
 	ChannelId                        string  `json:"channel" gorm:"type:varchar(64);index"`
+	Provider                         string  `json:"provider,omitempty" gorm:"type:varchar(128);index"`
 	ChannelName                      string  `json:"channel_name,omitempty" gorm:"-"`
 	RequestModelName                 string  `json:"request_model_name" gorm:"type:varchar(191);index;default:''"`
 	ActualModelName                  string  `json:"actual_model_name" gorm:"type:varchar(191);index;default:''"`
