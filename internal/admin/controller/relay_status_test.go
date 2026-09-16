@@ -229,6 +229,23 @@ func TestIsUpstreamQuotaRelayErrorForDailyLimitExceeded(t *testing.T) {
 	}
 }
 
+func TestInsufficientUserQuotaIsUpstreamChannelError(t *testing.T) {
+	err := &relaymodel.ErrorWithStatusCode{
+		StatusCode: http.StatusForbidden,
+		Error: relaymodel.Error{
+			Message: "用户额度不足",
+			Type:    "new_api_error",
+			Code:    "insufficient_user_quota",
+		},
+	}
+	if isLocalQuotaRelayError(err) {
+		t.Fatal("insufficient_user_quota must not be treated as Router-local quota")
+	}
+	if !isUpstreamQuotaRelayError(err) {
+		t.Fatal("insufficient_user_quota should be treated as an upstream quota error")
+	}
+}
+
 func TestUpstreamQuotaEndpointDisableReasonIncludesProviderMessage(t *testing.T) {
 	err := relaymodel.ErrorWithStatusCode{
 		StatusCode: http.StatusPaymentRequired,
@@ -325,22 +342,22 @@ func TestNormalizeFinalRelayErrorKeepsUserQuotaExceeded(t *testing.T) {
 	}
 }
 
-func TestNormalizeFinalRelayErrorKeepsInsufficientUserQuota(t *testing.T) {
+func TestNormalizeFinalRelayErrorForUpstreamUserQuota(t *testing.T) {
 	err := &relaymodel.ErrorWithStatusCode{
 		StatusCode: http.StatusForbidden,
 		Error: relaymodel.Error{
-			Message: "user quota is not enough",
-			Type:    "one_api_error",
+			Message: "用户额度不足, 剩余额度: $-0.095574",
+			Type:    "new_api_error",
 			Code:    "insufficient_user_quota",
 		},
 	}
 
 	normalizeFinalRelayError(err)
 
-	if err.StatusCode != http.StatusForbidden {
-		t.Fatalf("unexpected status code: got %d want %d", err.StatusCode, http.StatusForbidden)
+	if err.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("unexpected status code: got %d want %d", err.StatusCode, http.StatusServiceUnavailable)
 	}
-	if err.Message != "user quota is not enough" {
+	if err.Message != "当前分组可用上游额度不足，请稍后再试" {
 		t.Fatalf("unexpected message: got %q", err.Message)
 	}
 }

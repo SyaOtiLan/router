@@ -96,7 +96,7 @@ func Relay(c *gin.Context) {
 	appendFallbackFailureAttempt(c, 1, bizErr)
 	go processChannelRelayError(ctx, userId, group, channelId, channelName, originalModel, requestPath, *bizErr)
 	traceID := c.GetString(helper.TraceIDKey)
-	retryAllRemainingCandidates := config.RetryTimes > 0 || monitor.IsHardChannelFailure(&bizErr.Error, bizErr.StatusCode)
+	retryAllRemainingCandidates := shouldRetryRemainingCandidates(bizErr)
 	if policy.RetryScope == routing.RetryScopeNone {
 		retryAllRemainingCandidates = false
 	}
@@ -329,9 +329,6 @@ func shouldRetry(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {
 	// User/token balance failures are local policy decisions and retrying them
 	// against another channel cannot succeed. Provider account quota failures,
 	// however, are channel-scoped and should select another eligible channel.
-	if isUpstreamQuotaRelayError(bizErr) && strings.EqualFold(strings.TrimSpace(bizErr.Type), "new_api_error") {
-		return true
-	}
 	if isLocalQuotaRelayError(bizErr) {
 		return false
 	}
@@ -358,6 +355,24 @@ func shouldRetry(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {
 		return false
 	}
 	return true
+}
+
+// Some channel-scoped failures must try another eligible channel even when
+// the operator has disabled general request retries. In particular, an
+// upstream account quota failure is not recoverable by repeating the same
+// channel, so leaving it in the candidate pool would keep returning the same
+// provider error to users.
+func shouldRetryRemainingCandidates(err *model.ErrorWithStatusCode) bool {
+	if config.RetryTimes > 0 {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	if isLocalQuotaRelayError(err) {
+		return false
+	}
+	return monitor.IsHardChannelFailure(&err.Error, err.StatusCode) || isUpstreamQuotaRelayError(err)
 }
 
 func markClientAbortIfNeeded(c *gin.Context, bizErr *model.ErrorWithStatusCode) bool {
@@ -445,7 +460,6 @@ func isLocalQuotaRelayError(err *model.ErrorWithStatusCode) bool {
 	switch code {
 	case "group_daily_quota_exceeded",
 		"user_quota_limit_exceeded",
-		"insufficient_user_quota",
 		"insufficient_user_balance",
 		"pre_consume_token_quota_failed":
 		return true
@@ -466,7 +480,7 @@ func isUpstreamQuotaRelayError(err *model.ErrorWithStatusCode) bool {
 		return true
 	}
 	lowerCode := strings.ToLower(errorCodeString(err.Code))
-	if lowerCode == "insufficient_quota" || lowerCode == "billing_hard_limit_reached" || lowerCode == "1113" {
+	if lowerCode == "insufficient_quota" || lowerCode == "insufficient_user_quota" || lowerCode == "billing_hard_limit_reached" || lowerCode == "1113" {
 		return true
 	}
 	lowerMessage := strings.ToLower(strings.TrimSpace(err.Message))
