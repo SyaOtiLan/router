@@ -122,7 +122,10 @@ func resolveChannelModelTestTaskTargets(channelRow *model.Channel, testMode stri
 		return result
 	}
 
-	targetRows := resolveChannelTestTargetModels(channelRow, channelModelTestModeBatch, "", nil)
+	// Explicit endpoint targets are also used by runtime recovery. A runtime
+	// quota failure may have set Selected=false, but the configured model must
+	// remain testable so a successful probe can restore it.
+	targetRows := channelRow.GetChannelModels()
 	if len(targetRows) == 0 {
 		return nil
 	}
