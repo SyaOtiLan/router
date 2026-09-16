@@ -10,7 +10,7 @@
 | `scripts/deploy.sh` | 构建前后端产物并替换部署目录中的 Router 二进制 | 单机部署或手工发布 |
 | `scripts/package.sh` | 基于 Git tag 或远端 `main` 生成发布包 | 制作可分发版本包 |
 | `scripts/health-check.sh` | 检查 Router 存活、就绪和依赖状态 | 部署验收、启动等待、故障排查 |
-| `scripts/config_backup.sh` | 加密备份运行配置文件 | 升级或变更前保存当前配置 |
+| `scripts/config_backup.sh` | 加密备份运行配置文件 | 版本升级成功后备份当前配置 |
 | `scripts/copy-for-upgrade.sh` | 升级时把当前配置复制到目标版本目录 | 新版本目录准备、配置迁移 |
 | `scripts/sync.sh` | 将当前分支同步到上游分支并按配置推送 | Fork 仓库同步、日常开发同步 |
 | `scripts/pr.sh` | 辅助安装 GitHub CLI 并创建 Pull Request | 从当前分支向上游提交 PR |
@@ -100,7 +100,7 @@ scripts/copy-for-upgrade.sh /opt/deploy/router-v1.2.3
 
 ### `scripts/config_backup.sh`
 
-用于加密备份运行配置。
+用于加密备份运行配置，通常在版本升级成功后触发，用于保存当前运行配置。
 
 ```bash
 scripts/config_backup.sh
@@ -108,10 +108,11 @@ scripts/config_backup.sh
 
 主要行为：
 
-- 读取 `/data/${MODULE_NAME}/backup.conf` 中的备份开关、文件名前缀和后缀配置，其中 `MODULE_NAME` 为当前部署目录名。
+- 读取 `/data/${MODULE_NAME}/backup.conf` 中的备份开关、文件名前缀和后缀配置。脚本会参考当前部署目录名推导 `MODULE_NAME`：当目录名匹配 `name-v<version>-<7位hash>` 时，使用去掉版本后缀后的 `name`；例如当前部署目录为 `router-v0.0.143-61330cf` 时，实际读取 `/data/router/backup.conf`。
 - 将项目根目录下的 `config.yaml` 复制到临时目录。
 - 如果存在 `/etc/nginx/conf.d/router.conf` 或 `/etc/nginx/conf.d/test-router.conf`，也会复制到临时目录并与 `config.yaml` 同级打包。
 - 使用 `gpg` 和 `/data/${MODULE_NAME}/.passphrase-file` 生成加密备份文件。
+- 备份文件名仍使用当前部署目录名，便于区分不同版本生成的备份包。
 - 备份文件默认写入 `/opt/backup`。
 - 若目标备份文件已经存在，脚本会跳过并返回 `255`。
 
