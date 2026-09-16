@@ -3697,6 +3697,13 @@
         "title": "Billed revenue and cost trend in scope",
         "financials": "Billed revenue {{revenue}} / Cost {{cost}} / Profit {{profit}}"
       },
+      "consistency": {
+        "title": "Finance Consistency Issues",
+        "summary": "{{count}} issues in scope",
+        "empty": "No finance consistency issues in scope",
+        "columns": { "type": "Issue type", "request": "Request log", "created_at": "Created at", "prompt_tokens": "Input tokens", "completion_tokens": "Output tokens" },
+        "types": { "missing_settlement": "Missing settlement", "missing_attribution": "Missing procurement attribution", "settlement_mismatch": "Settlement snapshot mismatch" }
+      },
       "channel_placeholder": "Filter channel",
       "model_placeholder": "Filter model"
     },

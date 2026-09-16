@@ -17,6 +17,26 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestOpenRouterPricingConvertsPerThousandTokens(t *testing.T) {
+	pricing := openRouterPricing(model.ProviderModelDetail{InputPrice: 2.5, OutputPrice: 10, PriceUnit: "per_1k_tokens"})
+	if pricing == nil || pricing.Prompt != "0.0025" || pricing.Completion != "0.01" {
+		t.Fatalf("unexpected pricing: %#v", pricing)
+	}
+}
+
+func TestOpenRouterCapabilitiesMergeEndpoints(t *testing.T) {
+	architecture, parameters := openRouterCapabilities(&model.ProviderModelSpecification{Endpoints: map[string]model.ProviderModelEndpointSpecification{
+		"/v1/chat/completions": {InputModalities: []string{"text", "image"}, OutputModalities: []string{"text"}, Parameters: map[string]model.ProviderModelParameterSpecification{"tools": {Type: "array"}}},
+		"/v1/responses":        {InputModalities: []string{"text"}, OutputModalities: []string{"text", "audio"}, Parameters: map[string]model.ProviderModelParameterSpecification{"reasoning": {Type: "object"}}},
+	}})
+	if architecture == nil || len(architecture.InputModalities) != 2 || len(architecture.OutputModalities) != 2 {
+		t.Fatalf("unexpected architecture: %#v", architecture)
+	}
+	if len(parameters) != 2 || parameters[0] != "reasoning" || parameters[1] != "tools" {
+		t.Fatalf("unexpected parameters: %#v", parameters)
+	}
+}
+
 func TestBuildOpenAIModelsForRequestOwnedByFromProviderStats(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
