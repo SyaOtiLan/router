@@ -793,6 +793,9 @@ func CreateChannelBillingSnapshotWithDB(db *gorm.DB, row ChannelBillingSnapshot)
 		!db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "PurchaseFXRate") ||
 		!db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "PurchaseCostAmount") ||
 		!db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "EntitlementName") ||
+		!db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "EventType") ||
+		!db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "ParentSnapshotId") ||
+		!db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "OldBatchDisposition") ||
 		!db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "ValidFrom") ||
 		!db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "ValidUntil") {
 		if err := ensureChannelBillingSnapshotPurchaseFieldsWithDB(db); err != nil {

@@ -60,6 +60,11 @@ func TestCreateChannelBillingSnapshotWithDBRepairsMissingPurchaseFields(t *testi
 	if !db.Migrator().HasColumn(&ChannelBillingSnapshot{}, "PurchaseCostAmount") {
 		t.Fatalf("purchase_cost_amount column was not repaired")
 	}
+	for _, column := range []string{"EventType", "ParentSnapshotId", "OldBatchDisposition"} {
+		if !db.Migrator().HasColumn(&ChannelBillingSnapshot{}, column) {
+			t.Fatalf("%s column was not repaired", column)
+		}
+	}
 }
 
 func TestUpdateChannelBillingSnapshotPurchaseWithDBRepairsMissingPurchaseFields(t *testing.T) {
