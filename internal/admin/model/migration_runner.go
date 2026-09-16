@@ -2019,6 +2019,13 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 				return tx.AutoMigrate(&User{})
 			},
 		},
+		{
+			Version:     "202609161730_channel_billing_snapshot_upgrade_fields",
+			Description: "add channel billing snapshot plan upgrade fields",
+			Up: func(tx *gorm.DB) error {
+				return ensureChannelBillingSnapshotPurchaseFieldsWithDB(tx)
+			},
+		},
 	}
 	return runVersionedMigrations(db, migrationScopeMain, migrations)
 }
