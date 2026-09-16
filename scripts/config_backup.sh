@@ -3,8 +3,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_PATH="$(realpath "$SCRIPT_DIR/..")"
-MODULE_NAME="$(basename "$REAL_PATH")"
-LOG_MODULE_NAME="${MODULE_NAME%%-v*}"
+MODULE_BASENAME="$(basename "$REAL_PATH")"
+
+if [[ "$MODULE_BASENAME" =~ ^(.+)-v[^-]+-[[:alnum:]]{7}$ ]]; then
+    MODULE_NAME="${BASH_REMATCH[1]}"
+else
+    MODULE_NAME="$MODULE_BASENAME"
+fi
+
 CONF_FILE="/data/${MODULE_NAME}/backup.conf"
 PASSPHRASE_FILE="/data/${MODULE_NAME}/.passphrase-file"
 CONFIG_FILE="$REAL_PATH/config.yaml"
@@ -90,9 +96,9 @@ validate_encryption_dependencies() {
 }
 
 backup_config() {
-    local backup_file_name="${BACKUP_CONF_PREFIX}${MODULE_NAME}${BACKUP_CONF_SUFFIX}"
+    local backup_file_name="${BACKUP_CONF_PREFIX}${MODULE_BASENAME}${BACKUP_CONF_SUFFIX}"
     local backup_file_path="$BACKUP_DIR/$backup_file_name"
-    local tmp_conf_dir="$TMP_BASE_DIR/${MODULE_NAME}-conf"
+    local tmp_conf_dir="$TMP_BASE_DIR/${MODULE_BASENAME}-conf"
 
     if [[ "$BACKUP_CONF_FLAG" == "False" ]]; then
         log "config backup skipped: BACKUP_CONF_FLAG=False"
@@ -133,7 +139,7 @@ backup_config() {
         cd "$TMP_BASE_DIR"
         gpg --batch --yes --symmetric --cipher-algo AES256 \
             --passphrase-file "$PASSPHRASE_FILE" \
-            -o "$backup_file_path" < <(tar -czf - "${MODULE_NAME}-conf")
+            -o "$backup_file_path" < <(tar -czf - "${MODULE_BASENAME}-conf")
     )
 
     rm -rf "$tmp_conf_dir"
@@ -142,12 +148,12 @@ backup_config() {
 }
 
 cleanup() {
-    rm -rf "$TMP_BASE_DIR/${MODULE_NAME}-conf"
+    rm -rf "$TMP_BASE_DIR/${MODULE_BASENAME}-conf"
 }
 trap cleanup EXIT
 
-init_log_file "config-backup-${LOG_MODULE_NAME}.log"
-log "config backup started for $MODULE_NAME at $REAL_PATH"
+init_log_file "config-backup-${MODULE_NAME}.log"
+log "config backup started for $MODULE_BASENAME at $REAL_PATH"
 load_backup_conf
 validate_backup_conf
 if backup_config; then
