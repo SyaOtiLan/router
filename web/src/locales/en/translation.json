@@ -776,7 +776,16 @@
         "table": {
           "published_model": "Published Name",
           "check": "Publish Check",
+          "procurement": "Cost Readiness",
           "actions": "Actions"
+        },
+        "procurement_status": {
+          "ready": "Ready",
+          "missing": "Missing batch",
+          "estimated": "Estimated only",
+          "exhausted": "Capacity exhausted",
+          "expired": "Batch expired",
+          "unit_mismatch": "Unit mismatch"
         },
         "check_status": {
           "selectable": "Enable it in Selection first",

@@ -89,6 +89,11 @@ func buildChannelModelListData(channelID string, page int, pageSize int, keyword
 			SyncStatus:   syncStatus,
 			LastSyncedAt: lastSyncedAt,
 		}
+		readiness, readinessErr := model.ResolveChannelModelProcurementReadinessWithDB(model.DB, row)
+		if readinessErr != nil {
+			return channelModelListData{}, readinessErr
+		}
+		item.ProcurementReadiness = &readiness
 		if !row.Selected {
 			reason, reasonErr := model.ExplainManualChannelModelEnableBlockWithDB(model.DB, channelID, row)
 			if reasonErr != nil {

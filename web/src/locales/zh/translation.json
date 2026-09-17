@@ -776,7 +776,16 @@
         "table": {
           "published_model": "发布名称",
           "check": "发布检查",
+          "procurement": "成本就绪",
           "actions": "操作"
+        },
+        "procurement_status": {
+          "ready": "成本已就绪",
+          "missing": "缺少采购批次",
+          "estimated": "仅有预估成本",
+          "exhausted": "容量已耗尽",
+          "expired": "批次已过期",
+          "unit_mismatch": "容量单位不匹配"
         },
         "check_status": {
           "selectable": "请先在选择页启用",

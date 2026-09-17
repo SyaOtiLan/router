@@ -21,29 +21,30 @@ const (
 )
 
 type ChannelModel struct {
-	ChannelId       string                              `json:"channel_id" gorm:"primaryKey;type:varchar(64);index"`
-	Model           string                              `json:"model" gorm:"primaryKey;type:varchar(255)"`
-	UpstreamModel   string                              `json:"upstream_model" gorm:"type:varchar(255);default:'';index"`
-	Provider        string                              `json:"provider,omitempty" gorm:"type:varchar(128);default:'';index"`
-	Type            string                              `json:"type" gorm:"type:varchar(32);default:'text'"`
-	Endpoint        string                              `json:"endpoint" gorm:"type:varchar(255);default:''"`
-	Endpoints       []string                            `json:"endpoints,omitempty" gorm:"-"`
-	PublishStatus   string                              `json:"publish_status,omitempty" gorm:"-"`
-	PublishEnabled  bool                                `json:"publish_enabled" gorm:"not null;default:false;index"`
-	PublishedModel  string                              `json:"published_model,omitempty" gorm:"type:varchar(255);default:'';index"`
-	PublishedAt     int64                               `json:"published_at,omitempty" gorm:"bigint;index"`
-	PublishedBy     string                              `json:"published_by,omitempty" gorm:"type:varchar(128);default:''"`
-	Selected        bool                                `json:"selected" gorm:"default:false;index"`
-	InputPrice      *float64                            `json:"input_price,omitempty" gorm:"type:double precision"`
-	OutputPrice     *float64                            `json:"output_price,omitempty" gorm:"type:double precision"`
-	PriceUnit       string                              `json:"price_unit,omitempty" gorm:"type:varchar(64);default:''"`
-	Currency        string                              `json:"currency,omitempty" gorm:"type:varchar(16);default:''"`
-	PriceComponents []ProviderModelPriceComponentDetail `json:"price_components,omitempty" gorm:"-"`
-	SortOrder       int                                 `json:"sort_order" gorm:"default:0"`
-	UpdatedAt       int64                               `json:"updated_at" gorm:"bigint"`
-	DisabledReason  string                              `json:"disabled_reason,omitempty" gorm:"type:text"`
-	DisabledAt      int64                               `json:"disabled_at,omitempty" gorm:"bigint;index"`
-	DisabledBy      string                              `json:"disabled_by,omitempty" gorm:"type:varchar(64);default:'';index"`
+	ChannelId            string                              `json:"channel_id" gorm:"primaryKey;type:varchar(64);index"`
+	Model                string                              `json:"model" gorm:"primaryKey;type:varchar(255)"`
+	UpstreamModel        string                              `json:"upstream_model" gorm:"type:varchar(255);default:'';index"`
+	Provider             string                              `json:"provider,omitempty" gorm:"type:varchar(128);default:'';index"`
+	Type                 string                              `json:"type" gorm:"type:varchar(32);default:'text'"`
+	Endpoint             string                              `json:"endpoint" gorm:"type:varchar(255);default:''"`
+	Endpoints            []string                            `json:"endpoints,omitempty" gorm:"-"`
+	PublishStatus        string                              `json:"publish_status,omitempty" gorm:"-"`
+	PublishEnabled       bool                                `json:"publish_enabled" gorm:"not null;default:false;index"`
+	PublishedModel       string                              `json:"published_model,omitempty" gorm:"type:varchar(255);default:'';index"`
+	PublishedAt          int64                               `json:"published_at,omitempty" gorm:"bigint;index"`
+	PublishedBy          string                              `json:"published_by,omitempty" gorm:"type:varchar(128);default:''"`
+	Selected             bool                                `json:"selected" gorm:"default:false;index"`
+	InputPrice           *float64                            `json:"input_price,omitempty" gorm:"type:double precision"`
+	OutputPrice          *float64                            `json:"output_price,omitempty" gorm:"type:double precision"`
+	PriceUnit            string                              `json:"price_unit,omitempty" gorm:"type:varchar(64);default:''"`
+	Currency             string                              `json:"currency,omitempty" gorm:"type:varchar(16);default:''"`
+	PriceComponents      []ProviderModelPriceComponentDetail `json:"price_components,omitempty" gorm:"-"`
+	SortOrder            int                                 `json:"sort_order" gorm:"default:0"`
+	UpdatedAt            int64                               `json:"updated_at" gorm:"bigint"`
+	DisabledReason       string                              `json:"disabled_reason,omitempty" gorm:"type:text"`
+	DisabledAt           int64                               `json:"disabled_at,omitempty" gorm:"bigint;index"`
+	DisabledBy           string                              `json:"disabled_by,omitempty" gorm:"type:varchar(64);default:'';index"`
+	ProcurementReadiness *ChannelModelProcurementReadiness   `json:"procurement_readiness,omitempty" gorm:"-"`
 }
 
 func (ChannelModel) TableName() string {
