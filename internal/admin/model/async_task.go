@@ -14,9 +14,10 @@ import (
 const (
 	AdminTasksTableName = "admin_tasks"
 
-	AsyncTaskTypeChannelModelTest      = "channel_model_test"
-	AsyncTaskTypeChannelRefreshModels  = "channel_refresh_models"
-	AsyncTaskTypeChannelRefreshBilling = "channel_refresh_billing"
+	AsyncTaskTypeChannelModelTest         = "channel_model_test"
+	AsyncTaskTypeChannelRefreshModels     = "channel_refresh_models"
+	AsyncTaskTypeChannelRefreshBilling    = "channel_refresh_billing"
+	AsyncTaskTypeChannelSyncProviderUsage = "channel_sync_provider_usage"
 
 	AsyncTaskStatusPending   = "pending"
 	AsyncTaskStatusRunning   = "running"
@@ -64,6 +65,8 @@ func NormalizeAsyncTaskType(value string) string {
 		return AsyncTaskTypeChannelRefreshModels
 	case AsyncTaskTypeChannelRefreshBilling:
 		return AsyncTaskTypeChannelRefreshBilling
+	case AsyncTaskTypeChannelSyncProviderUsage:
+		return AsyncTaskTypeChannelSyncProviderUsage
 	default:
 		return ""
 	}

@@ -99,6 +99,10 @@ func buildChannelRefreshBillingTaskDedupeKey(channelID string) string {
 	return fmt.Sprintf("%s:%s", model.AsyncTaskTypeChannelRefreshBilling, strings.TrimSpace(channelID))
 }
 
+func buildChannelProviderUsageSyncTaskDedupeKey(channelID string) string {
+	return fmt.Sprintf("%s:%s", model.AsyncTaskTypeChannelSyncProviderUsage, strings.TrimSpace(channelID))
+}
+
 func buildChannelModelTestTaskPayload(modelID string, channelID string, endpoint string, streamOverride *bool, audioLanguage string, imageEditURL string, imageEditData string, responsesTestMode string) string {
 	return marshalJSONForLog(channelModelTestTaskPayload{
 		ChannelID:         strings.TrimSpace(channelID),
@@ -478,6 +482,22 @@ func CreateChannelRefreshBillingTask(channelID string, createdBy string, traceID
 	return task, reused, err
 }
 
+func CreateChannelProviderUsageSyncTask(channelID string, createdBy string, traceID string) (model.AsyncTask, bool, error) {
+	normalizedChannelID := strings.TrimSpace(channelID)
+	if normalizedChannelID == "" {
+		return model.AsyncTask{}, false, fmt.Errorf("渠道 ID 无效")
+	}
+	if _, err := channelsvc.GetByID(normalizedChannelID); err != nil {
+		return model.AsyncTask{}, false, err
+	}
+	task, reused, err := model.CreateOrReuseAsyncTaskWithDB(model.DB, model.AsyncTask{
+		Type: model.AsyncTaskTypeChannelSyncProviderUsage, DedupeKey: buildChannelProviderUsageSyncTaskDedupeKey(normalizedChannelID),
+		ChannelId: normalizedChannelID, Payload: marshalJSONForLog(map[string]string{"channel_id": normalizedChannelID}),
+		CreatedBy: strings.TrimSpace(createdBy), TraceID: strings.TrimSpace(traceID),
+	})
+	return task, reused, err
+}
+
 func ExecuteAsyncTask(ctx context.Context, task *model.AsyncTask) (string, error) {
 	if task == nil {
 		return "", fmt.Errorf("任务不能为空")
@@ -489,6 +509,16 @@ func ExecuteAsyncTask(ctx context.Context, task *model.AsyncTask) (string, error
 		return executeChannelRefreshModelsTask(task)
 	case model.AsyncTaskTypeChannelRefreshBilling:
 		return executeChannelRefreshBillingTask(task)
+	case model.AsyncTaskTypeChannelSyncProviderUsage:
+		payload := map[string]string{}
+		if err := json.Unmarshal([]byte(task.Payload), &payload); err != nil {
+			return "", err
+		}
+		channelID := strings.TrimSpace(payload["channel_id"])
+		if channelID == "" {
+			channelID = strings.TrimSpace(task.ChannelId)
+		}
+		return SyncChannelProviderUsageTask(ctx, channelID)
 	default:
 		return "", fmt.Errorf("暂不支持的任务类型: %s", task.Type)
 	}

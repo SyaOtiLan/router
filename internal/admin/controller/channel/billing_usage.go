@@ -53,6 +53,32 @@ type billingServiceUsageResponse struct {
 	Error *billingServiceError    `json:"error,omitempty"`
 }
 
+type channelProviderUsageSyncError struct {
+	status int
+	err    error
+}
+
+func (e *channelProviderUsageSyncError) Error() string {
+	if e == nil || e.err == nil {
+		return "渠道 usage 同步失败"
+	}
+	return e.err.Error()
+}
+
+func (e *channelProviderUsageSyncError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func channelProviderUsageError(status int, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &channelProviderUsageSyncError{status: status, err: err}
+}
+
 func fetchBillingUsage(ctx context.Context, req billingServiceUsageRequest) (billingServiceUsagePage, error) {
 	base := strings.TrimRight(strings.TrimSpace(config.BillingServiceBaseURL), "/")
 	if base == "" {
@@ -96,33 +122,28 @@ func recordChannelProviderUsageSyncFailure(channelID, adapter string, state mode
 	_ = model.SaveChannelProviderUsageSyncStateWithDB(model.DB, state)
 }
 
-func SyncChannelProviderUsage(c *gin.Context) {
-	channel, err := channelsvc.GetByID(c.Param("id"))
+func syncChannelProviderUsage(ctx context.Context, channelID string) (map[string]any, error) {
+	channel, err := channelsvc.GetByID(channelID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "渠道不存在"})
-		return
+		return nil, channelProviderUsageError(http.StatusNotFound, err)
 	}
 	profile, err := model.GetChannelBillingProfileByChannelIDWithDB(model.DB, channel.Id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
-		return
+		return nil, channelProviderUsageError(http.StatusBadRequest, err)
 	}
 	adapter := resolveBillingServiceAdapter(profile)
 	if adapter == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "当前渠道未配置 Billing adapter"})
-		return
+		return nil, channelProviderUsageError(http.StatusBadRequest, fmt.Errorf("当前渠道未配置 Billing adapter"))
 	}
-	query, err := buildBillingServiceQuery(c.Request.Context(), channel, profile)
+	query, err := buildBillingServiceQuery(ctx, channel, profile)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
-		return
+		return nil, channelProviderUsageError(http.StatusBadRequest, err)
 	}
 	state, _ := model.GetChannelProviderUsageSyncStateWithDB(model.DB, channel.Id, adapter)
-	page, err := fetchBillingUsage(c, billingServiceUsageRequest{ChannelID: query.ChannelID, Adapter: query.Adapter, Credentials: query.Credentials, Cursor: state.Cursor, Limit: 100})
+	page, err := fetchBillingUsage(ctx, billingServiceUsageRequest{ChannelID: query.ChannelID, Adapter: query.Adapter, Credentials: query.Credentials, Cursor: state.Cursor, Limit: 100})
 	if err != nil {
 		recordChannelProviderUsageSyncFailure(channel.Id, adapter, state, err)
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": err.Error()})
-		return
+		return nil, channelProviderUsageError(http.StatusBadGateway, err)
 	}
 	now := time.Now().Unix()
 	count := 0
@@ -135,14 +156,44 @@ func SyncChannelProviderUsage(c *gin.Context) {
 		_, err = model.UpsertChannelProviderUsageRecordWithDB(model.DB, model.ChannelProviderUsageRecord{ChannelId: channel.Id, Adapter: adapter, UpstreamRecordId: item.RecordID, OccurredAt: occurred, Model: item.Model, InputTokens: item.InputTokens, OutputTokens: item.OutputTokens, CacheReadTokens: item.CacheReadTokens, CacheWriteTokens: item.CacheWriteTokens, CostAmount: item.Cost, Currency: item.Currency, StatusCode: item.StatusCode, DurationMs: item.DurationMS, TTFBMs: item.TTFBMS, Metadata: string(metadata), FetchedAt: now})
 		if err != nil {
 			recordChannelProviderUsageSyncFailure(channel.Id, adapter, state, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": err.Error()})
-			return
+			return nil, channelProviderUsageError(http.StatusInternalServerError, err)
 		}
 		count++
 	}
 	state.ChannelId, state.Adapter, state.Cursor, state.LastSuccessAt, state.LastError, state.ConsecutiveFailures, state.UpdatedAt = channel.Id, adapter, page.NextCursor, now, "", 0, now
-	_ = model.SaveChannelProviderUsageSyncStateWithDB(model.DB, state)
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"fetched": count, "has_more": page.HasMore, "next_cursor": page.NextCursor}})
+	if err := model.SaveChannelProviderUsageSyncStateWithDB(model.DB, state); err != nil {
+		return nil, channelProviderUsageError(http.StatusInternalServerError, err)
+	}
+	return map[string]any{"channel_id": channel.Id, "adapter": adapter, "fetched": count, "has_more": page.HasMore, "next_cursor": page.NextCursor}, nil
+}
+
+func SyncChannelProviderUsageTask(ctx context.Context, channelID string) (string, error) {
+	result, err := syncChannelProviderUsage(ctx, strings.TrimSpace(channelID))
+	if err != nil {
+		return "", err
+	}
+	body, err := json.Marshal(result)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+func SyncChannelProviderUsage(c *gin.Context) {
+	result, err := syncChannelProviderUsage(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		status := http.StatusInternalServerError
+		var syncErr *channelProviderUsageSyncError
+		if errors.As(err, &syncErr) && syncErr.status > 0 {
+			status = syncErr.status
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, gin.H{"success": false, "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
 }
 
 func GetChannelProviderUsage(c *gin.Context) {
