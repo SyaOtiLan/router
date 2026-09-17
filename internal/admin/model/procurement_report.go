@@ -25,6 +25,7 @@ type ProcurementReportQuery struct {
 	CostScope string
 	GroupID   string
 	ChannelID string
+	Provider  string
 	Model     string
 }
 
@@ -61,6 +62,7 @@ type ProcurementReportSummary struct {
 	GroupBy                      string                  `json:"group_by"`
 	CostScope                    string                  `json:"cost_scope"`
 	GroupID                      string                  `json:"group_id"`
+	Provider                     string                  `json:"provider"`
 	StartAt                      int64                   `json:"start_at"`
 	EndAt                        int64                   `json:"end_at"`
 	Items                        []ProcurementReportItem `json:"items"`
@@ -107,6 +109,7 @@ type ProcurementTrendQuery struct {
 	EndAt     int64
 	GroupID   string
 	ChannelID string
+	Provider  string
 	Model     string
 }
 
@@ -116,11 +119,12 @@ func ListProcurementTrendWithDB(db *gorm.DB, query ProcurementTrendQuery) ([]Pro
 	}
 	rows := make([]ProcurementTrendItem, 0)
 	configuredStatuses := []string{ProcurementCostAttributionStatusActual, ProcurementCostAttributionStatusNone}
+	unconfiguredCondition := procurementReportUnconfiguredCostCondition()
 	dbQuery := db.Table(EventLogsTableName+" el").Joins("LEFT JOIN "+BillingSettlementsTableName+" bs ON bs.request_log_id = el.id").Joins("LEFT JOIN "+ProcurementAttributionsTableName+" pa ON pa.request_log_id = el.id").Select(`
 		TO_CHAR(TO_TIMESTAMP(el.created_at), 'YYYY-MM-DD') AS day,
 		COUNT(1) AS request_count,
 		COALESCE(SUM(CASE WHEN pa.status IN ? THEN 1 ELSE 0 END), 0) AS configured_cost_request_count,
-		COALESCE(SUM(CASE WHEN pa.status = ? THEN 1 ELSE 0 END), 0) AS unconfigured_cost_request_count,
+		COALESCE(SUM(CASE WHEN `+unconfiguredCondition+` THEN 1 ELSE 0 END), 0) AS unconfigured_cost_request_count,
 		COALESCE(SUM(bs.input_quantity), 0) AS input_quantity,
 		COALESCE(SUM(bs.output_quantity), 0) AS output_quantity,
 		COALESCE(SUM(bs.cache_read_quantity), 0) AS cache_read_quantity,
@@ -131,12 +135,15 @@ func ListProcurementTrendWithDB(db *gorm.DB, query ProcurementTrendQuery) ([]Pro
 		COALESCE(SUM(CASE WHEN pa.status IN ? THEN pa.gross_profit_base_amount ELSE 0 END), 0) AS gross_profit_base_amount,
 		COALESCE(SUM(CASE WHEN bs.cost_floor_triggered = TRUE THEN 1 ELSE 0 END), 0) AS cost_floor_triggered_count,
 		COALESCE(SUM(CASE WHEN bs.cost_floor_triggered = TRUE THEN bs.cost_floor_base_amount ELSE 0 END), 0) AS cost_floor_triggered_amount
-	`, configuredStatuses, ProcurementCostAttributionStatusUnconfigured, configuredStatuses, configuredStatuses).Where("el.type = ? AND el.created_at BETWEEN ? AND ?", LogTypeConsume, query.StartAt, query.EndAt)
+	`, configuredStatuses, configuredStatuses, configuredStatuses).Where("el.type = ? AND el.created_at BETWEEN ? AND ?", LogTypeConsume, query.StartAt, query.EndAt)
 	if strings.TrimSpace(query.GroupID) != "" {
 		dbQuery = dbQuery.Where("el.group_id = ?", strings.TrimSpace(query.GroupID))
 	}
 	if strings.TrimSpace(query.ChannelID) != "" {
 		dbQuery = dbQuery.Where("el.channel_id = ?", strings.TrimSpace(query.ChannelID))
+	}
+	if provider := NormalizeGroupModelProviderValue(query.Provider); provider != "" {
+		dbQuery = dbQuery.Where("LOWER(TRIM(COALESCE(el.provider, ''))) = ?", strings.ToLower(provider))
 	}
 	if strings.TrimSpace(query.Model) != "" {
 		dbQuery = dbQuery.Where("COALESCE(NULLIF(TRIM(el.actual_model_name), ''), NULLIF(TRIM(el.model_name), '')) = ?", strings.TrimSpace(query.Model))
@@ -179,7 +186,7 @@ func procurementReportDimensionExpression(groupBy string) string {
 }
 
 func procurementReportUnconfiguredCostCondition() string {
-	return "pa.status = ?"
+	return "(pa.request_log_id IS NULL OR LOWER(TRIM(COALESCE(pa.status, ''))) = 'unconfigured')"
 }
 
 func ListProcurementReportWithDB(db *gorm.DB, query ProcurementReportQuery) (ProcurementReportSummary, error) {
@@ -192,6 +199,7 @@ func ListProcurementReportWithDB(db *gorm.DB, query ProcurementReportQuery) (Pro
 		GroupBy:   groupBy,
 		CostScope: costScope,
 		GroupID:   strings.TrimSpace(query.GroupID),
+		Provider:  NormalizeGroupModelProviderValue(query.Provider),
 		StartAt:   query.StartAt,
 		EndAt:     query.EndAt,
 		Items:     []ProcurementReportItem{},
@@ -203,12 +211,13 @@ func ListProcurementReportWithDB(db *gorm.DB, query ProcurementReportQuery) (Pro
 	dimensionExpr := procurementReportDimensionExpression(groupBy)
 	rows := make([]ProcurementReportItem, 0)
 	configuredStatuses := []string{ProcurementCostAttributionStatusActual, ProcurementCostAttributionStatusNone}
+	unconfiguredCondition := procurementReportUnconfiguredCostCondition()
 	queryDB := db.Table(EventLogsTableName+" el").Joins("LEFT JOIN "+BillingSettlementsTableName+" bs ON bs.request_log_id = el.id").Joins("LEFT JOIN "+ProcurementAttributionsTableName+" pa ON pa.request_log_id = el.id").
 		Select(`
 			`+dimensionExpr+` AS dimension_key,
 			COUNT(1) AS request_count,
 			COALESCE(SUM(CASE WHEN pa.status IN ? THEN 1 ELSE 0 END), 0) AS configured_cost_request_count,
-			COALESCE(SUM(CASE WHEN pa.status = ? THEN 1 ELSE 0 END), 0) AS unconfigured_cost_request_count,
+			COALESCE(SUM(CASE WHEN `+unconfiguredCondition+` THEN 1 ELSE 0 END), 0) AS unconfigured_cost_request_count,
 			COALESCE(SUM(CASE WHEN pa.status = ? THEN 1 ELSE 0 END), 0) AS estimated_cost_request_count,
 			COALESCE(SUM(CASE WHEN pa.status = ? THEN 1 ELSE 0 END), 0) AS pending_cost_request_count,
 			COALESCE(SUM(CASE WHEN pa.status = ? THEN 1 ELSE 0 END), 0) AS retry_cost_request_count,
@@ -219,7 +228,7 @@ func ListProcurementReportWithDB(db *gorm.DB, query ProcurementReportQuery) (Pro
 			COALESCE(SUM(bs.charge_amount), 0) AS router_consumed_yyc,
 			COALESCE(SUM(bs.sell_base_amount), 0) AS sell_base_amount,
 			COALESCE(SUM(CASE WHEN pa.status IN ? THEN bs.sell_base_amount ELSE 0 END), 0) AS configured_sell_base_amount,
-			COALESCE(SUM(CASE WHEN pa.status = ? THEN bs.sell_base_amount ELSE 0 END), 0) AS unconfigured_sell_base_amount,
+			COALESCE(SUM(CASE WHEN `+unconfiguredCondition+` THEN bs.sell_base_amount ELSE 0 END), 0) AS unconfigured_sell_base_amount,
 			COALESCE(SUM(CASE WHEN pa.status IN ? THEN pa.cost_base_amount ELSE 0 END), 0) AS procurement_cost_base_amount,
 			COALESCE(SUM(CASE WHEN pa.status IN ? THEN pa.gross_profit_base_amount ELSE 0 END), 0) AS gross_profit_base_amount,
 			COALESCE(SUM(CASE WHEN pa.status = ? THEN pa.cost_base_amount ELSE 0 END), 0) AS actual_cost_base_amount,
@@ -229,7 +238,7 @@ func ListProcurementReportWithDB(db *gorm.DB, query ProcurementReportQuery) (Pro
 			COALESCE(SUM(CASE WHEN pa.status = ? THEN 1 ELSE 0 END), 0) AS zero_cost_request_count,
 			COALESCE(MIN(el.created_at), 0) AS first_request_at,
 			COALESCE(MAX(el.created_at), 0) AS last_request_at
-	`, configuredStatuses, ProcurementCostAttributionStatusUnconfigured, ProcurementCostAttributionStatusEstimated, ProcurementCostAttributionStatusPending, ProcurementCostAttributionStatusRetry, configuredStatuses, ProcurementCostAttributionStatusUnconfigured, configuredStatuses, configuredStatuses, ProcurementCostAttributionStatusActual, ProcurementCostAttributionStatusEstimated, ProcurementCostAttributionStatusNone).
+	`, configuredStatuses, ProcurementCostAttributionStatusEstimated, ProcurementCostAttributionStatusPending, ProcurementCostAttributionStatusRetry, configuredStatuses, configuredStatuses, configuredStatuses, ProcurementCostAttributionStatusActual, ProcurementCostAttributionStatusEstimated, ProcurementCostAttributionStatusNone).
 		Where("el.type = ? AND el.created_at BETWEEN ? AND ?", LogTypeConsume, query.StartAt, query.EndAt)
 	if summary.GroupID != "" {
 		queryDB = queryDB.Where("el.group_id = ?", summary.GroupID)
@@ -237,11 +246,14 @@ func ListProcurementReportWithDB(db *gorm.DB, query ProcurementReportQuery) (Pro
 	if strings.TrimSpace(query.ChannelID) != "" {
 		queryDB = queryDB.Where("el.channel_id = ?", strings.TrimSpace(query.ChannelID))
 	}
+	if summary.Provider != "" {
+		queryDB = queryDB.Where("LOWER(TRIM(COALESCE(el.provider, ''))) = ?", strings.ToLower(summary.Provider))
+	}
 	if strings.TrimSpace(query.Model) != "" {
 		queryDB = queryDB.Where("COALESCE(NULLIF(TRIM(el.actual_model_name), ''), NULLIF(TRIM(el.model_name), '')) = ?", strings.TrimSpace(query.Model))
 	}
 	if costScope == ProcurementReportCostScopeUnconfigured {
-		queryDB = queryDB.Where(procurementReportUnconfiguredCostCondition(), ProcurementCostAttributionStatusUnconfigured)
+		queryDB = queryDB.Where(procurementReportUnconfiguredCostCondition())
 	}
 	if err := queryDB.
 		Group("dimension_key").

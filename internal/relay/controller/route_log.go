@@ -29,6 +29,9 @@ func applyRouteObservabilityToLog(entry *adminmodel.Log, meta *relaymeta.Meta, a
 	}
 	entry.RequestModelName = requestModel
 	entry.ActualModelName = finalModel
+	if selected, ok := adminmodel.FindSelectedChannelModelConfig(meta.ChannelModelConfigs, requestModel, finalModel); ok {
+		entry.Provider = adminmodel.NormalizeGroupModelProviderValue(selected.Provider)
+	}
 	entry.UpstreamEndpoint = upstreamEndpoint
 	entry.UpstreamProtocol = relaychannel.ProtocolByType(meta.ChannelProtocol)
 	entry.RouteDecision = strings.TrimSpace(meta.RouteDecision)

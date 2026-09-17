@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AppAlert,
   AppButton,
@@ -52,6 +53,9 @@ const publishCheckColor = (status) => {
       return 'grey';
   }
 };
+
+const procurementReadinessColor = (status) =>
+  status === 'ready' ? 'green' : 'orange';
 
 const ChannelDetailPublishTab = ({
   t,
@@ -115,10 +119,35 @@ const ChannelDetailPublishTab = ({
     );
   };
 
+  const renderProcurementReadiness = (row) => {
+    const readiness = row?.procurement_readiness || {};
+    const status = (readiness.status || 'missing').toString();
+    const channelID = (row?.channel_id || '').toString().trim();
+    const modelName = (row?.model || row?.upstream_model || '').toString().trim();
+    const procurementPath = `/admin/finance/procurement?channel_id=${encodeURIComponent(channelID)}&model=${encodeURIComponent(modelName)}`;
+    return (
+      <div className='router-inline-actions'>
+        <AppTag
+          color={procurementReadinessColor(status)}
+          className='router-tag'
+          title={readiness.reason || ''}
+        >
+          {t(`channel.edit.publish.procurement_status.${status}`)}
+        </AppTag>
+        {status !== 'ready' && channelID !== '' && modelName !== '' ? (
+          <Link className='router-inline-button' to={procurementPath}>
+            {t('channel.edit.publish.configure_procurement')}
+          </Link>
+        ) : null}
+      </div>
+    );
+  };
+
   const renderPublishAction = (row) => {
     const status = normalizePublishStatus(row);
     const modelName = (row?.model || row?.upstream_model || '').toString().trim();
     const isMutating = publishMutatingModel === modelName;
+    const procurementReady = row?.procurement_readiness?.status === 'ready';
     if (status === 'published') {
       const currentPublishedName = (row?.published_model || row?.model || row?.upstream_model || '')
         .toString()
@@ -161,7 +190,7 @@ const ChannelDetailPublishTab = ({
         </div>
       );
     }
-    const publishDisabled = publishReadonly || isMutating || status !== 'pending_publish';
+    const publishDisabled = publishReadonly || isMutating || status !== 'pending_publish' || !procurementReady;
     return (
       <AppButton
         type='button'
@@ -169,8 +198,10 @@ const ChannelDetailPublishTab = ({
         loading={isMutating}
         disabled={publishDisabled}
         title={
-          publishDisabled && status !== 'pending_publish'
-            ? t(`channel.edit.publish.check_status.${status}`)
+          publishDisabled && !procurementReady
+            ? row?.procurement_readiness?.reason
+            : publishDisabled && status !== 'pending_publish'
+              ? t(`channel.edit.publish.check_status.${status}`)
             : undefined
         }
         onClick={() => onUpdatePublish?.(row, true)}
@@ -282,6 +313,12 @@ const ChannelDetailPublishTab = ({
               key: 'check',
               width: 128,
               render: (_, row) => renderPublishCheck(row),
+            },
+            {
+              title: t('channel.edit.publish.table.procurement'),
+              key: 'procurement_readiness',
+              width: 128,
+              render: (_, row) => renderProcurementReadiness(row),
             },
             {
               title: t('channel.edit.publish.table.actions'),

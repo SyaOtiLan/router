@@ -66,6 +66,7 @@ const normalizeReport = (payload) => {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   return {
     group_by: payload?.group_by || 'channel',
+    provider: payload?.provider || '',
     request_count: Number(payload?.request_count || 0),
     router_consumed_yyc: Number(payload?.router_consumed_yyc || 0),
     configured_cost_request_count: Number(payload?.configured_cost_request_count || 0),
@@ -134,6 +135,7 @@ function BillingProcurementReport() {
       groupBy: ['channel', 'model', 'endpoint'].includes(groupByValue) ? groupByValue : 'channel',
       costScope: ['all', 'unconfigured'].includes(costScopeValue) ? costScopeValue : 'all',
       groupID: params.get('group_id') || '',
+      provider: params.get('provider') || '',
       model: params.get('model') || '',
       returnTo: params.get('return_to') || '',
       startAt: toLocal('start_at', initialRange.startAt),
@@ -143,8 +145,10 @@ function BillingProcurementReport() {
   const [groupBy, setGroupBy] = useState(initialContext.groupBy);
   const [costScope, setCostScope] = useState(initialContext.costScope);
   const [groupID, setGroupID] = useState(initialContext.groupID);
+  const [provider, setProvider] = useState(initialContext.provider);
   const [model, setModel] = useState(initialContext.model);
   const [groupOptions, setGroupOptions] = useState([]);
+  const [providerOptions, setProviderOptions] = useState([]);
   const [startAt, setStartAt] = useState(initialContext.startAt);
   const [endAt, setEndAt] = useState(initialContext.endAt);
   const [loading, setLoading] = useState(false);
@@ -332,6 +336,7 @@ function BillingProcurementReport() {
           end_at: endTimestamp,
           group_id: groupID,
           channel_id: managedChannelID,
+          provider,
           model,
           limit: 50,
         },
@@ -350,7 +355,7 @@ function BillingProcurementReport() {
     } finally {
       setRetryLoading(false);
     }
-  }, [endAt, groupID, managedChannelID, model, startAt, t]);
+  }, [endAt, groupID, managedChannelID, model, provider, startAt, t]);
 
   const loadGroups = async () => {
     try {
@@ -394,6 +399,7 @@ function BillingProcurementReport() {
           cost_scope: costScope,
           group_id: groupID,
           channel_id: managedChannelID,
+          provider,
           model,
         },
       });
@@ -458,6 +464,42 @@ function BillingProcurementReport() {
   useEffect(() => {
     loadGroups().then();
     loadHealth().then();
+    const loadProviders = async () => {
+      try {
+        const items = [];
+        let page = 1;
+        let total = 0;
+        while (page <= 20) {
+          const response = await API.get('/api/v1/admin/providers', {
+            params: { page, page_size: 100 },
+          });
+          const data = response.data?.success ? response.data?.data : null;
+          const pageItems = Array.isArray(data?.items) ? data.items : [];
+          items.push(...pageItems);
+          total = Number(data?.total || items.length);
+          if (pageItems.length === 0 || items.length >= total || pageItems.length < 100) {
+            break;
+          }
+          page += 1;
+        }
+        setProviderOptions(
+          items
+            .map((item) => {
+              const value = String(item?.id || '').trim();
+              if (!value) return null;
+              return {
+                key: value,
+                value,
+                text: item?.name ? `${item.name} (${value})` : value,
+              };
+            })
+            .filter(Boolean),
+        );
+      } catch {
+        // Ignore non-critical filter bootstrap failure.
+      }
+    };
+    loadProviders().then();
     API.get('/api/v1/admin/channels/', { params: { page: 1, page_size: 500 } })
       .then((response) => {
         const items = response.data?.success && Array.isArray(response.data?.data?.items) ? response.data.data.items : [];
@@ -480,10 +522,11 @@ function BillingProcurementReport() {
     params.set('cost_scope', costScope);
     if (groupID) params.set('group_id', groupID);
     if (managedChannelID) params.set('channel_id', managedChannelID);
+    if (provider) params.set('provider', provider);
     if (model) params.set('model', model);
     if (initialContext.returnTo) params.set('return_to', initialContext.returnTo);
     navigate({ pathname: location.pathname, search: `?${params.toString()}` }, { replace: true });
-  }, [costScope, endAt, groupBy, groupID, initialContext.returnTo, location.pathname, managedChannelID, model, navigate, startAt]);
+  }, [costScope, endAt, groupBy, groupID, initialContext.returnTo, location.pathname, managedChannelID, model, navigate, provider, startAt]);
 
   useEffect(() => {
     loadProcurementManagement().then();
@@ -495,7 +538,7 @@ function BillingProcurementReport() {
     }
     loadReport().then();
     loadRetries().then();
-  }, [groupBy, costScope, groupID, managedChannelID, model, loadRetries]);
+  }, [groupBy, costScope, groupID, managedChannelID, model, provider, loadRetries]);
 
   const summaryItems = [
     {
@@ -887,6 +930,15 @@ function BillingProcurementReport() {
               value={groupID}
               placeholder={t('billing.procurement_report.filters.group')}
               onChange={(e, { value }) => setGroupID((value || '').toString())}
+            />
+            <AppSelect
+              className='router-section-input billing-procurement-report-group-select'
+              clearable
+              search
+              options={providerOptions}
+              value={provider}
+              placeholder={t('billing.procurement_report.filters.provider')}
+              onChange={(e, { value }) => setProvider((value || '').toString())}
             />
             <AppInput
               className='router-section-input billing-procurement-report-group-select'

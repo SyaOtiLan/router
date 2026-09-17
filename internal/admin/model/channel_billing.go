@@ -6,18 +6,22 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/yeying-community/router/common/helper"
 	"github.com/yeying-community/router/common/random"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
-	ChannelBillingProfilesTableName      = "channel_billing_profiles"
-	ChannelBillingSnapshotsTableName     = "channel_billing_snapshots"
-	ChannelBillingSnapshotItemsTableName = "channel_billing_snapshot_items"
-	ChannelBillingActionsTableName       = "channel_billing_actions"
-	ChannelBillingAlertEventsTableName   = "channel_billing_alert_events"
+	ChannelBillingProfilesTableName         = "channel_billing_profiles"
+	ChannelBillingSnapshotsTableName        = "channel_billing_snapshots"
+	ChannelBillingSnapshotItemsTableName    = "channel_billing_snapshot_items"
+	ChannelBillingActionsTableName          = "channel_billing_actions"
+	ChannelBillingAlertEventsTableName      = "channel_billing_alert_events"
+	ChannelProviderUsageRecordsTableName    = "channel_provider_usage_records"
+	ChannelProviderUsageSyncStatesTableName = "channel_provider_usage_sync_states"
 
 	ChannelBillingSourceManual = "manual"
 
@@ -52,6 +56,121 @@ const (
 	ChannelBillingAlertStatusSent   = "sent"
 	ChannelBillingAlertStatusFailed = "failed"
 )
+
+type ChannelProviderUsageRecord struct {
+	Id               string  `json:"id" gorm:"type:char(36);primaryKey"`
+	ChannelId        string  `json:"channel_id" gorm:"type:char(36);not null;index;uniqueIndex:idx_provider_usage_identity,priority:1"`
+	Adapter          string  `json:"adapter" gorm:"type:varchar(64);not null;index;uniqueIndex:idx_provider_usage_identity,priority:2"`
+	UpstreamRecordId string  `json:"upstream_record_id" gorm:"type:varchar(191);not null;uniqueIndex:idx_provider_usage_identity,priority:3"`
+	OccurredAt       int64   `json:"occurred_at" gorm:"bigint;not null;index"`
+	Model            string  `json:"model" gorm:"type:varchar(191);not null;default:'';index"`
+	InputTokens      int64   `json:"input_tokens" gorm:"not null;default:0"`
+	OutputTokens     int64   `json:"output_tokens" gorm:"not null;default:0"`
+	CacheReadTokens  int64   `json:"cache_read_tokens" gorm:"not null;default:0"`
+	CacheWriteTokens int64   `json:"cache_write_tokens" gorm:"not null;default:0"`
+	CostAmount       float64 `json:"cost_amount" gorm:"type:double precision;not null;default:0"`
+	Currency         string  `json:"currency" gorm:"type:varchar(16);not null;default:''"`
+	StatusCode       int     `json:"status_code" gorm:"not null;default:0;index"`
+	DurationMs       int64   `json:"duration_ms" gorm:"not null;default:0"`
+	TTFBMs           int64   `json:"ttfb_ms" gorm:"not null;default:0"`
+	Metadata         string  `json:"metadata,omitempty" gorm:"type:text"`
+	FetchedAt        int64   `json:"fetched_at" gorm:"bigint;not null;index"`
+	CreatedAt        int64   `json:"created_at" gorm:"bigint;not null;index"`
+	UpdatedAt        int64   `json:"updated_at" gorm:"bigint;not null"`
+}
+
+func (ChannelProviderUsageRecord) TableName() string { return ChannelProviderUsageRecordsTableName }
+
+type ChannelProviderUsageSyncState struct {
+	ChannelId           string `json:"channel_id" gorm:"type:char(36);primaryKey"`
+	Adapter             string `json:"adapter" gorm:"type:varchar(64);primaryKey"`
+	Cursor              string `json:"cursor,omitempty" gorm:"type:text"`
+	LastSuccessAt       int64  `json:"last_success_at" gorm:"bigint;default:0"`
+	LastError           string `json:"last_error,omitempty" gorm:"type:text"`
+	ConsecutiveFailures int    `json:"consecutive_failures" gorm:"not null;default:0"`
+	UpdatedAt           int64  `json:"updated_at" gorm:"bigint;not null"`
+}
+
+func (ChannelProviderUsageSyncState) TableName() string {
+	return ChannelProviderUsageSyncStatesTableName
+}
+
+func UpsertChannelProviderUsageRecordWithDB(db *gorm.DB, row ChannelProviderUsageRecord) (ChannelProviderUsageRecord, error) {
+	if row.Id == "" {
+		row.Id = random.GetUUID()
+	}
+	if row.CreatedAt == 0 {
+		row.CreatedAt = time.Now().Unix()
+	}
+	if row.UpdatedAt == 0 {
+		row.UpdatedAt = row.CreatedAt
+	}
+	if strings.TrimSpace(row.ChannelId) == "" || strings.TrimSpace(row.Adapter) == "" || strings.TrimSpace(row.UpstreamRecordId) == "" {
+		return row, fmt.Errorf("channel, adapter and upstream record id are required")
+	}
+	// The identity index makes concurrent sync requests safe. Do not use a
+	// read-then-create sequence here, which can race and create duplicates.
+	err := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "channel_id"}, {Name: "adapter"}, {Name: "upstream_record_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"occurred_at", "model", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
+			"cost_amount", "currency", "status_code", "duration_ms", "ttfb_ms", "metadata", "fetched_at", "updated_at",
+		}),
+	}).Create(&row).Error
+	if err == nil {
+		var persisted ChannelProviderUsageRecord
+		if lookupErr := db.Where("channel_id = ? AND adapter = ? AND upstream_record_id = ?", row.ChannelId, row.Adapter, row.UpstreamRecordId).First(&persisted).Error; lookupErr == nil {
+			row.Id, row.CreatedAt = persisted.Id, persisted.CreatedAt
+		}
+	}
+	return row, err
+}
+
+func ListChannelProviderUsageRecordsWithDB(db *gorm.DB, channelID, adapter, modelName string, limit int, offset int) ([]ChannelProviderUsageRecord, error) {
+	return listChannelProviderUsageRecordsWithDB(db, channelID, adapter, modelName, 0, 0, 0, limit, offset)
+}
+
+func ListChannelProviderUsageRecordsForWindowWithDB(db *gorm.DB, channelID, adapter, modelName string, startAt, endAt int64, limit int) ([]ChannelProviderUsageRecord, error) {
+	return ListChannelProviderUsageRecordsForWindowAndStatusWithDB(db, channelID, adapter, modelName, startAt, endAt, 0, limit)
+}
+
+func ListChannelProviderUsageRecordsForWindowAndStatusWithDB(db *gorm.DB, channelID, adapter, modelName string, startAt, endAt int64, statusCode, limit int) ([]ChannelProviderUsageRecord, error) {
+	return listChannelProviderUsageRecordsWithDB(db, channelID, adapter, modelName, startAt, endAt, statusCode, limit, 0)
+}
+
+func listChannelProviderUsageRecordsWithDB(db *gorm.DB, channelID, adapter, modelName string, startAt, endAt int64, statusCode, limit int, offset int) ([]ChannelProviderUsageRecord, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	q := db.Where("channel_id = ?", channelID)
+	if adapter != "" {
+		q = q.Where("adapter = ?", adapter)
+	}
+	if modelName != "" {
+		q = q.Where("model = ?", modelName)
+	}
+	if startAt > 0 {
+		q = q.Where("occurred_at >= ?", startAt)
+	}
+	if endAt > 0 {
+		q = q.Where("occurred_at <= ?", endAt)
+	}
+	if statusCode > 0 {
+		q = q.Where("status_code = ?", statusCode)
+	}
+	rows := make([]ChannelProviderUsageRecord, 0)
+	err := q.Order("occurred_at DESC, id DESC").Limit(limit).Offset(offset).Find(&rows).Error
+	return rows, err
+}
+
+func GetChannelProviderUsageSyncStateWithDB(db *gorm.DB, channelID, adapter string) (ChannelProviderUsageSyncState, error) {
+	var row ChannelProviderUsageSyncState
+	err := db.Where("channel_id = ? AND adapter = ?", channelID, adapter).First(&row).Error
+	return row, err
+}
+func SaveChannelProviderUsageSyncStateWithDB(db *gorm.DB, row ChannelProviderUsageSyncState) error {
+	return db.Save(&row).Error
+}
 
 type ChannelBillingProfile struct {
 	ChannelId          string `json:"channel_id" gorm:"type:char(36);primaryKey"`

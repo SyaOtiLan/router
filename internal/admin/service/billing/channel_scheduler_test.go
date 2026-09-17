@@ -36,3 +36,16 @@ func TestShouldAutoRefreshChannelBillingSkipsOtherAutoDisabled(t *testing.T) {
 		t.Fatalf("non-insufficient-balance auto-disabled channel should not be auto-refreshed")
 	}
 }
+
+func TestSupportsProviderUsageSync(t *testing.T) {
+	for _, source := range []string{"", "manual", "unsupported", "builtin_balance"} {
+		if supportsProviderUsageSync(source) {
+			t.Fatalf("supportsProviderUsageSync(%q) = true", source)
+		}
+	}
+	for _, source := range []string{"aixhan", "AIXHAN", "custom_adapter"} {
+		if !supportsProviderUsageSync(source) {
+			t.Fatalf("supportsProviderUsageSync(%q) = false", source)
+		}
+	}
+}

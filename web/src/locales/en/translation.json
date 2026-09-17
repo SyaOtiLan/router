@@ -772,11 +772,21 @@
         "unpublish_success": "Model unpublished",
         "update_failed": "Failed to update publish status",
         "published_model_required": "Published name is required",
+        "configure_procurement": "Configure procurement",
         "unpublish_confirm": "Unpublish this model? It will stop participating in runtime routing.",
         "table": {
           "published_model": "Published Name",
           "check": "Publish Check",
+          "procurement": "Cost Readiness",
           "actions": "Actions"
+        },
+        "procurement_status": {
+          "ready": "Ready",
+          "missing": "Missing batch",
+          "estimated": "Estimated only",
+          "exhausted": "Capacity exhausted",
+          "expired": "Batch expired",
+          "unit_mismatch": "Unit mismatch"
         },
         "check_status": {
           "selectable": "Enable it in Selection first",
@@ -3738,6 +3748,7 @@
       },
       "filters": {
         "group": "Filter group",
+        "provider": "Filter provider",
         "model": "Filter model"
       },
       "summary": {

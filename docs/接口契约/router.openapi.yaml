@@ -1341,12 +1341,56 @@ paths:
     get:
       tags: [Admin Billing]
       summary: Get procurement report
+      parameters:
+        - name: start_at
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: end_at
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: group_by
+          in: query
+          schema: { type: string, enum: [channel, model, endpoint], default: channel }
+        - name: cost_scope
+          in: query
+          schema: { type: string, enum: [all, unconfigured], default: all }
+        - name: group_id
+          in: query
+          schema: { type: string }
+        - name: channel_id
+          in: query
+          schema: { type: string }
+        - name: provider
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
       responses:
         "200": { $ref: "#/components/responses/APIResponse" }
   /api/v1/admin/billing/procurement-trend:
     get:
       tags: [Admin Billing]
       summary: Get procurement trend
+      parameters:
+        - name: start_at
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: end_at
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: group_id
+          in: query
+          schema: { type: string }
+        - name: channel_id
+          in: query
+          schema: { type: string }
+        - name: provider
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
       responses:
         "200": { $ref: "#/components/responses/APIResponse" }
   /api/v1/admin/billing/procurement-batches:
@@ -1497,6 +1541,74 @@ paths:
       parameters:
         - $ref: "#/components/parameters/IDPath"
       requestBody: { $ref: "#/components/requestBodies/JSONBody" }
+      responses:
+        "200": { $ref: "#/components/responses/APIResponse" }
+  /api/v1/admin/channel/{id}/billing/usage/sync:
+    post:
+      tags: [Admin Channels]
+      summary: Synchronize provider usage ledger for a channel
+      description: Fetches one provider usage page through Billing and idempotently stores the upstream records. It does not modify Router settlements.
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+      responses:
+        "200": { $ref: "#/components/responses/APIResponse" }
+  /api/v1/admin/channel/{id}/billing/usage:
+    get:
+      tags: [Admin Channels]
+      summary: List synchronized provider usage records
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - name: adapter
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200": { $ref: "#/components/responses/APIResponse" }
+  /api/v1/admin/channel/{id}/billing/usage/state:
+    get:
+      tags: [Admin Channels]
+      summary: Get provider usage synchronization state
+      description: Returns synchronization health and failure counters without exposing the opaque provider cursor.
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - name: adapter
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/APIResponse" }
+  /api/v1/admin/channel/{id}/billing/reconciliation:
+    get:
+      tags: [Admin Channels]
+      summary: Reconcile provider usage with Router request logs
+      description: Read-only matching by channel, model, time window, and token counts. Results are audit findings and never overwrite settlement facts.
+      parameters:
+        - $ref: "#/components/parameters/IDPath"
+        - name: adapter
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
+        - name: start_at
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: end_at
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 5000 }
+        - name: status_code
+          in: query
+          schema: { type: integer, minimum: 100, maximum: 599 }
       responses:
         "200": { $ref: "#/components/responses/APIResponse" }
   /api/v1/admin/channel/{id}/billing/snapshots/{snapshot_id}:

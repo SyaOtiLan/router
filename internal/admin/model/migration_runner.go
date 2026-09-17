@@ -1097,6 +1097,13 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 			},
 		},
 		{
+			Version:     "202609161200_channel_provider_usage_ledger",
+			Description: "add channel provider usage ledger and synchronization state tables",
+			Up: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&ChannelProviderUsageRecord{}, &ChannelProviderUsageSyncState{})
+			},
+		},
+		{
 			Version:     "202605191430_channel_billing_fetch_config_api_base_url",
 			Description: "retired legacy billing fetch config backfill",
 			Up: func(tx *gorm.DB) error {
@@ -3447,6 +3454,13 @@ func runLogVersionedMigrations(db *gorm.DB) error {
 			Description: "remove pre-normalization CNY and YYC columns from event logs",
 			Up: func(tx *gorm.DB) error {
 				return DropObsoleteEventLogFinanceColumnsWithDB(tx)
+			},
+		},
+		{
+			Version:     "202609161000_log_provider_snapshot",
+			Description: "record selected provider in request logs for audit and reporting",
+			Up: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&Log{})
 			},
 		},
 	}

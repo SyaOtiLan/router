@@ -150,6 +150,108 @@ type ProcurementEstimateResult struct {
 	MissingQuantity float64
 }
 
+type ChannelModelProcurementReadiness struct {
+	Status          string   `json:"status"`
+	Reason          string   `json:"reason,omitempty"`
+	RequiredUnits   []string `json:"required_units"`
+	MatchingBatches int64    `json:"matching_batches"`
+	Action          string   `json:"action,omitempty"`
+}
+
+const (
+	ProcurementReadinessReady        = "ready"
+	ProcurementReadinessMissing      = "missing"
+	ProcurementReadinessEstimated    = "estimated"
+	ProcurementReadinessExhausted    = "exhausted"
+	ProcurementReadinessExpired      = "expired"
+	ProcurementReadinessUnitMismatch = "unit_mismatch"
+)
+
+// ResolveChannelModelProcurementReadinessWithDB explains the same production
+// cost gate used by publishing, so the UI can guide operators before submit.
+func ResolveChannelModelProcurementReadinessWithDB(db *gorm.DB, row ChannelModel) (ChannelModelProcurementReadiness, error) {
+	if db == nil {
+		return ChannelModelProcurementReadiness{}, fmt.Errorf("database handle is nil")
+	}
+	channelID := strings.TrimSpace(row.ChannelId)
+	modelName := strings.TrimSpace(row.Model)
+	if channelID == "" || modelName == "" {
+		return ChannelModelProcurementReadiness{}, fmt.Errorf("渠道和模型不能为空")
+	}
+	pricing := resolvedPricingFromChannelModelRow(row)
+	capacityUnits := []string{normalizePricingCapacityUnit(pricing.PriceUnit)}
+	if currency := strings.TrimSpace(strings.ToLower(pricing.Currency)); currency != "" {
+		capacityUnits = append(capacityUnits, currency+"_equivalent")
+	}
+	capacityUnits = normalizeTrimmedValuesPreserveOrder(capacityUnits)
+	readiness := ChannelModelProcurementReadiness{Status: ProcurementReadinessMissing, RequiredUnits: capacityUnits, Action: "configure_procurement"}
+	var batches []ChannelProcurementBatch
+	if err := db.Where("channel_id = ?", channelID).
+		Where("capacity_unit IN ?", capacityUnits).
+		Where("(scope_type = ? OR (scope_type = ? AND scope_value = ?))", "global", "model", modelName).
+		Find(&batches).Error; err != nil {
+		return ChannelModelProcurementReadiness{}, err
+	}
+	readiness.MatchingBatches = int64(len(batches))
+	if len(batches) == 0 {
+		var anyBatchCount int64
+		if err := db.Model(&ChannelProcurementBatch{}).Where("channel_id = ?", channelID).Count(&anyBatchCount).Error; err != nil {
+			return ChannelModelProcurementReadiness{}, err
+		}
+		if anyBatchCount > 0 {
+			readiness.Status = ProcurementReadinessUnitMismatch
+			readiness.Reason = fmt.Sprintf("现有采购批次容量单位与 %s 不匹配", strings.Join(capacityUnits, " / "))
+		} else {
+			readiness.Reason = fmt.Sprintf("缺少容量单位为 %s 的采购批次", strings.Join(capacityUnits, " / "))
+		}
+		return readiness, nil
+	}
+	now := helper.GetTimestamp()
+	hasFormalSource, hasActive, hasRemaining, hasExpired := false, false, false, false
+	for _, batch := range batches {
+		source := normalizeProcurementCostSource(batch.CostSource)
+		if source != ProcurementCostSourceActual && source != ProcurementCostSourceZeroCost {
+			continue
+		}
+		hasFormalSource = true
+		if batch.CostStatus != ProcurementCostStatusActive {
+			continue
+		}
+		hasActive = true
+		if batch.ExpireAt > 0 && batch.ExpireAt <= now {
+			hasExpired = true
+			continue
+		}
+		if batch.ValidFrom > 0 && batch.ValidFrom > now {
+			continue
+		}
+		if batch.CapacityRemaining <= 0 {
+			continue
+		}
+		if source == ProcurementCostSourceActual && batch.CostPerUnitAmount <= 0 {
+			continue
+		}
+		readiness.Status = ProcurementReadinessReady
+		readiness.Reason = "正式采购成本已就绪"
+		readiness.Action = ""
+		return readiness, nil
+	}
+	switch {
+	case !hasFormalSource:
+		readiness.Status = ProcurementReadinessEstimated
+		readiness.Reason = "只有预估成本，正式发布需要实际成本或明确零成本"
+	case hasExpired:
+		readiness.Status = ProcurementReadinessExpired
+		readiness.Reason = "正式采购批次已过期"
+	case hasActive && !hasRemaining:
+		readiness.Status = ProcurementReadinessExhausted
+		readiness.Reason = "正式采购批次剩余容量不足"
+	default:
+		readiness.Reason = "没有可用于正式发布的采购批次"
+	}
+	return readiness, nil
+}
+
 // ValidateChannelModelProcurementCostReadyWithDB ensures a model has a
 // production-grade cost basis before it can be published. Estimated costs are
 // useful for planning, but only actual or explicitly zero-cost batches are
