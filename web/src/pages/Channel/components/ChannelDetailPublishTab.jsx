@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AppAlert,
   AppButton,
@@ -121,14 +122,24 @@ const ChannelDetailPublishTab = ({
   const renderProcurementReadiness = (row) => {
     const readiness = row?.procurement_readiness || {};
     const status = (readiness.status || 'missing').toString();
+    const channelID = (row?.channel_id || '').toString().trim();
+    const modelName = (row?.model || row?.upstream_model || '').toString().trim();
+    const procurementPath = `/admin/finance/procurement?channel_id=${encodeURIComponent(channelID)}&model=${encodeURIComponent(modelName)}`;
     return (
-      <AppTag
-        color={procurementReadinessColor(status)}
-        className='router-tag'
-        title={readiness.reason || ''}
-      >
-        {t(`channel.edit.publish.procurement_status.${status}`)}
-      </AppTag>
+      <div className='router-inline-actions'>
+        <AppTag
+          color={procurementReadinessColor(status)}
+          className='router-tag'
+          title={readiness.reason || ''}
+        >
+          {t(`channel.edit.publish.procurement_status.${status}`)}
+        </AppTag>
+        {status !== 'ready' && channelID !== '' && modelName !== '' ? (
+          <Link className='router-inline-button' to={procurementPath}>
+            {t('channel.edit.publish.configure_procurement')}
+          </Link>
+        ) : null}
+      </div>
     );
   };
 

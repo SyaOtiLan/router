@@ -772,6 +772,7 @@
         "unpublish_success": "Model unpublished",
         "update_failed": "Failed to update publish status",
         "published_model_required": "Published name is required",
+        "configure_procurement": "Configure procurement",
         "unpublish_confirm": "Unpublish this model? It will stop participating in runtime routing.",
         "table": {
           "published_model": "Published Name",
