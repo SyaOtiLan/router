@@ -255,7 +255,9 @@ https://chatboxai.app
 reply exactly OK
 ```
 
-如果返回 `OK`，说明聊天调用正常。`r`n`r`n---
+如果返回 `OK`，说明聊天调用正常。
+
+---
 
 ## 四、Cherry Studio 接入
 
@@ -293,7 +295,9 @@ https://cherry-ai.com
 reply exactly OK
 ```
 
-如果返回 `OK`，说明 Cherry Studio 已经通过夜莺 Router 调用模型。`r`n`r`n---
+如果返回 `OK`，说明 Cherry Studio 已经通过夜莺 Router 调用模型。
+
+---
 
 ## 五、常见问题
 
@@ -320,6 +324,7 @@ experimental_bearer_token = "YOUR_YEYING_ROUTER_API_KEY"
 - `base_url` 是 `https://router.yeying.pub/v1`。
 - 保存配置后，已经完全退出 Codex App 并重新打开。
 - 不要额外添加 `requires_openai_auth = true`。
+
 
 
 
