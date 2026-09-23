@@ -6,10 +6,8 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 操作系统 | Windows 10 Home China 25H2 |
-| 系统版本 | Build 26200.9457，64 位 |
-| 客户端 | Codex App Windows 客户端 |
-| Codex CLI | `0.155.0-alpha.9.2` |
+| 操作系统 | Windows 10 Home China 25H2（Build 26200.9457，64 位） |
+| 客户端 | Codex App Windows 客户端（内置 Codex CLI `0.155.0-alpha.9.2`） |
 
 ### 1. 下载 Codex App
 
@@ -98,12 +96,9 @@ VS Code 中推荐优先配置 Cline。如果客户正在使用 Continue，也可
 
 | 项目 | 内容 |
 | --- | --- |
-| 操作系统 | Windows 10 Home China 25H2 |
-| 系统版本 | Build 26200.9457，64 位 |
+| 操作系统 | Windows 10 Home China 25H2（Build 26200.9457，64 位） |
 | 编辑器 | VS Code Windows 版 |
-| 插件 | Cline |
-| 扩展 ID | `saoudrizwan.claude-dev` |
-| 测试版本 | `4.1.19` |
+| 插件 | Cline（扩展 ID：`saoudrizwan.claude-dev`，测试版本：`4.1.19`） |
 
 ### 1. 安装 Cline
 
@@ -166,12 +161,9 @@ reply exactly OK
 
 | 项目 | 内容 |
 | --- | --- |
-| 操作系统 | Windows 10 Home China 25H2 |
-| 系统版本 | Build 26200.9457，64 位 |
+| 操作系统 | Windows 10 Home China 25H2（Build 26200.9457，64 位） |
 | 编辑器 | VS Code Windows 版 |
-| 插件 | Continue |
-| 扩展 ID | `continue.continue` |
-| 测试版本 | `2.0.0` |
+| 插件 | Continue（扩展 ID：`continue.continue`，测试版本：`2.0.0`） |
 
 ### 1. 安装 Continue
 
@@ -246,8 +238,7 @@ reply exactly OK
 
 | 项目 | 内容 |
 | --- | --- |
-| 操作系统 | Windows 10 Home China 25H2 |
-| 系统版本 | Build 26200.9457，64 位 |
+| 操作系统 | Windows 10 Home China 25H2（Build 26200.9457，64 位） |
 | 客户端 | Chatbox Windows 客户端 |
 
 Chatbox 是普通聊天客户端，适合用于日常对话和模型可用性验证。
@@ -304,8 +295,7 @@ reply exactly OK
 
 | 项目 | 内容 |
 | --- | --- |
-| 操作系统 | Windows 10 Home China 25H2 |
-| 系统版本 | Build 26200.9457，64 位 |
+| 操作系统 | Windows 10 Home China 25H2（Build 26200.9457，64 位） |
 | 客户端 | Cherry Studio Windows 客户端 |
 
 Cherry Studio 是桌面模型客户端，适合用于日常对话、多模型切换和模型可用性验证。
