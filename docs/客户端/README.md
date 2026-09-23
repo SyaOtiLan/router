@@ -1,4 +1,4 @@
-# 夜莺 Router 接入 Codex App、VS Code 插件与桌面客户端
+# Codex App、Cline、Continue、Chatbox、Cherry Studio 接入夜莺 Router
 
 ## 一、Codex App 接入
 
