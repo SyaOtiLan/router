@@ -1,13 +1,5 @@
 # 夜莺 Router 接入 Codex App、VS Code 插件与桌面客户端
 
-本文为 5 合一版本。也可以按客户端查看拆分文档：
-
-- [Codex App 接入](<01-Codex App 接入.md>)
-- [Cline 接入](<02-Cline 接入.md>)
-- [Continue 接入](<03-Continue 接入.md>)
-- [Chatbox 接入](<04-Chatbox 接入.md>)
-- [Cherry Studio 接入](<05-Cherry Studio 接入.md>)
-
 ## 一、Codex App 接入
 
 **测试环境**
