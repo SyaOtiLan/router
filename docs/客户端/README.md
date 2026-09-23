@@ -1,6 +1,23 @@
 # 夜莺 Router 接入 Codex App、VS Code 插件与桌面客户端
 
+本文为 5 合一版本。也可以按客户端查看拆分文档：
+
+- [Codex App 接入](<01-Codex App 接入.md>)
+- [Cline 接入](<02-Cline 接入.md>)
+- [Continue 接入](<03-Continue 接入.md>)
+- [Chatbox 接入](<04-Chatbox 接入.md>)
+- [Cherry Studio 接入](<05-Cherry Studio 接入.md>)
+
 ## 一、Codex App 接入
+
+**测试环境**
+
+| 项目 | 内容 |
+| --- | --- |
+| 操作系统 | Windows 10 Home China 25H2 |
+| 系统版本 | Build 26200.9457，64 位 |
+| 客户端 | Codex App Windows 客户端 |
+| Codex CLI | `0.155.0-alpha.9.2` |
 
 ### 1. 下载 Codex App
 
@@ -85,6 +102,17 @@ VS Code 中推荐优先配置 Cline。如果客户正在使用 Continue，也可
 
 ## 方案 A：Cline
 
+**测试环境**
+
+| 项目 | 内容 |
+| --- | --- |
+| 操作系统 | Windows 10 Home China 25H2 |
+| 系统版本 | Build 26200.9457，64 位 |
+| 编辑器 | VS Code Windows 版 |
+| 插件 | Cline |
+| 扩展 ID | `saoudrizwan.claude-dev` |
+| 测试版本 | `4.1.19` |
+
 ### 1. 安装 Cline
 
 打开 VS Code 扩展市场，搜索并安装：
@@ -141,6 +169,17 @@ reply exactly OK
 如果返回 `403 Forbidden` 或“令牌额度不足”，通常表示请求已经到达夜莺 Router，但当前 API Key 的额度、套餐或模型权限不足，请联系管理员检查该 Key 的额度和模型权限。
 
 ## 方案 B：Continue
+
+**测试环境**
+
+| 项目 | 内容 |
+| --- | --- |
+| 操作系统 | Windows 10 Home China 25H2 |
+| 系统版本 | Build 26200.9457，64 位 |
+| 编辑器 | VS Code Windows 版 |
+| 插件 | Continue |
+| 扩展 ID | `continue.continue` |
+| 测试版本 | `2.0.0` |
 
 ### 1. 安装 Continue
 
@@ -211,6 +250,14 @@ reply exactly OK
 
 ## 三、Chatbox 接入
 
+**测试环境**
+
+| 项目 | 内容 |
+| --- | --- |
+| 操作系统 | Windows 10 Home China 25H2 |
+| 系统版本 | Build 26200.9457，64 位 |
+| 客户端 | Chatbox Windows 客户端 |
+
 Chatbox 是普通聊天客户端，适合用于日常对话和模型可用性验证。
 
 ### 1. 下载 Chatbox
@@ -260,6 +307,14 @@ reply exactly OK
 ---
 
 ## 四、Cherry Studio 接入
+
+**测试环境**
+
+| 项目 | 内容 |
+| --- | --- |
+| 操作系统 | Windows 10 Home China 25H2 |
+| 系统版本 | Build 26200.9457，64 位 |
+| 客户端 | Cherry Studio Windows 客户端 |
 
 Cherry Studio 是桌面模型客户端，适合用于日常对话、多模型切换和模型可用性验证。
 
@@ -324,9 +379,4 @@ experimental_bearer_token = "YOUR_YEYING_ROUTER_API_KEY"
 - `base_url` 是 `https://router.yeying.pub/v1`。
 - 保存配置后，已经完全退出 Codex App 并重新打开。
 - 不要额外添加 `requires_openai_auth = true`。
-
-
-
-
-
 
