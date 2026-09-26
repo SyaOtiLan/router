@@ -21,14 +21,15 @@ import {
   AppFilterHeader,
   AppFormActions,
   AppFormRow,
+  AppIcon,
   AppInput,
   AppInputNumber,
+  AppMenuDropdown,
   AppModal,
   AppPagination,
   AppSelect,
   AppSkeleton,
   AppSwitch,
-  AppTableActionButton,
   AppTag,
   AppTextarea,
 } from '../../router-ui';
@@ -505,13 +506,44 @@ const Entitlement = ({ embedded = false }) => {
             <div className='entitlement-card-title' title={row.name || '-'}>
               {row.name || '-'}
             </div>
-            <div className='entitlement-card-badges'>
-              <AppTag color={row.kind === PRODUCT_KIND_SUBSCRIPTION ? 'blue' : 'green'}>
-                {getProductKindLabel(row.kind, t)}
-              </AppTag>
-              <AppTag color={row.enabled ? 'green' : 'default'}>
-                {row.enabled ? t('entitlement.enabled') : t('entitlement.disabled')}
-              </AppTag>
+            <div className='entitlement-card-header-end'>
+              <div className='entitlement-card-badges'>
+                <AppTag color={row.kind === PRODUCT_KIND_SUBSCRIPTION ? 'blue' : 'green'}>
+                  {getProductKindLabel(row.kind, t)}
+                </AppTag>
+                <AppTag color={row.enabled ? 'green' : 'default'}>
+                  {row.enabled ? t('entitlement.enabled') : t('entitlement.disabled')}
+                </AppTag>
+              </div>
+              <AppMenuDropdown
+                placement='bottomRight'
+                items={[
+                  {
+                    key: 'delete',
+                    danger: true,
+                    disabled: submitting,
+                    icon: <AppIcon name='trash' />,
+                    label: t('common.delete'),
+                    onClick: () => setDeleteRow(row),
+                  },
+                ]}
+              >
+                <span
+                  className='entitlement-card-menu-trigger'
+                  role='button'
+                  tabIndex={0}
+                  aria-label={t('common.operation')}
+                  aria-haspopup='menu'
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.stopPropagation();
+                    }
+                  }}
+                >
+                  <AppIcon name='ellipsis vertical' />
+                </span>
+              </AppMenuDropdown>
             </div>
           </div>
           <div
@@ -589,20 +621,6 @@ const Entitlement = ({ embedded = false }) => {
                 {row.updated_at ? timestamp2string(row.updated_at) : '-'}
               </span>
             </div>
-          </div>
-          <div
-            className='entitlement-card-actions'
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <AppTableActionButton
-              icon='trash'
-              title={t('common.delete')}
-              color='red'
-              disabled={submitting}
-              onClick={() => setDeleteRow(row)}
-            />
           </div>
         </div>
       );

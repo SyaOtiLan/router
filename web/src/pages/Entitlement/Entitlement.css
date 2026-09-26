@@ -39,6 +39,34 @@
   gap: 8px;
 }
 
+.entitlement-card-header-end {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.entitlement-card-menu-trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: #94a3b8;
+  font-size: 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.entitlement-card-menu-trigger:hover,
+.entitlement-card-menu-trigger:focus-visible {
+  color: #1f2329;
+  background: rgba(15, 23, 42, 0.06);
+  outline: none;
+}
+
 .entitlement-card-title {
   min-width: 0;
   overflow: hidden;
@@ -101,11 +129,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-.entitlement-card-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-  margin-top: auto;
+html[data-theme='dark'] .entitlement-card-menu-trigger:hover,
+html[data-theme='dark'] .entitlement-card-menu-trigger:focus-visible {
+  color: #e5e7eb;
+  background: rgba(148, 163, 184, 0.18);
 }
 
 html[data-theme='dark'] .entitlement-card {
