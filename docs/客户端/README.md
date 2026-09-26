@@ -19,7 +19,19 @@ https://openai.com/codex
 
 Windows 用户也可以通过 Microsoft Store 安装。
 
-### 2. 打开 config.toml
+### 2. 使用 API Key 登录
+
+首次打开 Codex App 时，在登录页面点击 `使用其他方式登录`，不要点击上方的 `继续登录`。
+
+![点击使用其他方式登录](assets/codex-yeying-router/05-sign-in-another-way.png)
+
+进入 API Key 登录页面后，输入夜莺 Router API Key，然后点击 `继续`。
+
+![输入夜莺 Router API Key](assets/codex-yeying-router/06-enter-api-key.jpg)
+
+登录页输入的 Key 不会自动写入 `config.toml`。后续配置 `config.toml` 时，请将同一串夜莺 Router API Key 再填入 `experimental_bearer_token`，不要随意填写其他内容。
+
+### 3. 打开 config.toml
 
 推荐从 Codex App 设置里打开配置文件，避免找错目录。
 
@@ -57,7 +69,7 @@ config.toml
 
 注意文件名必须是 `config.toml`，不要保存成 `config.toml.txt`。
 
-### 3. 写入配置
+### 4. 写入配置
 
 打开 `config.toml` 后，将下面内容复制进去，并把 `YOUR_YEYING_ROUTER_API_KEY` 替换为自己的夜莺 Router API Key。
 
@@ -74,7 +86,7 @@ experimental_bearer_token = "YOUR_YEYING_ROUTER_API_KEY"
 
 保存后，完全退出 Codex App，再重新打开。
 
-### 4. 验证
+### 5. 验证
 
 新建一个 Codex 会话，发送：
 
