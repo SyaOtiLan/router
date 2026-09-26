@@ -261,7 +261,15 @@ const LogsTable = () => {
   // navigate replace avoids spamming history. A diff guard prevents loops.
   useEffect(() => {
     const query = new URLSearchParams();
-    const source = new URLSearchParams(location.search || '').get('source');
+    const currentParams = new URLSearchParams(location.search || '');
+    // `tab` is owned by the embedding layout (e.g. /workspace/topup?tab=logs);
+    // rebuilding the query purely from LogsTable state would drop it and bounce
+    // the parent back to its default tab, so carry it through unchanged.
+    const tab = currentParams.get('tab');
+    if (tab) {
+      query.set('tab', tab);
+    }
+    const source = currentParams.get('source');
     if (source) {
       query.set('source', source);
     }
