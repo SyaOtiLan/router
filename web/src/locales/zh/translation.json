@@ -143,8 +143,8 @@
     "quota_cards": {
       "active_title": "有效额度",
       "active_empty": "当前没有有效额度卡片",
-      "history_button": "历史流水",
-      "history_title": "历史流水",
+      "history_button": "历史额度",
+      "history_title": "历史额度",
       "history_section": "额度卡片记录",
       "history_empty": "暂无额度卡片记录",
       "history_empty_cta": "去充值 / 购买套餐",
