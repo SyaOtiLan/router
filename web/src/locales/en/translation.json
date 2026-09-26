@@ -4484,7 +4484,7 @@
     "add_title": "Add entitlement",
     "empty_cta": "No entitlements yet. Create one to start configuring packages.",
     "delete_title": "Delete entitlement",
-    "confirm_delete": "Confirm delete {name}?",
+    "confirm_delete": "Confirm delete {{name}}?",
     "type": "Entitlement type",
     "kind": {
       "all": "All types",

@@ -4484,7 +4484,7 @@
     "add_title": "新增权益",
     "empty_cta": "还没有任何权益,创建一个即可开始配置套餐",
     "delete_title": "删除权益",
-    "confirm_delete": "确认删除 {name}？",
+    "confirm_delete": "确认删除 {{name}}？",
     "type": "权益类型",
     "kind": {
       "all": "全部类型",
