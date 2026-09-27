@@ -29,7 +29,7 @@ Windows 用户也可以通过 Microsoft Store 安装。
 
 ![输入夜莺 Router API Key](assets/codex-yeying-router/06-enter-api-key.jpg)
 
-登录页输入的 Key 不会自动写入 `config.toml`。后续配置 `config.toml` 时，请将同一串夜莺 Router API Key 再填入 `experimental_bearer_token`，不要随意填写其他内容。
+注意：在登录页输入 API Key 后，仍然必须在 `config.toml` 中再填写一次。登录页不会把 API Key 自动同步到 `config.toml`。请在下面的配置示例中，将 `YOUR_YEYING_ROUTER_API_KEY` 整段替换为同一个夜莺 Router API Key。
 
 ### 3. 打开 config.toml
 
@@ -71,7 +71,7 @@ config.toml
 
 ### 4. 写入配置
 
-打开 `config.toml` 后，将下面内容复制进去，并把 `YOUR_YEYING_ROUTER_API_KEY` 替换为自己的夜莺 Router API Key。
+打开 `config.toml` 后，将下面配置放在文件最前面、原有的 `[desktop]` 或 `[windows]` 等配置段之前，并把 `YOUR_YEYING_ROUTER_API_KEY` 替换为自己的夜莺 Router API Key。
 
 ```toml
 model = "gpt-5.6-sol"
@@ -88,7 +88,7 @@ experimental_bearer_token = "YOUR_YEYING_ROUTER_API_KEY"
 
 ### 5. 验证
 
-新建一个 Codex 会话，发送：
+重新打开后，点击 `New chat` 新建会话，不要在原来的会话中继续重试。发送：
 
 ```text
 请只回复 OK
