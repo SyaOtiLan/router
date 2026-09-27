@@ -531,14 +531,33 @@ func Register(c *gin.Context) {
 	return
 }
 
+// userMaxPageSize 是用户列表 page_size 的硬上限。
+const userMaxPageSize = 100
+
+// resolveUserPageSize 解析 page_size：缺省用 config.ItemsPerPage,>100 夹到 100,<1 回退缺省。
+func resolveUserPageSize(c *gin.Context) int {
+	pageSize, err := strconv.Atoi(c.Query("page_size"))
+	if err != nil || pageSize < 1 {
+		return config.ItemsPerPage
+	}
+	if pageSize > userMaxPageSize {
+		return userMaxPageSize
+	}
+	return pageSize
+}
+
 func GetAllUsers(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	if page < 1 {
 		page = 1
 	}
+	pageSize := resolveUserPageSize(c)
+
+	statusFilter, _ := strconv.Atoi(c.Query("status"))
+	roleFilter, _ := strconv.Atoi(c.Query("role"))
 
 	order := c.DefaultQuery("order", "")
-	users, err := usersvc.GetAll((page-1)*config.ItemsPerPage, config.ItemsPerPage, order)
+	users, err := usersvc.GetAllFiltered((page-1)*pageSize, pageSize, order, statusFilter, roleFilter)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -546,10 +565,8 @@ func GetAllUsers(c *gin.Context) {
 		})
 		return
 	}
-	var total int64
-	if err := model.DB.Model(&model.User{}).
-		Where("status != ?", model.UserStatusDeleted).
-		Count(&total).Error; err != nil {
+	total, err := usersvc.CountAllFiltered(statusFilter, roleFilter)
+	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
@@ -580,7 +597,7 @@ func GetAllUsers(c *gin.Context) {
 		"meta": gin.H{
 			"total":     total,
 			"page":      page,
-			"page_size": config.ItemsPerPage,
+			"page_size": pageSize,
 		},
 	})
 }
@@ -3065,6 +3082,177 @@ func GetCurrentUserQuotaOverview(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data":    buildUserQuotaOverview(summary, balance, balanceConsumedToday),
+	})
+}
+
+// GetCurrentUserOnboardingProgress 聚合新用户入门完成度信号,前端一个请求即可渲染
+// checklist,避免分别拉令牌/余额/套餐/日志多个接口。均为 best-effort 只读聚合。
+func GetCurrentUserOnboardingProgress(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString(ctxkey.Id))
+	if userID == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "用户 ID 不能为空",
+		})
+		return
+	}
+
+	var tokenTotal int64
+	if err := model.DB.Model(&model.Token{}).Where("user_id = ?", userID).Count(&tokenTotal).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	balance, err := loadTopUpBalanceSummaryWithDB(model.DB, userID, helper.GetTimestamp())
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	hasBalance := balance.TotalBalanceAmount > 0
+
+	packagePayload, err := loadActiveUserPackageSubscriptionPayload(userID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	var logTotal int64
+	if err := model.DB.Model(&model.Log{}).Where("user_id = ?", userID).Count(&logTotal).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	emailBound := false
+	if user, err := usersvc.GetByID(userID, false); err == nil && user != nil {
+		emailBound = strings.TrimSpace(user.Email) != ""
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"has_token":              tokenTotal > 0,
+			"has_balance_or_package": hasBalance || packagePayload.HasActivePackages,
+			"has_api_call":           logTotal > 0,
+			"email_bound":            emailBound,
+		},
+	})
+}
+
+// userNotificationSettingsRequest 与用户侧通知偏好 PUT 体对应。
+// LowBalanceThreshold 可空:客户端传 nil 或数字。空指针 / 0 都视为「未设置」(走全局默认)。
+// NotifyOnLowBalance 可空:nil 表示「未设置」(应用层视为 true);显式 true/false 一律持久化。
+type userNotificationSettingsRequest struct {
+	LowBalanceThreshold *int64 `json:"low_balance_threshold"`
+	NotifyOnLowBalance  *bool  `json:"notify_on_low_balance"`
+}
+
+// resolveNotifyOnLowBalance 把 nullable 列翻译为应用层布尔:nil/缺省视为 true。
+func resolveNotifyOnLowBalance(value *bool) bool {
+	if value == nil {
+		return true
+	}
+	return *value
+}
+
+// GetCurrentUserNotificationSettings 返回当前用户的低余额提醒偏好,包含全局默认阈值,
+// 供 PersonalSetting 与 LowBalanceBanner 共用。
+func GetCurrentUserNotificationSettings(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString(ctxkey.Id))
+	if userID == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "用户 ID 不能为空",
+		})
+		return
+	}
+	user, err := usersvc.GetByID(userID, false)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"low_balance_threshold": user.LowBalanceThreshold,
+			"notify_on_low_balance": resolveNotifyOnLowBalance(user.NotifyOnLowBalance),
+			"default_threshold":     config.UserBalanceLowNotificationThreshold,
+		},
+	})
+}
+
+// UpdateCurrentUserNotificationSettings 仅持久化低余额提醒相关的两列,绕过 usersvc.Update
+// 的固定列白名单。低余额阈值空值或 0 视为「恢复系统默认」。
+func UpdateCurrentUserNotificationSettings(c *gin.Context) {
+	userID := strings.TrimSpace(c.GetString(ctxkey.Id))
+	if userID == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "用户 ID 不能为空",
+		})
+		return
+	}
+	var req userNotificationSettingsRequest
+	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": i18n.Translate(c, "invalid_parameter"),
+		})
+		return
+	}
+	if req.LowBalanceThreshold != nil && *req.LowBalanceThreshold < 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "低余额阈值必须是非负整数",
+		})
+		return
+	}
+	if _, err := usersvc.GetByID(userID, false); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	updates := map[string]any{
+		"updated_at": helper.GetTimestamp(),
+	}
+	if req.LowBalanceThreshold != nil {
+		if *req.LowBalanceThreshold > 0 {
+			updates["low_balance_threshold"] = *req.LowBalanceThreshold
+		} else {
+			updates["low_balance_threshold"] = nil
+		}
+	}
+	if req.NotifyOnLowBalance != nil {
+		updates["notify_on_low_balance"] = *req.NotifyOnLowBalance
+	}
+	if err := model.DB.Model(&model.User{}).Where("id = ?", userID).Updates(updates).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
 	})
 }
 

@@ -22,6 +22,7 @@ const maxChannelListPageSize = 100
 type channelListItem struct {
 	ID                    string                         `json:"id"`
 	Protocol              string                         `json:"protocol"`
+	ModelVendors          []string                       `json:"model_vendors"`
 	Status                int                            `json:"status"`
 	Name                  string                         `json:"name"`
 	Weight                *uint                          `json:"weight,omitempty"`
@@ -34,6 +35,7 @@ type channelListItem struct {
 	BillingSummary        string                         `json:"billing_summary"`
 	BillingSnapshotAt     int64                          `json:"billing_snapshot_at"`
 	BillingQuotaItemCount int                            `json:"billing_quota_item_count"`
+	BillingLevel          string                         `json:"billing_level,omitempty"`
 	UsedQuota             int64                          `json:"used_quota"`
 	UsedAmount            int64                          `json:"used_amount"`
 	Priority              int64                          `json:"priority"`
@@ -115,6 +117,7 @@ func buildChannelListItem(channel *model.Channel) channelListItem {
 	return channelListItem{
 		ID:           strings.TrimSpace(channel.Id),
 		Protocol:     strings.TrimSpace(channel.Protocol),
+		ModelVendors: []string{},
 		Status:       channel.Status,
 		Name:         strings.TrimSpace(channel.Name),
 		Weight:       channel.Weight,
@@ -201,7 +204,7 @@ func collectChannelCapabilities(channel *model.Channel) []string {
 	return result
 }
 
-func parseChannelListPageParams(c *gin.Context) (page int, pageSize int, keyword string) {
+func parseChannelListPageParams(c *gin.Context) (page int, pageSize int, keyword string, status string) {
 	page = 1
 	if raw := strings.TrimSpace(c.Query("page")); raw != "" {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
@@ -218,7 +221,8 @@ func parseChannelListPageParams(c *gin.Context) (page int, pageSize int, keyword
 		pageSize = maxChannelListPageSize
 	}
 	keyword = strings.TrimSpace(c.Query("keyword"))
-	return page, pageSize, keyword
+	status = strings.TrimSpace(c.Query("status"))
+	return page, pageSize, keyword, status
 }
 
 func parseCompactMode(c *gin.Context) bool {
@@ -226,8 +230,8 @@ func parseCompactMode(c *gin.Context) bool {
 	return raw == "1" || strings.EqualFold(raw, "true")
 }
 
-func listChannelsPage(page int, pageSize int, keyword string) (channelListPageData, error) {
-	rows, total, err := channelsvc.ListPage(page, pageSize, keyword)
+func listChannelsPage(page int, pageSize int, keyword string, status string) (channelListPageData, error) {
+	rows, total, err := channelsvc.ListPage(page, pageSize, keyword, status)
 	if err != nil {
 		return channelListPageData{}, err
 	}
@@ -252,15 +256,23 @@ func listChannelsPage(page int, pageSize int, keyword string) (channelListPageDa
 	for _, row := range circuitRows {
 		circuitByChannelID[strings.TrimSpace(row.ChannelId)] = row
 	}
+	vendorsByChannelID, err := model.ListDistinctProvidersByChannelIDsWithDB(model.DB, channelIDs)
+	if err != nil {
+		return channelListPageData{}, err
+	}
 	for _, row := range rows {
 		item := buildChannelListItem(row)
 		if snapshot, ok := latestSnapshotMap[strings.TrimSpace(row.Id)]; ok {
 			item.BillingSummary, item.BillingSnapshotAt, item.BillingQuotaItemCount = summarizeChannelBillingSnapshot(snapshot)
+			item.BillingLevel = model.ChannelBillingLevelFromSnapshot(snapshot)
 		} else {
 			item.BillingSummary = "-"
 		}
 		if circuitRow, ok := circuitByChannelID[strings.TrimSpace(row.Id)]; ok {
 			item.CircuitBreaker = buildChannelCircuitBreakerListItem(circuitRow)
+		}
+		if vendors, ok := vendorsByChannelID[strings.TrimSpace(row.Id)]; ok {
+			item.ModelVendors = vendors
 		}
 		items = append(items, item)
 	}
@@ -286,8 +298,8 @@ func isModelInChannelModels(testModel string, models string) bool {
 }
 
 func GetChannels(c *gin.Context) {
-	page, pageSize, keyword := parseChannelListPageParams(c)
-	data, err := listChannelsPage(page, pageSize, keyword)
+	page, pageSize, keyword, status := parseChannelListPageParams(c)
+	data, err := listChannelsPage(page, pageSize, keyword, status)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

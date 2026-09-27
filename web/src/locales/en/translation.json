@@ -1,4 +1,10 @@
 {
+  "error_boundary": {
+    "title": "Something went wrong",
+    "description": "Sorry, this page ran into a problem. Try reloading, or go back home.",
+    "reload": "Reload page",
+    "home": "Back to home"
+  },
   "header": {
     "home": "Home",
     "channel": "Channel",
@@ -6,6 +12,7 @@
     "group": "Group",
     "entitlement": "Entitlements",
     "token": "Token",
+    "token_admin": "All tokens",
     "account": "Account",
     "redemption": "Redemption",
     "topup": "Top Up",
@@ -21,6 +28,9 @@
     "system_overview": "Overview",
     "model": "Models",
     "operation": "Operations",
+    "supply": "Supply",
+    "products": "Products",
+    "system": "System",
     "billing": "Billing",
     "finance": "Finance",
     "config": "Config",
@@ -71,12 +81,23 @@
       "user_task_failed_title": "Task failed",
       "user_task_running_title": "Task running",
       "user_task_failed_summary": "Open task details for more information",
-      "user_task_running_summary": "Result is still being generated"
+      "user_task_running_summary": "Result is still being generated",
+      "unread_badge": "{count} unread messages"
     },
     "get_started": "Activate Service",
     "login": "Login",
     "logout": "Logout",
-    "register": "Register"
+    "register": "Register",
+    "menu": {
+      "open": "Open menu",
+      "close": "Close menu",
+      "language": "Change language"
+    },
+    "onboarding_progress": "Onboarding progress {done}/{total}",
+    "theme": {
+      "switch_to_dark": "Switch to dark mode",
+      "switch_to_light": "Switch to light mode"
+    }
   },
   "topup": {
     "title": "Top Up Center",
@@ -99,6 +120,8 @@
       "total": "Total Quota",
       "used": "Used Quota",
       "remaining": "Remaining Quota",
+      "token_count": "Tokens",
+      "recent_requests": "Requests (30d)",
       "hint": "Amount quota combines today's package quota and balance. Reserved package quota is included in used quota.",
       "count_title": "Request Quota",
       "count_total": "Total",
@@ -124,6 +147,7 @@
       "history_title": "Quota History",
       "history_section": "Quota Card Records",
       "history_empty": "No quota card records",
+      "history_empty_cta": "Top up / buy a package",
       "back_to_quota": "Back to Quota",
       "load_failed": "Failed to load quota cards",
       "detail_title": "Quota Card Details",
@@ -178,9 +202,14 @@
       "order_empty": "No order records yet",
       "continue_pay": "Continue Pay",
       "cancel_pay": "Cancel Payment",
+      "cancel_pay_confirm": "Cancel this order? You'll need to place a new one.",
+      "repay": "Reorder",
+      "repay_confirm_title": "Reorder",
+      "repay_confirm_body": "This order has failed or been canceled. A new order will be created with the same parameters and payment will be started again. Continue?",
       "refresh_status": "Sync Payment Status",
       "order_paid": "The order has been paid and refreshed",
       "order_canceled": "The order has been canceled",
+      "export_success": "Exported {{count}} payment records",
       "redirect_missing": "This order is missing a payment link. Please create a new order or contact admin.",
       "tabs": {
         "orders": "Order Records",
@@ -243,6 +272,24 @@
       "amount_invalid": "Please enter an amount greater than 0",
       "request_failed": "Failed to create top-up order",
       "popup_blocked": "The browser blocked the new window. Please allow pop-ups and try again.",
+      "sync": {
+        "polling": "Syncing payment status...",
+        "auto_refresh_hint": "We'll auto-sync the payment result when you return to this tab.",
+        "return_title": "Payment result",
+        "return_confirming": "Confirming payment...",
+        "return_success": "Payment successful, balance credited.",
+        "return_pending": "Payment not complete yet, will auto-confirm shortly.",
+        "return_failed": "Payment not successful. Please retry or contact admin.",
+        "return_failed_hint": "Open the order details to reorder with the same parameters.",
+        "return_retry": "Re-sync",
+        "return_view_detail": "View order detail",
+        "return_back_pricing": "Back to subscriptions",
+        "next_steps_title": "Next steps",
+        "next_steps_hint": "Balance credited. Create an API token and make your first call.",
+        "next_create_token": "Create API token",
+        "next_view_guide": "View setup guide",
+        "next_view_quota": "View my quota"
+      },
       "no_link": "Admin has not set up the top-up link!",
       "plan_hint": "Choose a preset top-up plan to place the order.",
       "pay_label": "Pay {{amount}}",
@@ -309,6 +356,8 @@
       "title": "Purchase",
       "page_title": "Purchase",
       "subtitle": "Purchase or adjust a package, or top up balance for on-demand usage.",
+      "balance_vs_package_title": "Balance vs packages",
+      "balance_vs_package_body": "Balance is pay-as-you-go: only charged for what you actually use, ideal for elastic or trial usage. Packages are flat-rate plans for a fixed window: predictable cost and clearer boundaries. The two stack — once a package's quota is used up, balance covers any remaining calls automatically.",
       "package_mode_title": "Package Plans",
       "package_hint": "Best for stable usage. You get a daily allowance plus emergency capacity with clearer cost boundaries. Image models count by generated image count, for example n=4 uses 4 package units.",
       "balance_mode_title": "Balance Usage",
@@ -369,6 +418,9 @@
       "detail_path_package": "Purchase",
       "fields": {
         "title": "Order Title",
+        "paid_amount": "Amount Paid",
+        "credited_quota": "Credited Quota",
+        "amount_quota_note": "The credited quota is converted from the amount paid at the order-time exchange rate; its currency may differ from the payment currency.",
         "provider_order_id": "Provider Order ID",
         "status_message": "Status Message",
         "updated_at": "Updated At"
@@ -418,6 +470,7 @@
     },
     "redeem": {
       "title": "Redeem Code",
+      "entry_button": "Redeem code",
       "description": "If you already have a redemption code, you can credit it here directly.",
       "placeholder": "Please enter redemption code",
       "paste": "Paste",
@@ -465,6 +518,18 @@
         "refresh": "Sync Now",
         "fulfill": "Fulfill"
       },
+      "batch": {
+        "enter_selection": "Batch Actions",
+        "cancel_selection": "Cancel Selection",
+        "select_required": "Select at least one record first.",
+        "refresh_selected": "Sync Selected ({{count}})",
+        "fulfill_selected": "Fulfill Selected ({{count}})",
+        "confirm_refresh": "Sync the {{count}} selected records now?",
+        "confirm_fulfill": "Fulfill the {{count}} selected records?",
+        "no_fulfillable": "None of the selected records is fulfillable (only paid records can be fulfilled).",
+        "done": "Batch actions finished: {{success}} succeeded, {{failed}} failed.",
+        "skipped": "Skipped {{skipped}} (status not eligible)."
+      },
       "detail": {
         "sections": {
           "basic": "Order Detail",
@@ -500,27 +565,74 @@
         "amount": "Amount"
       }
     },
+    "purchase": {
+      "search_placeholder": "Search user, product, or record ID",
+      "empty": "No payment records",
+      "columns": {
+        "type": "Type",
+        "entitlement": "Entitlement",
+        "status": "Status",
+        "amount": "Amount"
+      },
+      "kind": {
+        "subscription": "Subscription",
+        "topup": "Top-up"
+      }
+    },
     "redemption": {
       "title": "Redemption",
       "search_placeholder": "Search user, redemption name, group, record ID...",
       "empty": "No redemption records"
+    },
+    "records": {
+      "purchase_title": "Payment records",
+      "redemption_title": "Redemption records"
     }
   },
   "channel": {
     "title": "Channel Management",
+    "batch": {
+      "enter_selection": "Batch actions",
+      "cancel_selection": "Cancel selection",
+      "enable_selected": "Enable selected ({{count}})",
+      "disable_selected": "Disable selected ({{count}})",
+      "confirm_enable": "Enable the {{count}} selected channels?",
+      "confirm_disable": "Disable the {{count}} selected channels?",
+      "select_required": "Select at least one channel first.",
+      "enable_all_success": "{{count}} channels enabled.",
+      "disable_all_success": "{{count}} channels disabled.",
+      "enable_all_failed": "Failed to enable {{count}} channels.",
+      "disable_all_failed": "Failed to disable {{count}} channels.",
+      "partial": "Batch done: {{success}} succeeded, {{failed}} failed.",
+      "delete_selected": "Delete Selected ({{count}})",
+      "confirm_delete": "Delete the {{count}} selected channels? This action cannot be undone.",
+      "delete_all_success": "Deleted {{count}} channels.",
+      "delete_all_failed": "{{count}} channels failed to delete."
+    },
+    "filter": {
+      "status_all": "All statuses"
+    },
+    "error": {
+      "id_invalid": "Channel ID is invalid"
+    },
     "tabs": {
       "channels": "Channels",
-      "providers": "Providers"
+      "providers": "Providers",
+      "list": "List",
+      "health": "Health",
+      "alerts": "Alerts",
+      "tasks": "System tasks"
     },
     "search": "Search channels by identifier...",
     "table": {
+      "empty_cta": "No channels yet. Add one to start routing models.",
       "id": "Channel Identifier",
       "name": "Channel",
       "group": "Group",
       "type": "Protocol Type",
+      "model_vendors": "Model Vendors",
       "status": "Status",
       "created_time": "Created Time",
-      "updated_at": "Updated At",
       "response_time": "Response Time",
       "capabilities": "Capabilities",
       "circuit_breaker": "Circuit",
@@ -557,7 +669,7 @@
       "disable_channel": "Disable Channels",
       "delete_channel": "Delete Channels",
       "delete": "Delete",
-      "confirm_delete": "Delete Channel",
+      "confirm_delete": "Delete this channel?",
       "confirm": "Confirm",
       "cancel": "Cancel",
       "enable": "Enable",
@@ -691,8 +803,10 @@
         "title_edit": "Edit Provider",
         "title_detail": "Provider Details",
         "detail_basic_title": "Basic Information",
-        "delete_title": "Confirm Delete Provider",
-        "delete_content": "Are you sure you want to delete provider {{provider}}?",
+        "delete_model_title": "Confirm Delete Model",
+        "delete_model_content": "Delete model {{model}} from this provider? It will no longer be available.",
+        "delete_model_batch_title": "Confirm Batch Delete",
+        "delete_model_batch_content": "Delete the selected {{count}} models from this provider? They will no longer be available.",
         "delete_confirm": "Delete",
         "edit": "Edit",
         "provider": "Provider ID",
@@ -1138,6 +1252,7 @@
         "action": "Configure",
         "add_action": "Add Policy",
         "remove_action": "Remove Policy",
+        "confirm_remove": "Remove this endpoint policy? It will stop applying immediately.",
         "status": {
           "enabled": "Enabled",
           "disabled": "Disabled",
@@ -1454,11 +1569,39 @@
         "fastgpt": "Enter in format: APIKey-AppId, e.g.: fastgpt-0sp2gtvfdgyi4k30jwlgwf1i-64f335d84283f05518e9e041",
         "tencent": "Enter in format: AppId|SecretId|SecretKey"
       },
-      "updated_at": "Updated At"
+      "updated_at": "Updated At",
+      "deepseek_base_url_no_v1": "The DeepSeek channel base_url must not append /v1. Use https://api.deepseek.com or https://api.deepseek.com/beta",
+      "deepseek_api_base_url_no_v1": "The DeepSeek channel API Base URL must not append /v1. Use https://api.deepseek.com or https://api.deepseek.com/beta",
+      "azure_notice_prefix": "Note: ",
+      "azure_notice_strong": "the deployment name must match the model name",
+      "azure_notice_body": ", because Router replaces the model parameter in the request body with your deployment name (dots in the model name are stripped). ",
+      "azure_notice_link": "Image demo",
+      "azure_notice_suffix": ".",
+      "azure_api_version": "Default API version",
+      "azure_api_version_placeholder": "Enter the default API version, e.g. 2024-03-01-preview. This can be overridden by the actual request query parameter.",
+      "volc_realtime_notice": "Volcengine Realtime uses the official Volcengine voice WebSocket API. Enter the App ID. The default Resource ID is ",
+      "volc_realtime_notice_2": ". If the official console assigns another value, you can override it below.",
+      "volc_app_id_placeholder": "Enter the Volcengine voice application App ID",
+      "volc_resource_id_placeholder": "Default volc.speech.dialog",
+      "cloudflare_account_id_placeholder": "Enter the Account ID, e.g. d8d7c61dbc334c32d3ced580e4bf42b4"
     }
   },
   "group_manage": {
     "title": "Group Management",
+    "batch": {
+      "enter_selection": "Batch actions",
+      "cancel_selection": "Cancel selection",
+      "enable_selected": "Enable selected ({{count}})",
+      "disable_selected": "Disable selected ({{count}})",
+      "confirm_enable": "Enable the {{count}} selected groups?",
+      "confirm_disable": "Disable the {{count}} selected groups?",
+      "select_required": "Select at least one group first.",
+      "enable_all_success": "{{count}} groups enabled.",
+      "disable_all_success": "{{count}} groups disabled.",
+      "enable_all_failed": "Failed to enable {{count}} groups.",
+      "disable_all_failed": "Failed to disable {{count}} groups.",
+      "partial": "Batch done: {{success}} succeeded, {{failed}} failed."
+    },
     "search": "Search group ID or description",
     "table": {
       "id": "Group ID",
@@ -1490,6 +1633,9 @@
       "channels": "Bound Channels",
       "channels_placeholder": "Select channels available for this group"
     },
+    "filter": {
+      "status_all": "All statuses"
+    },
     "buttons": {
       "add": "Add Group",
       "add_model": "Add Model",
@@ -1498,6 +1644,7 @@
       "edit": "Edit",
       "add_channel": "Add Channel",
       "remove_channel": "Remove",
+      "confirm_remove_channel": "Remove this channel from the group? It will no longer be assigned to this group.",
       "view_channel": "View Channel",
       "bind_channels": "Configure Channels",
       "enable": "Enable",
@@ -1702,9 +1849,28 @@
   },
   "token": {
     "title": "Token Management",
+    "admin": {
+      "title": "All tokens"
+    },
+    "batch": {
+      "enter_selection": "Batch Actions",
+      "cancel_selection": "Cancel Selection",
+      "select_required": "Select at least one token first.",
+      "enable_selected": "Enable Selected ({{count}})",
+      "disable_selected": "Disable Selected ({{count}})",
+      "delete_selected": "Delete Selected ({{count}})",
+      "confirm_enable": "Enable the {{count}} selected tokens?",
+      "confirm_disable": "Disable the {{count}} selected tokens?",
+      "confirm_delete": "Delete the {{count}} selected tokens? This action cannot be undone.",
+      "done": "Batch actions finished: {{success}} succeeded, {{failed}} failed."
+    },
     "search": "Search tokens by name ...",
+    "filter": {
+      "status_all": "All Status"
+    },
     "table": {
       "name": "Name",
+      "owner": "Owner",
       "status": "Status",
       "token": "Token",
       "used_amount": "Used",
@@ -1724,7 +1890,8 @@
       "status_disabled": "Disabled",
       "status_expired": "Expired",
       "status_depleted": "Depleted",
-      "status_unknown": "Unknown Status"
+      "status_unknown": "Unknown Status",
+      "empty_cta": "No tokens yet — create one to start calling models"
     },
     "buttons": {
       "copy": "Copy",
@@ -1741,8 +1908,10 @@
       "title": "Token Detail",
       "sections": {
         "models": "Model Scope",
+        "usage": "Usage",
         "limits": "Limits"
       },
+      "usage_key_note": "Replace $ROUTER_API_KEY in the example with your token (the full token is shown only once at creation — recreate the token if lost).",
       "buttons": {
         "back": "Back"
       }
@@ -1765,6 +1934,7 @@
       "models_table_sources": "Sources",
       "model_source_package": "Package",
       "model_source_balance": "Account Balance",
+	  "model_source_personal_provider": "Personal Provider",
       "models_table_empty": "No available models",
       "models_search_placeholder": "Search models",
       "models_search_empty": "No matching models",
@@ -1823,15 +1993,33 @@
       "copy_failed": "Unable to copy to clipboard, please copy manually.",
       "chat_open_failed": "Unable to open Chat. Check the Chat page link or token value.",
       "operation_success": "Operation completed successfully!"
+    },
+    "created": {
+      "title": "Token created",
+      "hint": "The full token is shown only once, right after creation. Copy it now and store it in your client or a secrets manager. You will not be able to view the full token again after leaving this page.",
+      "usage_title": "How to call",
+      "usage_desc": "This service is OpenAI-compatible. Put the base URL and token below into any OpenAI-compatible client to start calling.",
+      "base_url_label": "Base URL",
+      "example_label": "cURL example",
+      "example_note": "Replace the model name in the example with any model from the Models page.",
+      "copy_base_url": "Copy base URL",
+      "copy_curl": "Copy cURL example",
+      "view_guide": "View full integration guide"
     }
   },
   "common": {
     "loading": "Loading...",
     "no_data": "No data",
+    "load_failed": "Failed to load",
+    "retry": "Retry",
     "add": "Add",
     "view": "View",
     "back": "Back",
     "download": "Download",
+    "export_csv": "Export CSV",
+    "copy": "Copy",
+    "copy_success": "Copied to clipboard",
+    "copy_failed": "Copy failed, please copy manually",
     "basic_info": "Basic Information",
     "cancel": "Cancel",
     "confirm": "Confirm",
@@ -1843,9 +2031,11 @@
     "operation": "Operation",
     "save": "Save",
     "clear": "Clear",
+    "operation_success": "Operation completed successfully!",
     "unlimited": "Unlimited",
     "day": "Day",
     "never": "Never",
+    "clear_filters": "Clear filters",
     "created_at": "Created At",
     "updated_at": "Updated At",
     "quota": {
@@ -1853,12 +2043,39 @@
       "display_short": "${{amount}}",
       "unit": "$"
     },
-    "delete": "Delete"
+    "delete": "Delete",
+    "session_expired": "Your session has expired. Please sign in again.",
+    "rate_limit": "Too many requests. Please try again later.",
+    "server_error": "Server error. Please contact the administrator.",
+    "demo_only": "Demo mode — no backend service.",
+    "server_unreachable": "Cannot reach the server",
+    "new_version_notice": "A new version ({version}) is available. Press Shift + F5 to reload.",
+    "workspace_entry_load_failed": "Could not load your account. Please try again."
   },
   "redemption": {
     "title": "Redemption Management",
+    "batch": {
+      "enter_selection": "Batch Actions",
+      "cancel_selection": "Cancel Selection",
+      "select_required": "Select at least one code first.",
+      "enable_selected": "Enable Selected ({{count}})",
+      "disable_selected": "Disable Selected ({{count}})",
+      "delete_selected": "Delete Selected ({{count}})",
+      "confirm_enable": "Enable the {{count}} selected codes?",
+      "confirm_disable": "Disable the {{count}} selected codes?",
+      "confirm_delete": "Delete the {{count}} selected codes? This action cannot be undone.",
+      "done": "Batch actions finished: {{success}} succeeded, {{failed}} failed."
+    },
+    "tabs": {
+      "list": "Codes",
+      "records": "Redemption records"
+    },
     "search": "Search redemption codes and names ...",
+    "filter": {
+      "status_all": "All Status"
+    },
     "table": {
+      "empty_cta": "No redemption codes yet. Generate a batch to distribute.",
       "id": "ID",
       "name": "Name",
       "group": "Group",
@@ -1869,6 +2086,7 @@
       "created_time": "Created Time",
       "code_expires_at": "Code Expires At",
       "redeemed_time": "Redeemed Time",
+      "product_name": "Product Name",
       "actions": "Actions",
       "no_name": "None",
       "not_redeemed": "Not Redeemed"
@@ -1935,9 +2153,19 @@
       "face_value_invalid": "Face value must be greater than 0",
       "code_validity_invalid": "Code validity must be greater than or equal to 0",
       "credit_validity_invalid": "Credited balance validity must be greater than or equal to 0"
+    },
+    "error": {
+      "select_entitlement": "Please select a top-up entitlement"
+    },
+    "placeholder": {
+      "select_entitlement": "Please select a top-up entitlement"
+    },
+    "record": {
+      "title": "Redemption record"
     }
   },
   "log": {
+    "drilldown": { "view": "View logs" },
     "cleanup": {
       "label": "Delete logs before",
       "button": "Delete Historical Logs",
@@ -1948,7 +2176,8 @@
       "success": "Cleaned {{count}} log entries"
     },
     "title": "Operation Log",
-    "search": "Search logs...",
+    "empty_cta": "No call records yet — make your first model call",
+    "empty_cta_action": "Start a call",
     "filters": {
       "add": "Add Filter",
       "none": "No additional filters selected",
@@ -1964,7 +2193,8 @@
       "admin": "Admin",
       "system": "System",
       "test": "Test",
-      "relay_failure": "Call Failed"
+      "relay_failure": "Call Failed",
+      "unknown": "Unknown"
     },
     "route_anomalies": {
       "title": "Route Anomaly Overview",
@@ -2009,6 +2239,10 @@
       "cache_tokens": "Cache R/W",
       "quota": "Amount",
       "billing_source": "Billing Source",
+      "personal_provider": "Personal provider",
+      "community_package": "Community package",
+      "no_community_charge": "No community charge",
+      "fallback_used": "Fallback used",
       "detail": "Detail",
       "drag_column": "Drag to reorder columns",
       "resize_column": "Drag to resize column"
@@ -2017,6 +2251,10 @@
       "query": "Action",
       "submit": "Query",
       "refresh": "Refresh"
+    },
+    "export": {
+      "success": "Exported {{count}} logs",
+      "empty": "No logs to export for the current filters"
     },
     "messages": {
       "load_failed": "Failed to load log detail"
@@ -2229,7 +2467,8 @@
       "video": "Video Task",
       "channel_model_test": "Model Test",
       "channel_refresh_models": "Refresh Models",
-      "channel_refresh_billing": "Refresh Billing"
+      "channel_refresh_billing": "Refresh Billing",
+      "channel_sync_provider_usage": "Sync Provider Usage"
     },
     "status": {
       "pending": "Pending",
@@ -2282,6 +2521,23 @@
       "cancel_failed": "Failed to cancel task",
       "download_failed": "Failed to download task artifact",
       "download_unavailable": "No downloadable artifact is available for this task"
+    },
+    "batch": {
+      "enter_selection": "Batch actions",
+      "cancel_selection": "Cancel selection",
+      "retry_selected": "Retry selected ({{count}})",
+      "cancel_selected": "Cancel selected ({{count}})",
+      "confirm_retry": "Retry the {{count}} selected task(s)?",
+      "confirm_cancel": "Cancel the {{count}} selected task(s)?",
+      "no_retry_target": "No retryable tasks in selection (only failed/canceled can be retried).",
+      "no_cancel_target": "No cancelable tasks in selection (only pending/running can be canceled).",
+      "action_retry": "retry",
+      "action_cancel": "cancel",
+      "all_success_retry": "Batch retry done: {{count}} succeeded",
+      "all_success_cancel": "Batch cancel done: {{count}} succeeded",
+      "all_failed_retry": "Batch retry failed: {{count}} unprocessed",
+      "all_failed_cancel": "Batch cancel failed: {{count}} unprocessed",
+      "partial": "Batch {{action}} done: {{success}} succeeded, {{failed}} failed."
     }
   },
   "workspace_start": {
@@ -2291,6 +2547,35 @@
       "view_guide": "Usage guide",
       "create_token": "Create token",
       "open_chat": "Open Chat"
+    },
+    "checklist": {
+      "title": "Onboarding checklist",
+      "progress_label": "Progress {done}/{total}",
+      "done_label": "Onboarding complete",
+      "dismiss": "Don't show again",
+      "restore": "Show the checklist again",
+      "items": {
+        "token": {
+          "title": "Create a token",
+          "description": "Create a token to connect Router for API calls or client usage.",
+          "cta": "Create"
+        },
+        "quota": {
+          "title": "Get quota",
+          "description": "Buy a package or top up balance so calls have quota to use.",
+          "cta": "Get quota"
+        },
+        "first_call": {
+          "title": "Send your first request",
+          "description": "Connect Router to your app, terminal, or Chat via the usage guide.",
+          "cta": "View guide"
+        },
+        "email": {
+          "title": "Bind your email",
+          "description": "Bind your email for payment receipts, key notices, and low-balance alerts.",
+          "cta": "Bind"
+        }
+      }
     },
     "steps": {
       "pricing": {
@@ -2317,11 +2602,17 @@
   },
   "user": {
     "title": "User Management",
+    "tabs": {
+      "list": "List",
+      "analytics": "Analytics",
+      "tasks": "User tasks"
+    },
     "detail": {
       "title": "User Detail",
       "user_id": "User ID",
       "package_mode_title": "Package",
       "balance_mode_title": "Balance",
+      "tokens_title": "Tokens",
       "remaining_amount": "Remaining",
       "used_amount": "Used",
       "request_count_hint": "Total requests",
@@ -2418,6 +2709,12 @@
       "wechat_id_placeholder": "Read-only, user must link through personal settings page, cannot be modified directly",
       "email": "Email",
       "email_placeholder": "Not set",
+      "role": {
+        "confirm_promote": "Promote this user to admin? They will gain access to the admin console. Please confirm the user has been notified.",
+        "confirm_demote": "Demote this user to a regular user? They will lose access to the admin console.",
+        "confirm_action": "Confirm Change",
+        "cancel_action": "Cancel"
+      },
       "buttons": {
         "submit": "Confirm",
         "cancel": "Cancel"
@@ -2425,6 +2722,10 @@
     },
     "add": {
       "title": "Create New User Account"
+    },
+    "export": {
+      "success": "Exported {{count}} users",
+      "empty": "No users to export for the current filters"
     },
     "messages": {
       "load_failed": "Failed to load",
@@ -2435,7 +2736,8 @@
       "operation_failed": "Operation failed",
       "active_package_load_failed": "Failed to load packages",
       "wallet_copy_success": "Wallet address copied",
-      "wallet_copy_failed": "Copy failed, please copy manually"
+      "wallet_copy_failed": "Copy failed, please copy manually",
+      "load_entitlement_products_failed": "Failed to load entitlement products"
     },
     "focus": {
       "title": "Filtered Users",
@@ -2451,14 +2753,31 @@
       "topup_confirm_hint": "The selected top-up plan will be granted to {{count}} selected users. This creates top-up orders and balance ledger entries.",
       "topup_done": "Batch grant finished: {{success}} succeeded, {{failed}} failed.",
       "topup_result_summary": "{{total}} users total, {{success}} succeeded, {{failed}} failed.",
-      "failed_users": "Failed Users"
+      "failed_users": "Failed Users",
+      "enable_selected": "Enable Selected ({{count}})",
+      "disable_selected": "Disable Selected ({{count}})",
+      "delete_selected": "Delete Selected ({{count}})",
+      "manage_confirm_enable": "Enable the {{count}} selected users?",
+      "manage_confirm_disable": "Disable the {{count}} selected users?",
+      "manage_confirm_delete": "Delete the {{count}} selected users? This action cannot be undone.",
+      "manage_no_active_change": "No state change needed for the selected users.",
+      "manage_no_deletable": "None of the selected users is deletable.",
+      "manage_done": "Batch manage finished: {{success}} succeeded, {{failed}} failed.",
+      "manage_skipped": "Skipped {{skipped}} (no state change or already deleted).",
+      "enter_selection": "Batch Actions"
     },
     "search": "Search users or wallet ID...",
+    "filter": {
+      "status_all": "All Status",
+      "role_all": "All Roles"
+    },
     "table": {
+      "empty_cta": "No users yet. Add one to get started.",
       "id": "ID",
       "username": "Username",
-      "wallet_identity": "Wallet Identity DID",
+      "wallet_identity": "Wallet Identity",
       "wallet": "Wallet",
+      "wallet_address": "Wallet Address",
       "group": "Group",
       "package": "Package",
       "balance": "Balance",
@@ -2493,8 +2812,11 @@
       "detail": "Detail",
       "edit": "Edit",
       "promote": "Promote",
-      "demote": "Demote"
-    }
+      "demote": "Demote",
+      "confirm_delete": "Delete this user? They will no longer be able to sign in. Related data is preserved.",
+      "confirm_change_status": "Change this user's status?"
+    },
+    "no_email": "No email linked"
   },
   "dashboard": {
     "statistics": {
@@ -2627,7 +2949,11 @@
           "usd": "USD",
           "token": "Token"
         },
-        "empty": "No data"
+        "empty": "No data",
+        "empty_cta_action": "Start a call",
+        "total_label": "Range total",
+        "weekdays": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+        "load_failed": "Failed to load the spending calendar"
       },
       "details": {
         "title": "Spending Details",
@@ -2675,11 +3001,21 @@
     "admin": {
       "title": "Admin Overview",
       "nav": {
-        "spending": "Spending",
-        "channels": "Channels",
-        "users": "Users",
-        "models": "Models",
+        "spending": "Overview",
+        "duty": "Duty Station",
+        "channels": "Channel Health",
+        "users": "User Analytics",
+        "models": "Model Operations",
         "alerts": "Alerts"
+      },
+      "duty": {
+        "title": "Duty Station",
+        "pending_alerts": "Unresolved Critical",
+        "pending_alerts_hint": "{{count}} more unacknowledged",
+        "risky_channels": "Risky Channels",
+        "low_balance_channels": "Low-Balance Channels",
+        "failed_tasks": "Failed Tasks",
+        "net_amount": "Net"
       },
       "period": {
         "label": "Period"
@@ -2742,6 +3078,10 @@
         "tasks_active": "Active Tasks",
         "tasks_failed": "Failed Tasks"
       },
+      "board": {
+        "operations_title": "Operations Board",
+        "operations_hint": "Spend trends and model analytics — for review, not live triage."
+      },
       "sections": {
         "spending": "Spending",
         "channels": "Channels",
@@ -2759,9 +3099,16 @@
           "latency": "High-Latency Channels",
           "latency_hint": "Channels whose current average latency is 8 seconds or higher."
         },
+        "sort": {
+          "label": "Sort",
+          "health": "Health first",
+          "pass_rate": "Pass rate first",
+          "latency": "Latency first",
+          "requests": "Volume first"
+        },
         "history": {
           "title": "Recent Call Health",
-          "hint": "Prioritizes circuit, risky, retest-needed, and high-usage channels. Each cell is a 5-minute call window; gray means that window has no call sample.",
+          "hint": "Fixed to the last 5 hours. Prioritizes circuit, risky, retest-needed, and high request-volume channels. Each cell is a 5-minute call window; gray means that window has no call sample.",
           "no_data": "No call sample",
           "window": "Time Window",
           "success_count": "Successes",
@@ -2792,9 +3139,31 @@
       },
       "alerts": {
         "title": "Alerts",
+        "sidebar_badge": "{{count}} unresolved critical alerts",
         "description": "Aggregate billing anomalies, circuit breaker events, and model or endpoint disablements into one handling queue.",
         "empty": "There are no alerts right now",
+        "load_failed": "Failed to load alerts",
+        "acknowledge_failed": "Failed to acknowledge alert",
+        "resolve_failed": "Failed to resolve alert",
         "page_count": "{{page_count}} on this page / {{total_count}} total",
+        "kpis": {
+          "active_total": "Active Alerts",
+          "active_total_hint": "Not yet resolved",
+          "unresolved_critical": "Unresolved Critical",
+          "unresolved_critical_hint": "Critical and still open",
+          "unacknowledged": "Unacknowledged",
+          "unacknowledged_hint": "Awaiting operator action",
+          "last_24h": "Added in 24h",
+          "last_24h_hint": "Within the current filter window",
+          "resolved_24h": "Resolved in 24h",
+          "resolved_24h_hint": "Throughput of closed alerts"
+        },
+        "distribution": {
+          "by_type": "Distribution by Type",
+          "by_channel": "Distribution by Channel (Top {{limit}})",
+          "trend_title": "Alert Volume Trend",
+          "trend_hint": "Each point represents a 1-hour alert window"
+        },
         "dialog": {
           "acknowledge_title": "Acknowledge Alert",
           "resolve_title": "Resolve Alert",
@@ -2846,6 +3215,19 @@
           "acknowledged": "Acknowledged",
           "resolve": "Resolve"
         },
+        "batch": {
+          "enter_selection": "Batch Actions",
+          "cancel_selection": "Cancel",
+          "acknowledge_selected": "Acknowledge Selected ({{count}})",
+          "resolve_selected": "Resolve Selected ({{count}})",
+          "select_required": "Select at least one alert first.",
+          "no_ack_target": "The selected alerts are already acknowledged or resolved.",
+          "no_resolve_target": "The selected alerts must be acknowledged before they can be resolved.",
+          "note_hint": "The same note will be applied to {{count}} alerts.",
+          "all_success": "Batch done: {{count}} succeeded.",
+          "all_failed": "Batch failed: {{count}} not processed.",
+          "partial": "Batch done: {{success}} succeeded, {{failed}} failed."
+        },
         "detail": {
           "title": "Alert Details",
           "type": "Type",
@@ -2888,6 +3270,10 @@
           "title": "How the numbers connect",
           "summary": "Payments and top-ups are user-side revenue and cash flow. Request consumption is entitlement usage. Channel procurement is upstream cost, matched to revenue in Billing Overview to calculate gross profit."
         },
+        "headline": {
+          "net": "Net this period"
+        },
+        "trend_title": "Trend",
         "insights": {
           "net_positive": "Positive Net Inflow",
           "net_positive_hint": "Top-up exceeds spend in the selected period, keeping cashflow positive.",
@@ -2931,6 +3317,16 @@
           }
         },
         "summary": {
+          "active_users": "Active Users",
+          "active_users_hint": "Users with at least one call or top-up this period",
+          "topup_users": "Top-up Users",
+          "topup_users_hint": "Users who topped up this period",
+          "paid_conversion_rate": "Paid Conversion",
+          "paid_conversion_hint": "Top-up / Active",
+          "arpu": "ARPU",
+          "arpu_hint": "Spend / Active user",
+          "user_balance_total": "User Balance Total (Platform Liability)",
+          "user_balance_hint": "Sum of balances for currently matched users",
           "user_count": "Matched Users",
           "request_count": "Matched Requests",
           "total_tokens": "Matched Tokens",
@@ -2970,6 +3366,9 @@
       "models": {
         "title": "Model Overview",
         "description": "Aggregate model requests, spend, and test health for the selected period.",
+        "headline": {
+          "hint": "Click the at-risk count to drill into models that need attention."
+        },
         "summary": {
           "selected_model_count": "Selected Models",
           "tested_model_count": "Tested Models",
@@ -3064,7 +3463,10 @@
           "avg_pass_rate": "Avg Pass Rate",
           "avg_coverage_rate": "Avg Coverage",
           "avg_latency": "Avg Latency",
-          "needs_retest": "Channels Need Retest"
+          "needs_retest": "Channels Need Retest",
+          "risk_count": "Risk Channels",
+          "active_circuit_breaker": "Open Breakers",
+          "high_latency": "High-latency Channels"
         },
         "chart": {
           "health_score": "Health Score",
@@ -3323,9 +3725,8 @@
       },
       "retry": {
         "title": "Failure Retry",
-        "description": "Configure retry behavior after request failure.",
-        "description_title": "What happens after the first failure",
         "description": "Control whether a failed request should continue trying other available channels.",
+        "description_title": "What happens after the first failure",
         "description_effective": "When enabled, if the error is retryable, no specific channel is pinned, and unused candidates remain, the system keeps trying them in order.",
         "description_disabled": "When disabled, the first failure is returned immediately. When enabled, channels that already failed in the same request are not retried again.",
         "limit": "Retry strategy",
@@ -3534,13 +3935,41 @@
     }
   },
   "billing": {
+    "export": {
+      "success": "Exported {{count}} rows"
+    },
+    "records": {
+      "title": "Records",
+      "summary": "All money flows in one place: top-up orders, purchases, reconciliation and redemptions.",
+      "kinds": {
+        "topup": "Top-ups",
+        "purchase": "Purchases",
+        "reconcile": "Reconcile",
+        "redemption": "Redemptions"
+      }
+    },
     "pricing_analysis": {
       "nav": "Profit",
       "title": "Profit",
       "load_failed": "Failed to load profit analysis",
       "group_placeholder": "Filter group",
+      "channel_placeholder": "Filter channel",
+      "model_placeholder": "Filter model",
       "note": "Showing models with requests in the last 7 days. Formal margin uses actual or explicitly zero cost only; models with incomplete cost coverage are not treated as healthy.",
       "empty": "No model finance data",
+      "summary": {
+        "models": "Models",
+        "loss_models": "Loss models",
+        "low_margin_models": "Low margin models",
+        "total_revenue": "Billed revenue",
+        "total_cost": "Procurement cost",
+        "total_profit": "Gross profit",
+        "avg_margin": "Weighted margin"
+      },
+      "distribution": {
+        "title": "Profit state distribution",
+        "hint": "Models bucketed by current profit state."
+      },
       "states": {
         "healthy": "Healthy",
         "low_margin": "Low margin",
@@ -3597,6 +4026,14 @@
         "warning": "Watch",
         "critical": "Action",
         "empty": "No data"
+      },
+      "headline": {
+        "profit": "Gross profit this period",
+        "margin": "Margin {{margin}}",
+        "revenue": "Billed revenue",
+        "cost": "Procurement cost",
+        "unconfigured": "Requests without cost",
+        "requests": "Requests"
       },
       "overview_table": {
         "title": "Multidimensional Finance Overview",
@@ -3690,6 +4127,7 @@
       },
       "priority": {
         "title": "Priority Items",
+        "empty": "No priority items in scope",
         "scope_note": "Operating risks follow the current filters; configuration risks are global health",
         "sources": {
           "operating": "Operating",
@@ -3711,8 +4149,18 @@
         "title": "Finance Consistency Issues",
         "summary": "{{count}} issues in scope",
         "empty": "No finance consistency issues in scope",
-        "columns": { "type": "Issue type", "request": "Request log", "created_at": "Created at", "prompt_tokens": "Input tokens", "completion_tokens": "Output tokens" },
-        "types": { "missing_settlement": "Missing settlement", "missing_attribution": "Missing procurement attribution", "settlement_mismatch": "Settlement snapshot mismatch" }
+        "columns": {
+          "type": "Issue type",
+          "request": "Request log",
+          "created_at": "Created at",
+          "prompt_tokens": "Input tokens",
+          "completion_tokens": "Output tokens"
+        },
+        "types": {
+          "missing_settlement": "Missing settlement",
+          "missing_attribution": "Missing procurement attribution",
+          "settlement_mismatch": "Settlement snapshot mismatch"
+        }
       },
       "channel_placeholder": "Filter channel",
       "model_placeholder": "Filter model"
@@ -3721,18 +4169,22 @@
       "nav": "Procurement",
       "title": "Procurement",
       "empty": "No procurement data",
-      "management": { "title": "Procurement management" },
+      "management": {
+        "title": "Procurement management"
+      },
       "health": {
         "status": {
           "ok": "Finance healthy",
           "warning": "Finance has risks",
-          "critical": "Finance needs action"
+          "critical": "Finance needs action",
+          "unknown": "Health check unavailable"
         },
         "level": {
           "critical": "Critical",
           "warning": "Warning"
         },
         "summary": "{{critical}} critical, {{warning}} warning",
+        "summary_unknown": "Finance health check is currently unavailable",
         "no_issue": "No finance configuration risk detected",
         "load_failed": "Failed to load finance health",
         "load_failed_hint": "Unable to load finance health check. Refresh later."
@@ -3749,7 +4201,8 @@
       "filters": {
         "group": "Filter group",
         "provider": "Filter provider",
-        "model": "Filter model"
+        "model": "Filter model",
+        "channel": "Select a channel to enter procurement"
       },
       "summary": {
         "request_count": "Requests",
@@ -3791,6 +4244,22 @@
       "actions": {
         "configure_cost": "Open procurement config"
       },
+      "analytics": {
+        "by_provider_title": "Cost share by provider",
+        "by_provider_hint": "Aggregates procurement cost by provider from the current list and shows the top 8.",
+        "margin_distribution_title": "Gross margin distribution",
+        "margin_distribution_hint": "Buckets each dimension by gross margin; red marks losses.",
+        "loss_leaderboard_title": "Loss leaderboard (Top 10)",
+        "loss_leaderboard_hint": "Dimensions with negative profit, sorted by loss amount.",
+        "advanced_toggle": "More analytics (provider share / margin distribution)",
+        "margin_bucket": {
+          "loss": "Loss (<0%)",
+          "low": "Low margin (0–10%)",
+          "ok": "Healthy (10–30%)",
+          "high": "High margin (≥30%)",
+          "unknown": "Unconfigured"
+        }
+      },
       "retry": {
         "title": "Procurement Retry",
         "empty": "No procurement cost records need retry",
@@ -3824,19 +4293,15 @@
     "mit": "MIT License"
   },
   "workspace_models": {
-    "title": "Models",
+    "title": "Available Models",
     "refresh": "Refresh model status",
     "search_placeholder": "Search models, providers, endpoints, or tags",
     "generated_at": "Updated at: {{time}}",
     "empty": "No available model status",
     "history_label": "{{model}} recent model status",
     "summary": {
-      "total": "Available models",
-      "healthy": "Healthy",
-      "warning": "Warning",
-      "critical": "Critical",
-      "pass_rate": "Average pass rate",
-      "latency": "Average latency"
+      "count": "{{total}} models",
+      "count_filtered": "{{shown}} / {{total}} models"
     },
     "filters": {
       "health": {
@@ -3894,7 +4359,10 @@
         "probe": "Latest probe: {{time}}",
         "none": "Latest signal: {{time}}"
       },
-      "no_endpoints": "No available endpoints"
+      "no_endpoints": "No available endpoints",
+      "copy_model": "Copy model name",
+      "copied": "Model name copied: {{model}}",
+      "copy_failed": "Copy failed, please copy manually"
     }
   },
   "auth": {
@@ -3947,7 +4415,8 @@
       "wechat": {
         "scan_tip": "Scan QR code to follow WeChat Official Account, enter 'code' to get verification code (valid for 3 minutes)",
         "code_placeholder": "Verification code"
-      }
+      },
+      "wallet_not_detected": "No wallet plugin detected. Please install or enable a wallet plugin and try again."
     },
     "register": {
       "title": "New User Registration",
@@ -3998,5 +4467,155 @@
     "notice": {
       "password_copied": "New password copied to clipboard: {{password}}"
     }
+  },
+  "entitlement": {
+    "metrics": {
+      "yyc": "YYC credits"
+    },
+    "placeholder": {
+      "search": "Search by name, description, or group"
+    },
+    "card": {
+      "no_description": "No usage summary yet"
+    },
+    "request_count": "Request count",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "add_title": "Add entitlement",
+    "empty_cta": "No entitlements yet. Create one to start configuring packages.",
+    "delete_title": "Delete entitlement",
+    "confirm_delete": "Confirm delete {{name}}?",
+    "type": "Entitlement type",
+    "kind": {
+      "all": "All types",
+      "balance": "Top-up",
+      "subscription": "Subscription"
+    },
+    "period": {
+      "monthly": "Monthly",
+      "weekly": "Weekly",
+      "daily": "Daily",
+      "package_total": "Package total"
+    },
+    "visibility_option": {
+      "all": "All users",
+      "partial": "Selected users"
+    },
+    "columns": {
+      "name": "Name",
+      "type": "Type",
+      "group": "Group",
+      "supported_models": "Supported models",
+      "sale_price": "Price",
+      "validity": "Validity",
+      "visibility": "Visibility",
+      "status": "Status"
+    },
+    "form": {
+      "kind": "Type",
+      "name": "Name",
+      "group": "Group",
+      "sort_order": "Sort order",
+      "description": "Description",
+      "sale_price": "Price",
+      "sale_currency": "Price currency",
+      "period": "Period",
+      "period_quota": "Period quota",
+      "arrival_quota": "Credited quota",
+      "quota_currency": "Quota currency",
+      "subscription_days": "Subscription days",
+      "validity_days": "Validity days",
+      "visibility": "Visibility",
+      "visible_users": "Visible users",
+      "concurrency_per_user": "Per-user concurrency",
+      "concurrency_total": "Total concurrency",
+      "balance_fallback": "Balance fallback"
+    },
+    "payment_records": "Payment records",
+    "tabs": {
+      "list": "Products",
+      "records": "Purchase records"
+    }
+  },
+  "personal_setting": {
+    "unset": "Not set",
+    "set": "Set",
+    "identity_did_unset": "No identity bound (sign in with the YeYing wallet plugin to bind)",
+    "section": {
+      "account_info": "Account info",
+      "notification_preferences": "Notification preferences"
+    },
+    "placeholder": {
+      "email": "Enter your email address",
+      "low_balance_threshold": "Leave empty to use the system default"
+    },
+    "error": {
+      "user_missing": "User information is missing",
+      "email_required": "Please enter an email address",
+      "current_password_required": "Please enter your current password",
+      "low_balance_threshold_invalid": "Threshold must be a non-negative integer",
+      "notification_load_failed": "Failed to load notification preferences"
+    },
+    "avatar": {
+      "alt": "User avatar"
+    },
+    "notification": {
+      "email_low_balance": "Email me when balance is low",
+      "email_low_balance_hint": "When off, low-balance reminder emails are suppressed, but the in-app banner will still appear.",
+      "low_balance_threshold": "Low balance threshold",
+      "low_balance_threshold_hint": "A reminder fires when your available balance drops below this value. Leave empty to use the system default.",
+      "default_threshold_label": "System default: {amount}",
+      "save": "Save notification preferences",
+      "saved": "Notification preferences saved",
+      "save_failed": "Failed to save notification preferences"
+    },
+    "field": {
+      "wallet": "Wallet address",
+      "identity_did": "Identity DID",
+      "avatar": "Avatar",
+      "email": "Email",
+      "password": "Password",
+      "current_password": "Current password",
+      "new_password": "New password",
+      "confirm_password": "Confirm new password"
+    },
+    "button": {
+      "save": "Save",
+      "edit": "Edit",
+      "set": "Set",
+      "modify_password": "Change password",
+      "set_password": "Set password"
+    },
+    "password_modal": {
+      "modify_title": "Change password",
+      "set_title": "Set password",
+      "confirm_modify": "Confirm change",
+      "confirm_set": "Confirm"
+    },
+    "messages": {
+      "password_modify_success": "Password changed successfully",
+      "password_set_success": "Password set successfully"
+    }
+  },
+  "low_balance_banner": {
+    "message": "Your current balance {balance} is below the reminder threshold {threshold}. Please top up soon.",
+    "action": "Top up",
+    "dismiss": "Dismiss"
+  },
+  "wallet": {
+    "not_detected": "No wallet detected. Please install MetaMask or enable a browser wallet.",
+    "plugin_missing": "No wallet plugin detected. Please install or enable a wallet plugin and try again.",
+    "retry_prompt": "Error occurred, retrying ({count})..."
+  },
+  "oauth": {
+    "bind_success": "Bound successfully!"
+  },
+  "personal_routing": {
+    "title": "My providers"
+  },
+  "not_found": {
+    "title": "Page not found",
+    "description": "Please check whether the URL is correct.",
+    "back_home": "Back to home"
   }
 }

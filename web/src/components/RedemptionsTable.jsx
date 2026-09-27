@@ -1,15 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   API,
   copy,
   showError,
+  showInfo,
   showSuccess,
   showWarning,
   hasLoadedPagedRows,
   timestamp2string,
   writePagedRows,
+  withCardLabels,
 } from '../helpers';
 
 import { ITEMS_PER_PAGE } from '../constants';
@@ -25,12 +27,17 @@ import {
   formatDecimalNumber,
 } from '../helpers/render';
 import UnitDropdown from './UnitDropdown';
+import useUrlState, { parsePageParam, parseListPageSize } from '../hooks/useUrlState';
+import useBatchRowActions from '../hooks/useBatchRowActions';
 import {
   AppButton,
+  AppEmpty,
+  AppErrorState,
   AppFilterHeader,
   AppInput,
   AppPagination,
   AppPopconfirm,
+  AppSelect,
   AppTable,
   AppTableActionButton,
   AppTag,
@@ -131,18 +138,48 @@ function renderStatus(status, t) {
   }
 }
 
-const RedemptionsTable = ({ headerMeta = null }) => {
+const RedemptionsTable = ({ sectionTabs = null, embedded = false }) => {
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const currentPagePath = `${location.pathname}${location.search}${location.hash}`;
   const [redemptions, setRedemptions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activePage, setActivePage] = useState(1);
+  const [loadError, setLoadError] = useState(false);
+  // page/pageSize 也入 URL:列表↔详情往返后回到原页原尺寸(仅挂载时读一次播种,
+  // 之后以组件内 state 为准,URL 由翻页/改尺寸/换筛选主动镜像回写)。
+  const initialListQuery = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      page: parsePageParam(params.get('page')),
+      pageSize: parseListPageSize(params.get('page_size')),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const didInitListRef = useRef(false);
+  const [activePage, setActivePage] = useState(initialListQuery.page);
+  const [pageSize, setPageSize] = useState(initialListQuery.pageSize);
+  const pageSizeRef = useRef(initialListQuery.pageSize);
+  pageSizeRef.current = pageSize;
   const [totalCount, setTotalCount] = useState(0);
   const [isSearchMode, setIsSearchMode] = useState(false);
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const [{ status: statusFilter, keyword: searchKeyword }, patchQuery] =
+    useUrlState({
+      status: { param: 'status', default: 'all' },
+      keyword: { param: 'q', default: '' },
+      page: { param: 'page', default: 1, parse: parsePageParam },
+      pageSize: {
+        param: 'page_size',
+        default: ITEMS_PER_PAGE,
+        parse: parseListPageSize,
+      },
+    });
+  const setSearchKeyword = useCallback(
+    (value) => patchQuery({ keyword: (value || '').toString() }),
+    [patchQuery],
+  );
   const [searching, setSearching] = useState(false);
+  const initializedSearchRef = useRef(false);
   const [tableSorter, setTableSorter] = useState({
     columnKey: 'created_time',
     order: 'descend',
@@ -151,6 +188,13 @@ const RedemptionsTable = ({ headerMeta = null }) => {
   const [currencyIndex, setCurrencyIndex] = useState(
     buildBillingCurrencyIndex([], { placeholderCodes: ['USD', 'CNY'] })
   );
+  const batchActions = useBatchRowActions();
+  const {
+    isSelecting: batchSelectionMode,
+    selectedRowKeys,
+    setSelectedRowKeys,
+  } = batchActions;
+  const [batchRunning, setBatchRunning] = useState(false);
 
   const displayUnitOptions = useMemo(
     () => buildDisplayUnitOptions(currencyIndex, { order: 'charge-first' }),
@@ -187,43 +231,77 @@ const RedemptionsTable = ({ headerMeta = null }) => {
     }
   }, []);
 
-  const loadRedemptions = useCallback(async (page) => {
+  const loadRedemptions = useCallback(async (page, { status = 'all' } = {}) => {
     const normalizedPage = Number(page) > 0 ? Number(page) : 1;
-    const res = await API.get(`/api/v1/admin/redemption/?page=${normalizedPage}`);
-    const { success, message, data, meta } = res.data;
-    if (success) {
-      setIsSearchMode(false);
-      setTotalCount(Number(meta?.total || data?.length || 0));
-      const nextRows = (Array.isArray(data) ? data : []).map(normalizeRedemptionRow);
-      if (normalizedPage === 1) {
-        setRedemptions(nextRows);
+    try {
+      const params = new URLSearchParams();
+      params.set('page', String(normalizedPage));
+      const size = pageSizeRef.current;
+      params.set('page_size', String(size));
+      const normalizedStatus = (status || 'all').toString();
+      if (normalizedStatus !== 'all') params.set('status', normalizedStatus);
+      const res = await API.get(`/api/v1/admin/redemption/?${params.toString()}`);
+      const { success, message, data, meta } = res.data;
+      if (success) {
+        setLoadError(false);
+        setIsSearchMode(false);
+        setTotalCount(Number(meta?.total || data?.length || 0));
+        const nextRows = (Array.isArray(data) ? data : []).map(normalizeRedemptionRow);
+        if (normalizedPage === 1) {
+          setRedemptions(nextRows);
+        } else {
+          setRedemptions((prev) => writePagedRows(prev, normalizedPage, size, nextRows));
+        }
       } else {
-        setRedemptions((prev) => writePagedRows(prev, normalizedPage, ITEMS_PER_PAGE, nextRows));
+        if (normalizedPage === 1) setLoadError(true);
+        showError(message);
       }
-    } else {
-      showError(message);
+    } catch (error) {
+      if (normalizedPage === 1) setLoadError(true);
+      showError(error?.message || error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  const onPaginationChange = (e, { activePage }) => {
+  const onPaginationChange = (e, { activePage, pageSize: nextPageSize }) => {
     (async () => {
+      const size = Number(nextPageSize) > 0 ? Number(nextPageSize) : pageSize;
+      if (size !== pageSize) {
+        pageSizeRef.current = size;
+        setPageSize(size);
+        setActivePage(1);
+        patchQuery({ pageSize: size, page: 1 });
+        if (!isSearchMode) {
+          // 每页条数变了,按旧尺寸建立的行缓存已失效,重建
+          setRedemptions([]);
+          await loadRedemptions(1, { status: statusFilter });
+        }
+        return;
+      }
       const nextPage = Number(activePage) > 0 ? Number(activePage) : 1;
-      const hasLoadedPageRows = hasLoadedPagedRows(redemptions, nextPage, ITEMS_PER_PAGE);
+      const hasLoadedPageRows = hasLoadedPagedRows(redemptions, nextPage, size);
       if (!isSearchMode && !hasLoadedPageRows) {
-        await loadRedemptions(nextPage);
+        await loadRedemptions(nextPage, { status: statusFilter });
       }
       setActivePage(nextPage);
+      patchQuery({ page: nextPage });
     })();
   };
 
   useEffect(() => {
-    loadRedemptions(1)
+    setLoading(true);
+    // 首次挂载按 URL 复原页码;后续筛选变化才回到第 1 页。
+    const firstRun = !didInitListRef.current;
+    didInitListRef.current = true;
+    const startPage = firstRun ? initialListQuery.page : 1;
+    setActivePage(startPage);
+    loadRedemptions(startPage, { status: statusFilter })
       .then()
       .catch((reason) => {
         showError(reason);
       });
-  }, [loadRedemptions]);
+  }, [loadRedemptions, statusFilter, initialListQuery]);
 
   useEffect(() => {
     loadDisplayUnits().then();
@@ -252,7 +330,7 @@ const RedemptionsTable = ({ headerMeta = null }) => {
       showSuccess(t('token.messages.operation_success'));
       let redemption = res.data.data;
       let newRedemptions = [...redemptions];
-      let realIdx = (activePage - 1) * ITEMS_PER_PAGE + idx;
+      let realIdx = (activePage - 1) * pageSize + idx;
       if (action === 'delete') {
         newRedemptions[realIdx].deleted = true;
         setTotalCount((prev) => Math.max(prev - 1, 0));
@@ -268,8 +346,9 @@ const RedemptionsTable = ({ headerMeta = null }) => {
   const searchRedemptions = async () => {
     if (searchKeyword === '') {
       // if keyword is blank, load files instead.
-      await loadRedemptions(1);
+      await loadRedemptions(1, { status: statusFilter });
       setActivePage(1);
+      patchQuery({ page: 1 });
       return;
     }
     setSearching(true);
@@ -282,6 +361,7 @@ const RedemptionsTable = ({ headerMeta = null }) => {
       setTotalCount(Array.isArray(data) ? data.length : 0);
       setRedemptions((Array.isArray(data) ? data : []).map(normalizeRedemptionRow));
       setActivePage(1);
+      patchQuery({ page: 1 });
     } else {
       showError(message);
     }
@@ -291,6 +371,25 @@ const RedemptionsTable = ({ headerMeta = null }) => {
   const handleKeywordChange = async (e, { value }) => {
     setSearchKeyword(value.trim());
   };
+
+  useEffect(() => {
+    const firstRun = !initializedSearchRef.current;
+    initializedSearchRef.current = true;
+    if (firstRun && searchKeyword === '') {
+      // Initial list load is owned by the filter effect; only auto-run search
+      // on mount when a keyword was restored from the URL.
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      searchRedemptions().catch((error) => {
+        showError(error?.message || error);
+      });
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchKeyword]);
 
   const handleTableChange = (_, __, sorter) => {
     if (!sorter || Array.isArray(sorter) || !sorter.columnKey || !sorter.order) {
@@ -305,28 +404,79 @@ const RedemptionsTable = ({ headerMeta = null }) => {
 
   const refresh = async () => {
     setLoading(true);
-    await loadRedemptions(1);
+    await loadRedemptions(1, { status: statusFilter });
     setActivePage(1);
+    patchQuery({ page: 1 });
   };
 
-  const visibleRedemptionCount = redemptions.filter((row) => !row?.deleted).length;
-  const totalPages = Math.max(
-    Math.ceil((isSearchMode ? visibleRedemptionCount : totalCount) / ITEMS_PER_PAGE),
-    1,
+  // Batch enable/disable/delete by looping the per-row endpoints. No batch
+  // endpoint exists, so serialize N calls and report one aggregated toast.
+  const runBatchManage = useCallback(
+    async (action) => {
+      if (batchRunning) return;
+      const keys = selectedRowKeys
+        .map((item) => (item || '').toString().trim())
+        .filter(Boolean);
+      if (keys.length === 0) {
+        showInfo(t('redemption.batch.select_required'));
+        return;
+      }
+      setBatchRunning(true);
+      let succeeded = 0;
+      let failed = 0;
+      const failedIDs = [];
+      for (const id of keys) {
+        try {
+          let res;
+          if (action === 'delete') {
+            res = await API.delete(
+              `/api/v1/admin/redemption/${encodeURIComponent(id)}/`,
+            );
+          } else {
+            res = await API.put('/api/v1/admin/redemption/?status_only=true', {
+              id,
+              status: action === 'enable' ? 1 : 2,
+            });
+          }
+          if (res?.data?.success) succeeded += 1;
+          else {
+            failed += 1;
+            failedIDs.push(id);
+          }
+        } catch (error) {
+          failed += 1;
+          failedIDs.push(id);
+        }
+      }
+      setBatchRunning(false);
+      showSuccess(t('redemption.batch.done', { success: succeeded, failed }));
+      setSelectedRowKeys(failedIDs);
+      if (failed === 0) batchActions.exit();
+      await refresh();
+    },
+    [batchActions, batchRunning, selectedRowKeys, setSelectedRowKeys, t],
   );
+
+  const visibleRedemptionCount = redemptions.filter((row) => !row?.deleted).length;
+  const paginationTotal = isSearchMode ? visibleRedemptionCount : totalCount;
 
   return (
     <>
       <AppFilterHeader
         className='router-block-gap-md'
-        breadcrumbs={[
-          { key: 'workspace', label: t('header.admin_workspace') },
-          { key: 'business', label: t('header.operation') },
-          { key: 'redemption', label: t('header.redemption'), active: true },
-        ]}
-        title={t('header.redemption')}
-        meta={headerMeta}
-        metaClassName='router-page-header-meta-links'
+        breadcrumbs={
+          embedded
+            ? undefined
+            : [
+                { key: 'workspace', label: t('header.admin_workspace') },
+                {
+                  key: 'redemption',
+                  label: t('header.redemption'),
+                  active: true,
+                },
+              ]
+        }
+        title={embedded ? undefined : t('header.redemption')}
         actions={
           <div className='router-list-toolbar-actions'>
             <AppButton
@@ -336,38 +486,172 @@ const RedemptionsTable = ({ headerMeta = null }) => {
             >
               {t('redemption.buttons.add')}
             </AppButton>
+            {batchSelectionMode ? (
+              <>
+                <AppPopconfirm
+                  title={t('redemption.batch.confirm_enable', {
+                    count: selectedRowKeys.length,
+                  })}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  disabled={selectedRowKeys.length === 0 || batchRunning}
+                  onConfirm={() => runBatchManage('enable')}
+                >
+                  <AppButton
+                    className='router-page-button'
+                    disabled={selectedRowKeys.length === 0 || batchRunning}
+                    loading={batchRunning}
+                  >
+                    {t('redemption.batch.enable_selected', {
+                      count: selectedRowKeys.length,
+                    })}
+                  </AppButton>
+                </AppPopconfirm>
+                <AppPopconfirm
+                  title={t('redemption.batch.confirm_disable', {
+                    count: selectedRowKeys.length,
+                  })}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  disabled={selectedRowKeys.length === 0 || batchRunning}
+                  onConfirm={() => runBatchManage('disable')}
+                >
+                  <AppButton
+                    className='router-page-button'
+                    disabled={selectedRowKeys.length === 0 || batchRunning}
+                    loading={batchRunning}
+                  >
+                    {t('redemption.batch.disable_selected', {
+                      count: selectedRowKeys.length,
+                    })}
+                  </AppButton>
+                </AppPopconfirm>
+                <AppPopconfirm
+                  title={t('redemption.batch.confirm_delete', {
+                    count: selectedRowKeys.length,
+                  })}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  disabled={selectedRowKeys.length === 0 || batchRunning}
+                  onConfirm={() => runBatchManage('delete')}
+                >
+                  <AppButton
+                    className='router-page-button'
+                    color='red'
+                    disabled={selectedRowKeys.length === 0 || batchRunning}
+                    loading={batchRunning}
+                  >
+                    {t('redemption.batch.delete_selected', {
+                      count: selectedRowKeys.length,
+                    })}
+                  </AppButton>
+                </AppPopconfirm>
+                <AppButton
+                  className='router-page-button'
+                  disabled={batchRunning}
+                  onClick={batchActions.exit}
+                >
+                  {t('redemption.batch.cancel_selection')}
+                </AppButton>
+              </>
+            ) : (
+              <AppButton
+                className='router-page-button'
+                onClick={batchActions.enter}
+              >
+                {t('redemption.batch.enter_selection')}
+              </AppButton>
+            )}
             <AppButton className='router-page-button' onClick={refresh} loading={loading}>
               {t('redemption.buttons.refresh')}
             </AppButton>
           </div>
         }
         query={
-          <div className='router-list-toolbar-query'>
+          <div className='router-list-toolbar-query router-redemption-list-query'>
+            <AppSelect
+              className='router-section-select'
+              value={statusFilter}
+              onChange={(_, { value }) => patchQuery({ status: value, page: 1 })}
+              options={[
+                { value: 'all', label: t('redemption.filter.status_all') },
+                { value: '1', label: t('redemption.status.unused') },
+                { value: '2', label: t('redemption.status.disabled') },
+                { value: '3', label: t('redemption.status.used') },
+              ]}
+            />
             <AppInput
-              className='router-section-input'
+              className='router-section-input router-redemption-list-search'
               icon='search'
-              fluid
               iconPosition='left'
               placeholder={t('redemption.search')}
               value={searchKeyword}
               loading={searching}
               onChange={handleKeywordChange}
             />
+            <AppButton
+              className='router-section-button'
+              disabled={statusFilter === 'all' && searchKeyword === ''}
+              onClick={() => patchQuery({ status: 'all', keyword: '', page: 1 })}
+            >
+              {t('common.clear_filters')}
+            </AppButton>
           </div>
         }
       />
 
+      {sectionTabs}
+
       <div className='router-table-scroll-x'>
         <AppTable
-          className='router-hover-table router-list-table router-table-fit-page router-redemption-list-table'
+          className='router-hover-table router-list-table router-table-fit-page router-redemption-list-table router-table-cardify'
           pagination={false}
+          loading={loading}
+          locale={{
+            emptyText: loadError ? (
+              <AppErrorState
+                message={t('common.load_failed')}
+                onRetry={refresh}
+                retryText={t('common.retry')}
+              />
+            ) : (
+              <AppEmpty
+                action={
+                  <AppButton
+                    color='blue'
+                    onClick={() =>
+                      navigate('/admin/redemption/add', {
+                        state: { from: currentPagePath },
+                      })
+                    }
+                  >
+                    {t('redemption.buttons.add')}
+                  </AppButton>
+                }
+              >
+                {t('redemption.table.empty_cta')}
+              </AppEmpty>
+            ),
+          }}
           scroll={{ x: REDEMPTION_LIST_TABLE_MIN_WIDTH }}
           rowKey={(redemption) => redemption.id}
           onChange={handleTableChange}
+          rowSelection={
+            batchSelectionMode
+              ? {
+                  ...batchActions.tableSelection,
+                  renderCell: (_, __, ___, originNode) => (
+                    <span onClick={(event) => event.stopPropagation()}>
+                      {originNode}
+                    </span>
+                  ),
+                }
+              : undefined
+          }
           dataSource={redemptions
             .slice(
-              (activePage - 1) * ITEMS_PER_PAGE,
-              activePage * ITEMS_PER_PAGE,
+              (activePage - 1) * pageSize,
+              activePage * pageSize,
             )
             .filter((redemption) => !redemption?.deleted)}
           onRow={(redemption) => ({
@@ -380,7 +664,7 @@ const RedemptionsTable = ({ headerMeta = null }) => {
               });
             },
           })}
-          columns={[
+          columns={withCardLabels([
           {
             title: t('redemption.table.name'),
             dataIndex: 'name',
@@ -404,10 +688,30 @@ const RedemptionsTable = ({ headerMeta = null }) => {
             render: (value) => renderStatus(value, t),
           },
           {
-            title: '权益名称',
+            title: t('redemption.table.product_name'),
             key: 'product_name_snapshot',
             width: REDEMPTION_LIST_COLUMN_WIDTHS.faceValue,
-            render: (_, redemption) => redemption?.product_name_snapshot || redemption?.entitlement_product_id || '-',
+            render: (_, redemption) => {
+              const productId = redemption?.entitlement_product_id;
+              const label = redemption?.product_name_snapshot || redemption?.entitlement_product_id || '-';
+              if (!productId) {
+                return label;
+              }
+              return (
+                <button
+                  type='button'
+                  className='router-link-button router-link-inline'
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigate(`/admin/entitlement/package/detail/${encodeURIComponent(productId)}`, {
+                      state: { from: currentPagePath },
+                    });
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            },
           },
           {
             title: t('redemption.table.created_time'),
@@ -422,7 +726,7 @@ const RedemptionsTable = ({ headerMeta = null }) => {
               renderTimestamp(redemption.createdTime || redemption.created_time),
           },
           {
-            title: '过期时间',
+            title: t('redemption.table.code_expires_at'),
             dataIndex: 'code_expires_at',
             key: 'code_expires_at',
             className: 'router-table-col-datetime',
@@ -510,7 +814,7 @@ const RedemptionsTable = ({ headerMeta = null }) => {
               </div>
             ),
           },
-          ]}
+          ])}
         />
       </div>
       <div className='router-pagination-wrap'>
@@ -519,7 +823,8 @@ const RedemptionsTable = ({ headerMeta = null }) => {
           activePage={activePage}
           onPageChange={onPaginationChange}
           siblingRange={1}
-          totalPages={totalPages}
+          total={paginationTotal}
+          pageSize={pageSize}
         />
       </div>
     </>

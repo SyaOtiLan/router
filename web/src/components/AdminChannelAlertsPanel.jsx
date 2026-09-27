@@ -1,20 +1,63 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { API } from '../helpers/api';
+import { showError, showInfo, showSuccess, withCardLabels } from '../helpers';
+import useBatchRowActions from '../hooks/useBatchRowActions';
+import useUrlState, { parseListPageSize, parsePageParam } from '../hooks/useUrlState';
 import {
   AppButton,
   AppDescriptions,
   AppDrawer,
+  AppEmpty,
+  AppErrorState,
   AppFilterHeader,
   AppInput,
   AppModal,
   AppPagination,
   AppSelect,
+  AppSpin,
   AppTag,
   AppTable,
   AppTextarea,
+  chartAxisStyle,
+  chartCategoricalPalette,
+  chartGridStyle,
+  chartNeutralColor,
+  chartStatusPalette,
+  chartTooltipStyle,
 } from '../router-ui';
+
+// Type-distribution swatches use the validated categorical palette so they
+// stay in lockstep with the rest of the dashboard charts. `unknown` falls
+// back to theme-muted ink.
+const ALERT_DISTRIBUTION_COLORS = {
+  billing: chartCategoricalPalette[0],
+  circuit: chartCategoricalPalette[1],
+  model_disabled: chartCategoricalPalette[3],
+  endpoint_disabled: chartCategoricalPalette[4],
+  unknown: chartNeutralColor(),
+};
+
+const formatAlertTrendLabel = (timestamp) => {
+  if (!Number.isFinite(Number(timestamp)) || Number(timestamp) <= 0) return '';
+  const date = new Date(Number(timestamp) * 1000);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  return `${month}-${day} ${hour}:00`;
+};
 
 const ALERT_LEVEL_COLORS = {
   critical: 'red',
@@ -50,33 +93,55 @@ const formatActorTimestampLabel = (timestamp) =>
 function AdminChannelAlertsPanel() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentPagePath = `${location.pathname}${location.search}${location.hash}`;
   const [alertItems, setAlertItems] = useState([]);
   const [total, setTotal] = useState(0);
+  const [alertSummary, setAlertSummary] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [acknowledgingAlertID, setAcknowledgingAlertID] = useState('');
   const [resolvingAlertID, setResolvingAlertID] = useState('');
+  const [batchRunning, setBatchRunning] = useState(false);
+  const batchActions = useBatchRowActions();
+  const { isSelecting: isBatchSelecting, selectedCount: batchSelectedCount } = batchActions;
   const [noteModal, setNoteModal] = useState({
     open: false,
     action: '',
     alert: null,
+    alerts: null,
     note: '',
   });
   const [detailAlert, setDetailAlert] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [levelFilter, setLevelFilter] = useState('all');
-  const [timeFilter, setTimeFilter] = useState('all');
-  const [keywordInput, setKeywordInput] = useState('');
-  const [keyword, setKeyword] = useState('');
-  const [page, setPage] = useState(1);
+  const [
+    {
+      status: statusFilter,
+      type: typeFilter,
+      level: levelFilter,
+      time: timeFilter,
+      keyword,
+      pageSize,
+      page,
+    },
+    patchQuery,
+  ] = useUrlState({
+    status: { param: 'status', default: 'all' },
+    type: { param: 'type', default: 'all' },
+    level: { param: 'level', default: 'all' },
+    time: { param: 'time', default: 'all' },
+    keyword: { param: 'q', default: '' },
+    pageSize: { param: 'page_size', default: 20, parse: parseListPageSize },
+    page: { param: 'page', default: 1, parse: parsePageParam },
+  });
+  const [keywordInput, setKeywordInput] = useState(keyword);
   const [tableSorter, setTableSorter] = useState({
     columnKey: 'createdAt',
     order: 'descend',
   });
-  const pageSize = 20;
 
   const loadAlertItems = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const response = await API.get('/api/v1/admin/channel/alerts', {
         params: {
@@ -90,27 +155,67 @@ function AdminChannelAlertsPanel() {
           time: timeFilter === 'all' ? undefined : timeFilter,
         },
       });
-      const nextItems =
-        response?.data?.success === true
-          ? normalizeAlertItems(response?.data?.data?.items || [])
-          : [];
+      if (response?.data?.success !== true) {
+        // 业务失败也要提示,否则和「无告警」空态无法区分。
+        showError(
+          response?.data?.message || t('dashboard.admin.alerts.load_failed'),
+        );
+        setLoadError(true);
+        setAlertItems([]);
+        setTotal(0);
+        setAlertSummary(null);
+        return;
+      }
+      const nextItems = normalizeAlertItems(
+        response?.data?.data?.items || [],
+      );
       setAlertItems(nextItems);
       setTotal(Number(response?.data?.data?.total || 0));
+      setAlertSummary(response?.data?.data?.summary || null);
     } catch (error) {
       console.error('Failed to load channel alerts:', error);
+      showError(error?.message || t('dashboard.admin.alerts.load_failed'));
+      setLoadError(true);
       setAlertItems([]);
       setTotal(0);
+      setAlertSummary(null);
     } finally {
       setLoading(false);
     }
-  }, [keyword, levelFilter, page, pageSize, statusFilter, timeFilter, typeFilter]);
+  }, [keyword, levelFilter, page, pageSize, statusFilter, timeFilter, typeFilter, t]);
 
   useEffect(() => {
     loadAlertItems();
   }, [loadAlertItems]);
 
+  // 每 30s 静默刷新一次告警列表,免手动 F5 漏掉新事故;
+  // 正在批注/批量操作/勾选,或有单条确认解决在途时暂停,避免刷新把正在操作的行抽走。
   useEffect(() => {
-    setPage(1);
+    if (
+      noteModal.open ||
+      acknowledgingAlertID ||
+      resolvingAlertID ||
+      batchRunning ||
+      isBatchSelecting
+    ) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      loadAlertItems();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [
+    loadAlertItems,
+    noteModal.open,
+    acknowledgingAlertID,
+    resolvingAlertID,
+    batchRunning,
+    isBatchSelecting,
+  ]);
+
+  useEffect(() => {
+    patchQuery({ page: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyword, levelFilter, statusFilter, timeFilter, typeFilter]);
 
   const openNoteModal = useCallback((action, alert) => {
@@ -118,21 +223,65 @@ function AdminChannelAlertsPanel() {
       open: true,
       action,
       alert,
+      alerts: null,
       note: '',
     });
   }, []);
 
   const closeNoteModal = useCallback(() => {
-    if (acknowledgingAlertID || resolvingAlertID) {
+    if (acknowledgingAlertID || resolvingAlertID || batchRunning) {
       return;
     }
     setNoteModal({
       open: false,
       action: '',
       alert: null,
+      alerts: null,
       note: '',
     });
-  }, [acknowledgingAlertID, resolvingAlertID]);
+  }, [acknowledgingAlertID, resolvingAlertID, batchRunning]);
+
+  // 批量确认/解决:从当前勾选中筛出符合状态的告警(确认需未确认/未恢复,
+  // 解决需已确认),再打开同一备注弹窗——一条备注套用到全部选中项。
+  const openBatchNoteModal = useCallback(
+    (action) => {
+      if (action !== 'acknowledge' && action !== 'resolve') {
+        return;
+      }
+      const selected = new Set(batchActions.selectedRowKeys);
+      if (selected.size === 0) {
+        showInfo(t('dashboard.admin.alerts.batch.select_required'));
+        return;
+      }
+      const targets = alertItems.filter((item) => {
+        if (!selected.has(String(item?.id || ''))) {
+          return false;
+        }
+        const status = String(item?.status || '').trim();
+        return action === 'acknowledge'
+          ? status !== 'acknowledged' && status !== 'resolved'
+          : status === 'acknowledged';
+      });
+      if (targets.length === 0) {
+        showInfo(
+          t(
+            action === 'acknowledge'
+              ? 'dashboard.admin.alerts.batch.no_ack_target'
+              : 'dashboard.admin.alerts.batch.no_resolve_target',
+          ),
+        );
+        return;
+      }
+      setNoteModal({
+        open: true,
+        action,
+        alert: null,
+        alerts: targets,
+        note: '',
+      });
+    },
+    [alertItems, batchActions.selectedRowKeys, t],
+  );
 
   const openDetailDrawer = useCallback((alert) => {
     setDetailAlert(alert || null);
@@ -144,9 +293,72 @@ function AdminChannelAlertsPanel() {
 
   const submitNoteAction = useCallback(async () => {
     const action = String(noteModal?.action || '').trim();
-    const alert = noteModal?.alert;
     const note = String(noteModal?.note || '').trim();
-    if (!alert || (action !== 'acknowledge' && action !== 'resolve')) {
+    if (action !== 'acknowledge' && action !== 'resolve') {
+      return;
+    }
+    // 批量分支:后端无批量接口,串行循环单条 POST,末尾汇总成一条 toast。
+    if (Array.isArray(noteModal?.alerts) && noteModal.alerts.length > 0) {
+      if (batchRunning) {
+        return;
+      }
+      const endpoint =
+        action === 'acknowledge'
+          ? '/api/v1/admin/channel/alerts/acknowledge'
+          : '/api/v1/admin/channel/alerts/resolve';
+      setBatchRunning(true);
+      let successCount = 0;
+      const failures = [];
+      for (const target of noteModal.alerts) {
+        const alertID = String(target?.id || '').trim();
+        const alertType = String(target?.type || '').trim();
+        const channelID = String(target?.channel_id || target?.channelId || '').trim();
+        if (alertID === '' || alertType === '' || channelID === '') {
+          failures.push(alertID);
+          continue;
+        }
+        try {
+          const response = await API.post(endpoint, {
+            alert_type: alertType,
+            alert_key: alertID,
+            channel_id: channelID,
+            note,
+          });
+          if (response?.data?.success === true) {
+            successCount += 1;
+          } else {
+            failures.push(alertID);
+          }
+        } catch (error) {
+          console.error('Failed to batch process channel alert:', error);
+          failures.push(alertID);
+        }
+      }
+      setBatchRunning(false);
+      const failedCount = failures.length;
+      if (failedCount === 0) {
+        showSuccess(
+          t('dashboard.admin.alerts.batch.all_success', { count: successCount }),
+        );
+      } else if (successCount === 0) {
+        showError(
+          t('dashboard.admin.alerts.batch.all_failed', { count: failedCount }),
+        );
+      } else {
+        showError(
+          t('dashboard.admin.alerts.batch.partial', {
+            success: successCount,
+            failed: failedCount,
+          }),
+        );
+      }
+      setNoteModal({ open: false, action: '', alert: null, alerts: null, note: '' });
+      batchActions.exit();
+      await loadAlertItems();
+      return;
+    }
+    const alert = noteModal?.alert;
+    if (!alert) {
       return;
     }
     if (action === 'acknowledge') {
@@ -165,26 +377,20 @@ function AdminChannelAlertsPanel() {
           note,
         });
         if (response?.data?.success === true) {
-          setAlertItems((current) =>
-            current.map((item) =>
-              item.id === alertID
-                ? {
-                    ...item,
-                    status: 'acknowledged',
-                    acknowledged_at: Number(response?.data?.data?.acknowledged_at || 0),
-                    acknowledged_by: String(response?.data?.data?.acknowledged_by || ''),
-                    acknowledgedAt: Number(response?.data?.data?.acknowledged_at || 0),
-                    acknowledgedBy: String(response?.data?.data?.acknowledged_by || ''),
-                    operatorNote: String(response?.data?.data?.last_operator_note || note),
-                  }
-                : item,
-            ),
+          // Only refetch — no optimistic setAlertItems. A previous optimistic
+          // update combined with a fire-and-forget reload hid backend write
+          // failures (interface returned 200 with success=false), since the
+          // reload would happily re-overwrite the error state with stale data.
+          setNoteModal({ open: false, action: '', alert: null, alerts: null, note: '' });
+          await loadAlertItems();
+        } else {
+          showError(
+            response?.data?.message || t('dashboard.admin.alerts.acknowledge_failed'),
           );
-          setNoteModal({ open: false, action: '', alert: null, note: '' });
-          loadAlertItems();
         }
       } catch (error) {
         console.error('Failed to acknowledge channel alert:', error);
+        showError(error?.message || t('dashboard.admin.alerts.acknowledge_failed'));
       } finally {
         setAcknowledgingAlertID('');
       }
@@ -205,16 +411,22 @@ function AdminChannelAlertsPanel() {
         note,
       });
       if (response?.data?.success === true) {
-        setAlertItems((current) => current.filter((item) => item.id !== alertID));
-        setNoteModal({ open: false, action: '', alert: null, note: '' });
-        loadAlertItems();
+        // Same reasoning as acknowledge: skip the optimistic filter, only
+        // refetch on confirmed success so backend write failures surface.
+        setNoteModal({ open: false, action: '', alert: null, alerts: null, note: '' });
+        await loadAlertItems();
+      } else {
+        showError(
+          response?.data?.message || t('dashboard.admin.alerts.resolve_failed'),
+        );
       }
     } catch (error) {
       console.error('Failed to resolve channel alert:', error);
+      showError(error?.message || t('dashboard.admin.alerts.resolve_failed'));
     } finally {
       setResolvingAlertID('');
     }
-  }, [loadAlertItems, noteModal]);
+  }, [batchActions, batchRunning, loadAlertItems, noteModal]);
 
   const formatUpdatedAt = useCallback((value) => {
     if (!value) return '-';
@@ -334,8 +546,9 @@ function AdminChannelAlertsPanel() {
 
   useEffect(() => {
     if (page > totalPages) {
-      setPage(totalPages);
+      patchQuery({ page: totalPages });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, totalPages]);
 
   const statusOptions = useMemo(
@@ -396,7 +609,7 @@ function AdminChannelAlertsPanel() {
   );
 
   const alertColumns = useMemo(
-    () => [
+    () => withCardLabels([
       {
         title: t('dashboard.admin.alerts.columns.level'),
         dataIndex: 'level',
@@ -458,7 +671,9 @@ function AdminChannelAlertsPanel() {
               title={record.channelName || record.channelId || '-'}
               onClick={(event) => {
                 event.stopPropagation();
-                navigate(`/admin/channel/detail/${encodeURIComponent(record.channelId)}`);
+                navigate(`/admin/channel/detail/${encodeURIComponent(record.channelId)}`, {
+                state: { from: currentPagePath },
+              });
               }}
             >
               {record.channelName || record.channelId || '-'}
@@ -544,7 +759,7 @@ function AdminChannelAlertsPanel() {
           </div>
         ),
       },
-    ],
+    ]),
     [
       acknowledgingAlertID,
       formatUpdatedAt,
@@ -569,28 +784,35 @@ function AdminChannelAlertsPanel() {
           text: item.label,
         }))}
         value={statusFilter}
-        onChange={(e, { value }) => setStatusFilter(value)}
+        onChange={(e, { value }) => patchQuery({ status: value })}
       />
       <AppSelect
         className='router-section-dropdown'
         options={timeOptions}
         value={timeFilter}
-        onChange={(e, { value }) => setTimeFilter(value)}
+        onChange={(e, { value }) => patchQuery({ time: value })}
       />
       <AppSelect
         className='router-section-dropdown'
         options={typeOptions}
         value={typeFilter}
-        onChange={(e, { value }) => setTypeFilter(value)}
+        onChange={(e, { value }) => patchQuery({ type: value })}
       />
       <AppSelect
         className='router-section-dropdown'
         options={levelOptions}
         value={levelFilter}
-        onChange={(e, { value }) => setLevelFilter(value)}
+        onChange={(e, { value }) => patchQuery({ level: value })}
       />
     </div>
   );
+
+  const filtersActive =
+    statusFilter !== 'all' ||
+    typeFilter !== 'all' ||
+    levelFilter !== 'all' ||
+    timeFilter !== 'all' ||
+    keyword !== '';
 
   const searchControls = (
     <div className='admin-dashboard-alert-search-controls'>
@@ -601,7 +823,7 @@ function AdminChannelAlertsPanel() {
         onChange={(e, { value }) => setKeywordInput(value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
-            setKeyword(String(keywordInput || '').trim());
+            patchQuery({ keyword: String(keywordInput || '').trim() });
           }
         }}
       />
@@ -609,22 +831,71 @@ function AdminChannelAlertsPanel() {
         color='blue'
         type='button'
         className='router-page-button'
-        onClick={() => setKeyword(String(keywordInput || '').trim())}
+        onClick={() => patchQuery({ keyword: String(keywordInput || '').trim() })}
       >
         {t('dashboard.admin.alerts.filters.search.submit')}
       </AppButton>
-      {keyword ? (
+      {filtersActive ? (
         <AppButton
           type='button'
           className='router-page-button'
           onClick={() => {
             setKeywordInput('');
-            setKeyword('');
+            patchQuery({
+              status: 'all',
+              type: 'all',
+              level: 'all',
+              time: 'all',
+              keyword: '',
+            });
           }}
         >
-          {t('dashboard.admin.alerts.filters.search.reset')}
+          {t('common.clear_filters')}
         </AppButton>
       ) : null}
+      {isBatchSelecting ? (
+        <>
+          <AppButton
+            color='blue'
+            type='button'
+            className='router-page-button'
+            disabled={batchSelectedCount === 0 || batchRunning}
+            loading={batchRunning}
+            onClick={() => openBatchNoteModal('acknowledge')}
+          >
+            {t('dashboard.admin.alerts.batch.acknowledge_selected', {
+              count: batchSelectedCount,
+            })}
+          </AppButton>
+          <AppButton
+            type='button'
+            className='router-page-button'
+            disabled={batchSelectedCount === 0 || batchRunning}
+            loading={batchRunning}
+            onClick={() => openBatchNoteModal('resolve')}
+          >
+            {t('dashboard.admin.alerts.batch.resolve_selected', {
+              count: batchSelectedCount,
+            })}
+          </AppButton>
+          <AppButton
+            type='button'
+            className='router-page-button'
+            disabled={batchRunning}
+            onClick={batchActions.exit}
+          >
+            {t('dashboard.admin.alerts.batch.cancel_selection')}
+          </AppButton>
+        </>
+      ) : (
+        <AppButton
+          type='button'
+          className='router-page-button'
+          onClick={batchActions.enter}
+        >
+          {t('dashboard.admin.alerts.batch.enter_selection')}
+        </AppButton>
+      )}
     </div>
   );
 
@@ -632,6 +903,260 @@ function AdminChannelAlertsPanel() {
     page_count: displayAlertItems.length,
     total_count: total,
   });
+
+  const alertKpiCards = useMemo(() => {
+    const summary = alertSummary || {};
+    return [
+      {
+        key: 'unresolved_critical',
+        label: t('dashboard.admin.alerts.kpis.unresolved_critical'),
+        hint: t('dashboard.admin.alerts.kpis.unresolved_critical_hint'),
+        value: Number(summary.unresolved_critical || 0),
+        danger: Number(summary.unresolved_critical || 0) > 0,
+      },
+      {
+        key: 'unacknowledged',
+        label: t('dashboard.admin.alerts.kpis.unacknowledged'),
+        hint: t('dashboard.admin.alerts.kpis.unacknowledged_hint'),
+        value: Number(summary.unacknowledged || 0),
+        danger: false,
+      },
+      {
+        key: 'active_total',
+        label: t('dashboard.admin.alerts.kpis.active_total'),
+        hint: t('dashboard.admin.alerts.kpis.active_total_hint'),
+        value: Number(summary.active_total || 0),
+        danger: false,
+      },
+      {
+        key: 'resolved_24h',
+        label: t('dashboard.admin.alerts.kpis.resolved_24h'),
+        hint: t('dashboard.admin.alerts.kpis.resolved_24h_hint'),
+        value: Number(summary.resolved_24h || 0),
+        danger: false,
+      },
+      {
+        key: 'last_24h',
+        label: t('dashboard.admin.alerts.kpis.last_24h'),
+        hint: t('dashboard.admin.alerts.kpis.last_24h_hint'),
+        value: Number(summary.last_24h || 0),
+        danger: false,
+      },
+    ];
+  }, [alertSummary, t]);
+
+  const alertTypeDistribution = useMemo(() => {
+    const buckets = Array.isArray(alertSummary?.type_distribution)
+      ? alertSummary.type_distribution
+      : [];
+    const totalCount = buckets.reduce(
+      (sum, item) => sum + Number(item?.count || 0),
+      0,
+    );
+    return buckets.map((item) => {
+      const label = String(item?.label || item?.key || '').trim();
+      const count = Number(item?.count || 0);
+      return {
+        key: item?.key || label,
+        label: t(`dashboard.admin.alerts.type_labels.${label}`, {
+          defaultValue: label || '-',
+        }),
+        count,
+        percent: totalCount > 0 ? (count / totalCount) * 100 : 0,
+        color: ALERT_DISTRIBUTION_COLORS[label] || ALERT_DISTRIBUTION_COLORS.unknown,
+      };
+    });
+  }, [alertSummary, t]);
+
+  const alertChannelDistribution = useMemo(() => {
+    const buckets = Array.isArray(alertSummary?.channel_distribution)
+      ? alertSummary.channel_distribution
+      : [];
+    const maxCount = buckets.reduce(
+      (max, item) => Math.max(max, Number(item?.count || 0)),
+      0,
+    );
+    return buckets.map((item) => {
+      const count = Number(item?.count || 0);
+      return {
+        key: item?.key || item?.label,
+        label: String(item?.label || item?.key || '-').trim() || '-',
+        count,
+        percent: maxCount > 0 ? (count / maxCount) * 100 : 0,
+      };
+    });
+  }, [alertSummary]);
+
+  const alertTrendData = useMemo(() => {
+    const points = Array.isArray(alertSummary?.trend) ? alertSummary.trend : [];
+    return points.map((item) => ({
+      bucket: Number(item?.bucket || 0),
+      count: Number(item?.count || 0),
+      label: formatAlertTrendLabel(item?.bucket),
+    }));
+  }, [alertSummary]);
+
+  // Pull the active theme once per render so both Bar and Line variants of the
+  // trend chart share the same axis/tooltip styling and pick the categorical
+  // blue instead of an ad-hoc hex.
+  const trendAxisStyle = useMemo(() => chartAxisStyle(), []);
+  const trendGridStyle = useMemo(() => chartGridStyle(), []);
+  const trendTooltipStyle = useMemo(() => chartTooltipStyle(), []);
+  const trendSeriesColor = useMemo(
+    () => chartCategoricalPalette[0] || chartStatusPalette.info,
+    [],
+  );
+  const channelDistributionFill = useMemo(
+    () => chartStatusPalette.warning,
+    [],
+  );
+
+  const renderTrendChart = () => {
+    if (alertTrendData.length === 0) return null;
+    if (alertTrendData.length === 1) {
+      return (
+        <BarChart data={alertTrendData}>
+          <CartesianGrid {...trendGridStyle} />
+          <XAxis dataKey='label' {...trendAxisStyle} minTickGap={8} />
+          <YAxis {...trendAxisStyle} allowDecimals={false} />
+          <Tooltip contentStyle={trendTooltipStyle} />
+          <Bar dataKey='count' fill={trendSeriesColor} radius={[4, 4, 0, 0]} />
+        </BarChart>
+      );
+    }
+    return (
+      <LineChart data={alertTrendData}>
+        <CartesianGrid {...trendGridStyle} />
+        <XAxis dataKey='label' {...trendAxisStyle} minTickGap={8} />
+        <YAxis {...trendAxisStyle} allowDecimals={false} />
+        <Tooltip contentStyle={trendTooltipStyle} />
+        <Line
+          type='monotone'
+          dataKey='count'
+          stroke={trendSeriesColor}
+          strokeWidth={2}
+          dot={false}
+          activeDot={{ r: 4 }}
+        />
+      </LineChart>
+    );
+  };
+
+  const channelDistributionLimit =
+    Array.isArray(alertSummary?.channel_distribution) &&
+    alertSummary.channel_distribution.length > 0
+      ? alertSummary.channel_distribution.length
+      : 8;
+
+  const summaryPanel =
+    alertSummary && Number(alertSummary.total || 0) > 0 ? (
+      <div className='admin-dashboard-alert-summary'>
+        <div className='admin-dashboard-alert-kpi-grid'>
+          {alertKpiCards.map((card) => (
+            <div
+              key={card.key}
+              className={`admin-dashboard-alert-kpi-card${
+                card.danger ? ' is-danger' : ''
+              }`}
+            >
+              <div className='admin-dashboard-alert-kpi-label'>{card.label}</div>
+              <div className='admin-dashboard-alert-kpi-value'>{card.value}</div>
+              <div className='admin-dashboard-alert-kpi-hint'>{card.hint}</div>
+            </div>
+          ))}
+        </div>
+        <div className='admin-dashboard-alert-analytics'>
+          <div className='admin-dashboard-alert-analytics-card'>
+            <div className='admin-dashboard-card-title'>
+              {t('dashboard.admin.alerts.distribution.by_type')}
+            </div>
+            {alertTypeDistribution.length === 0 ? (
+              <div className='admin-dashboard-empty'>
+                {t('dashboard.admin.alerts.empty')}
+              </div>
+            ) : (
+              <div className='admin-dashboard-alert-dist-list'>
+                {alertTypeDistribution.map((item) => (
+                  <div key={item.key} className='admin-dashboard-alert-dist-row'>
+                    <span className='admin-dashboard-alert-dist-label'>
+                      {item.label}
+                    </span>
+                    <span className='admin-dashboard-alert-dist-bar'>
+                      <span
+                        className='admin-dashboard-alert-dist-bar-fill'
+                        style={{
+                          width: `${Math.max(item.percent, 4)}%`,
+                          background: item.color,
+                        }}
+                      />
+                    </span>
+                    <span className='admin-dashboard-alert-dist-count'>
+                      {item.count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className='admin-dashboard-alert-analytics-card'>
+            <div className='admin-dashboard-card-title'>
+              {t('dashboard.admin.alerts.distribution.by_channel', {
+                limit: channelDistributionLimit,
+              })}
+            </div>
+            {alertChannelDistribution.length === 0 ? (
+              <div className='admin-dashboard-empty'>
+                {t('dashboard.admin.alerts.empty')}
+              </div>
+            ) : (
+              <div className='admin-dashboard-alert-dist-list'>
+                {alertChannelDistribution.map((item) => (
+                  <div key={item.key} className='admin-dashboard-alert-dist-row'>
+                    <span
+                      className='admin-dashboard-alert-dist-label'
+                      title={item.label}
+                    >
+                      {item.label}
+                    </span>
+                    <span className='admin-dashboard-alert-dist-bar'>
+                      <span
+                        className='admin-dashboard-alert-dist-bar-fill'
+                        style={{
+                          width: `${Math.max(item.percent, 4)}%`,
+                          background: channelDistributionFill,
+                        }}
+                      />
+                    </span>
+                    <span className='admin-dashboard-alert-dist-count'>
+                      {item.count}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className='admin-dashboard-alert-analytics-card admin-dashboard-alert-analytics-trend'>
+            <div className='admin-dashboard-card-title'>
+              {t('dashboard.admin.alerts.distribution.trend_title')}
+            </div>
+            <div className='admin-dashboard-alert-dist-hint'>
+              {t('dashboard.admin.alerts.distribution.trend_hint')}
+            </div>
+            {alertTrendData.length === 0 ? (
+              <div className='admin-dashboard-empty'>
+                {t('dashboard.admin.alerts.empty')}
+              </div>
+            ) : (
+              <div className='chart-container'>
+                <ResponsiveContainer width='100%' height={200}>
+                  {renderTrendChart()}
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    ) : null;
 
   const content = (
     <div className='admin-dashboard-alerts-list'>
@@ -642,27 +1167,50 @@ function AdminChannelAlertsPanel() {
         picker={selectorControls}
         end={searchControls}
       />
+      {summaryPanel}
       {loading ? (
         <div className='admin-dashboard-empty'>{t('common.loading')}</div>
+      ) : loadError ? (
+        <AppErrorState
+          message={t('dashboard.admin.alerts.load_failed')}
+          onRetry={loadAlertItems}
+          retryText={t('common.retry')}
+        />
       ) : displayAlertItems.length === 0 ? (
-        <div className='admin-dashboard-empty'>
-          {t('dashboard.admin.alerts.empty')}
-        </div>
+        <AppEmpty>{t('dashboard.admin.alerts.empty')}</AppEmpty>
       ) : (
         <div className='router-table-scroll-x'>
-          <AppTable
-            className='router-hover-table router-list-table router-table-fit-page admin-dashboard-alert-table'
-            columns={alertColumns}
-            dataSource={sortedAlertItems}
-            pagination={false}
-            rowKey='id'
-            onChange={handleTableChange}
-            onRow={(record) => ({
-              className: 'router-row-clickable',
-              onClick: () => openDetailDrawer(record),
-            })}
-            scroll={{ x: 1040 }}
-          />
+          <AppSpin spinning={loading}>
+            <AppTable
+              className='router-hover-table router-list-table router-table-fit-page admin-dashboard-alert-table router-table-cardify'
+              columns={alertColumns}
+              dataSource={sortedAlertItems}
+              pagination={false}
+              rowKey='id'
+              onChange={handleTableChange}
+              rowSelection={
+                isBatchSelecting
+                  ? {
+                      ...batchActions.tableSelection,
+                      renderCell: (_, __, ___, originNode) => (
+                        <span onClick={(event) => event.stopPropagation()}>
+                          {originNode}
+                        </span>
+                      ),
+                    }
+                  : undefined
+              }
+              onRow={(record) => ({
+                className: isBatchSelecting
+                  ? undefined
+                  : 'router-row-clickable',
+                onClick: isBatchSelecting
+                  ? undefined
+                  : () => openDetailDrawer(record),
+              })}
+              scroll={{ x: 1040 }}
+            />
+          </AppSpin>
         </div>
       )}
       {totalPages > 1 ? (
@@ -670,11 +1218,17 @@ function AdminChannelAlertsPanel() {
           <AppPagination
             className='router-page-pagination'
             activePage={page}
-            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
             siblingRange={1}
             boundaryRange={0}
-            onPageChange={(e, { activePage }) => {
-              setPage(Number(activePage || 1));
+            onPageChange={(e, { activePage, pageSize: nextSize }) => {
+              const size = Number(nextSize) > 0 ? Number(nextSize) : pageSize;
+              if (size !== pageSize) {
+                patchQuery({ pageSize: size, page: 1 });
+                return;
+              }
+              patchQuery({ page: Number(activePage || 1) });
             }}
           />
         </div>
@@ -800,11 +1354,29 @@ function AdminChannelAlertsPanel() {
             className='router-inline-button'
             onClick={() => {
               closeDetailDrawer();
-              navigate(`/admin/channel/detail/${encodeURIComponent(detailAlert?.channelId || '')}`);
+              navigate(`/admin/channel/detail/${encodeURIComponent(detailAlert?.channelId || '')}`, {
+                state: { from: currentPagePath },
+              });
             }}
             disabled={!detailAlert?.channelId}
           >
             {t('dashboard.admin.alerts.actions.view_channel')}
+          </AppButton>
+          <AppButton
+            type='button'
+            className='router-inline-button'
+            onClick={() => {
+              closeDetailDrawer();
+              navigate(
+                `/admin/channel/detail/${encodeURIComponent(
+                  detailAlert?.channelId || '',
+                )}?tab=tests`,
+                { state: { from: currentPagePath } },
+              );
+            }}
+            disabled={!detailAlert?.channelId}
+          >
+            {t('channel.edit.detail_tabs.tests')}
           </AppButton>
           <AppButton
             color='blue'
@@ -862,7 +1434,11 @@ function AdminChannelAlertsPanel() {
       >
         <div className='router-page-stack'>
           <div className='admin-dashboard-alert-dialog-hint'>
-            {noteModal?.alert?.title || '-'}
+            {Array.isArray(noteModal?.alerts) && noteModal.alerts.length > 0
+              ? t('dashboard.admin.alerts.batch.note_hint', {
+                  count: noteModal.alerts.length,
+                })
+              : (noteModal?.alert?.title || '-')}
           </div>
           <AppTextarea
             className='router-section-input'
@@ -884,6 +1460,7 @@ function AdminChannelAlertsPanel() {
               color='blue'
               type='button'
               loading={
+                batchRunning ||
                 (noteModal.action === 'acknowledge' && acknowledgingAlertID !== '') ||
                 (noteModal.action === 'resolve' && resolvingAlertID !== '')
               }

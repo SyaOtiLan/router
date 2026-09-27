@@ -19,6 +19,8 @@ const (
 	ChannelName                 = "channel_name"
 	TokenId                     = "token_id"
 	TokenName                   = "token_name"
+	TokenRemainQuota            = "token_remain_quota"
+	TokenUnlimitedQuota         = "token_unlimited_quota"
 	EntitlementSourceType       = "entitlement_source_type"
 	EntitlementSourceId         = "entitlement_source_id"
 	EntitlementSourceName       = "entitlement_source_name"
@@ -38,4 +40,7 @@ const (
 	RelayErrorCode              = "relay_error_code"
 	RelayTermination            = "relay_termination"
 	ProviderRoutingPolicy       = "provider_routing_policy"
+	PersonalProviderID          = "personal_provider_id"
+	PersonalProviderName        = "personal_provider_name"
+	PersonalRoutePolicy         = "personal_route_policy"
 )

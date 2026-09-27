@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { API, showError, showInfo, timestamp2string } from '../../helpers';
 import {
   SupportedModelsSummary,
+  buildTopUpOrderReturnURL,
   buildTopUpReturnURL,
   useTopUpWorkspace,
 } from './shared.jsx';
@@ -14,9 +16,10 @@ import {
   isRequestQuotaPackage,
   normalizeServicePackageType,
 } from '../../helpers/package';
+import { formatPaymentAmount } from '../../helpers/render';
 
 const formatMoney = (amount, currency) =>
-  `${Number(amount || 0).toFixed(2)} ${String(currency || 'USD').toUpperCase()}`;
+  formatPaymentAmount(amount, currency || 'USD');
 
 const formatTimeValue = (value, t) => {
   const normalized = Number(value || 0);
@@ -138,6 +141,7 @@ const resolvePackagePurchaseOperation = (slotPackage, targetPackage) => {
 
 const PackagePurchasePage = () => {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const { renderDisplayAmount, createTopupOrder, previewPackagePurchase } =
     useTopUpWorkspace();
   const [packages, setPackages] = useState([]);
@@ -232,6 +236,11 @@ const PackagePurchasePage = () => {
       });
       if (created) {
         closePreviewModal();
+        // 无论是需跳转支付的订单,还是即时到账(paid/fulfilled)的套餐,
+        // 都落到承接页:承接页会确认状态并给出「下一步」引导(创建令牌/看指南)。
+        if (created && typeof created === 'object' && created.id) {
+          navigate(buildTopUpOrderReturnURL(created.id));
+        }
       }
     } finally {
       setCreatingPackageId('');
@@ -297,7 +306,7 @@ const PackagePurchasePage = () => {
                         </div>
 
                         <div className='router-package-purchase-price'>
-                          {`${item?.sale_currency || 'CNY'} ${Number(item?.sale_price ?? 0).toFixed(2)}`}
+                          {formatPaymentAmount(item?.sale_price, item?.sale_currency)}
                         </div>
 
                         <div className='router-package-purchase-meta-grid'>

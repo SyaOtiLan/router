@@ -23,15 +23,33 @@ import (
 const tokenNotFoundMessage = "令牌不存在或无权访问"
 const tokenNotFoundCode = "token_not_found"
 
+// maxPageSize 是所有列表接口 page_size 的硬上限。
+const maxPageSize = 100
+
+// resolvePageSize 解析 page_size：缺省用 config.ItemsPerPage,>100 夹到 100,<1 回退缺省。
+func resolvePageSize(c *gin.Context) int {
+	pageSize, err := strconv.Atoi(c.Query("page_size"))
+	if err != nil || pageSize < 1 {
+		return config.ItemsPerPage
+	}
+	if pageSize > maxPageSize {
+		return maxPageSize
+	}
+	return pageSize
+}
+
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetString(ctxkey.Id)
 	page, _ := strconv.Atoi(c.Query("page"))
 	if page < 1 {
 		page = 1
 	}
+	pageSize := resolvePageSize(c)
+	statusFilter, _ := strconv.Atoi(c.Query("status"))
 
+	orderBy := c.Query("order_by")
 	order := c.Query("order")
-	tokens, err := tokensvc.GetAll(userId, (page-1)*config.ItemsPerPage, config.ItemsPerPage, order)
+	tokens, err := tokensvc.GetAllFiltered(userId, (page-1)*pageSize, pageSize, orderBy, order, statusFilter)
 
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -40,8 +58,8 @@ func GetAllTokens(c *gin.Context) {
 		})
 		return
 	}
-	var total int64
-	if err := model.DB.Model(&model.Token{}).Where("user_id = ?", userId).Count(&total).Error; err != nil {
+	total, err := tokensvc.CountFiltered(userId, statusFilter)
+	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
@@ -55,7 +73,7 @@ func GetAllTokens(c *gin.Context) {
 		"meta": gin.H{
 			"total":     total,
 			"page":      page,
-			"page_size": config.ItemsPerPage,
+			"page_size": pageSize,
 		},
 	})
 	return
@@ -213,6 +231,9 @@ func validateToken(c *gin.Context, token model.Token) error {
 	if token.RemainRequestCount < 0 {
 		return fmt.Errorf("请求次数不能为负数")
 	}
+	if policy := strings.TrimSpace(token.RoutePolicy); policy != "" && !model.IsPersonalRoutePolicy(policy) {
+		return fmt.Errorf("路由策略无效")
+	}
 	if token.Subnet != nil && *token.Subnet != "" {
 		err := network.IsValidSubnets(*token.Subnet)
 		if err != nil {
@@ -240,6 +261,13 @@ func validateTokenModelEntitlement(ctx context.Context, userID string, token mod
 			continue
 		}
 		availableModels[normalizedModel] = struct{}{}
+	}
+	personalModels, err := model.ListPersonalProviderModels(normalizedUserID)
+	if err != nil {
+		return err
+	}
+	for _, modelName := range personalModels {
+		availableModels[modelName] = struct{}{}
 	}
 	if len(availableModels) == 0 {
 		return fmt.Errorf("当前账号暂无可用模型，请先购买套餐或充值后再创建令牌")
@@ -306,6 +334,7 @@ func AddToken(c *gin.Context) {
 		RemainRequestCount:    token.RemainRequestCount,
 		UnlimitedRequestCount: token.UnlimitedRequestCount,
 		Models:                token.Models,
+		RoutePolicy:           model.NormalizePersonalRoutePolicy(token.RoutePolicy),
 		Subnet:                token.Subnet,
 	}
 	err = tokensvc.Create(&cleanToken)
@@ -379,13 +408,6 @@ func UpdateToken(c *gin.Context) {
 			})
 			return
 		}
-		if cleanToken.Status == model.TokenStatusExhausted && cleanToken.RemainQuota <= 0 && !cleanToken.UnlimitedQuota {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "令牌可用额度已用尽，无法启用，请先修改令牌剩余额度，或者设置为无限额度",
-			})
-			return
-		}
 		if cleanToken.Status == model.TokenStatusExhausted && cleanToken.RemainRequestCount <= 0 && !cleanToken.UnlimitedRequestCount {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -421,6 +443,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.RemainRequestCount = token.RemainRequestCount
 		cleanToken.UnlimitedRequestCount = token.UnlimitedRequestCount
 		cleanToken.Models = token.Models
+		cleanToken.RoutePolicy = model.NormalizePersonalRoutePolicy(token.RoutePolicy)
 		cleanToken.Subnet = token.Subnet
 		cleanToken.UpdatedTime = helper.GetTimestamp()
 	}

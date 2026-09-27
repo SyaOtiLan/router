@@ -43,13 +43,17 @@ import {
   AppTextarea,
 } from '../../router-ui';
 
-const EditToken = () => {
+const EditToken = ({ admin = false } = {}) => {
   const { t } = useTranslation();
   const location = useLocation();
   const params = useParams();
   const tokenId = params.id;
   const isCreateMode = tokenId === undefined;
   const isDetailMode = !isCreateMode;
+  // Admin mode edits any user's token: the API prefix and the list fallback route
+  // swap over. The backend validates model entitlement against the token owner.
+  const apiBase = admin ? '/api/v1/admin/token' : '/api/v1/public/token';
+  const tokenListPath = admin ? '/admin/token' : '/workspace/token';
   const returnPath = (() => {
     const from = location.state?.from;
     if (typeof from !== 'string') {
@@ -81,6 +85,7 @@ const EditToken = () => {
     unlimited_request_count: true,
     used_request_count: 0,
     models: [],
+    route_policy: 'personal_first',
     subnet: '',
     status: 1,
     created_time: 0,
@@ -99,6 +104,13 @@ const EditToken = () => {
   } = inputs;
   const navigate = useNavigate();
   const allModelValues = modelOptions.map((option) => option.value);
+
+  const routePolicyOptions = [
+    { value: 'personal_first', label: '个人优先，套餐兜底' },
+    { value: 'personal_only', label: '仅个人供应商' },
+    { value: 'community_only', label: '仅社区套餐' },
+    { value: 'community_first', label: '套餐优先' },
+  ];
   const hasAvailableModels = allModelValues.length > 0;
   const formatEntitlementSourceLabel = useCallback(
     (source) => {
@@ -109,6 +121,8 @@ const EditToken = () => {
         typeLabel = t('token.edit.model_source_package');
       } else if (sourceType === 'topup' || sourceType === 'redemption') {
         typeLabel = t('token.edit.model_source_balance');
+	    } else if (sourceType === 'personal_provider') {
+	      typeLabel = t('token.edit.model_source_personal_provider');
       } else {
         return '';
       }
@@ -389,18 +403,14 @@ const EditToken = () => {
       return;
     }
     if (returnPath !== '') {
-      navigate(-1);
+      navigate(returnPath);
       return;
     }
-    navigate('/token');
+    navigate(tokenListPath);
   };
 
   const handleBack = () => {
-    if (returnPath !== '') {
-      navigate(-1);
-      return;
-    }
-    navigate('/token');
+    navigate(returnPath || tokenListPath);
   };
 
   const setExpiredTime = (month, day, hour, minute) => {
@@ -487,7 +497,7 @@ const EditToken = () => {
 
   const loadToken = useCallback(async () => {
     try {
-      let res = await API.get(`/api/v1/public/token/${tokenId}`);
+      let res = await API.get(`${apiBase}/${tokenId}`);
       const { success, message, data, code } = res.data || {};
       if (success && data) {
         syncTokenState(data);
@@ -495,14 +505,14 @@ const EditToken = () => {
         const errorMessage = message || t('token.edit.messages.load_failed');
         showError(errorMessage);
         if (code === 'token_not_found') {
-          navigate('/workspace/token', { replace: true });
+          navigate(tokenListPath, { replace: true });
         }
       }
     } catch (error) {
       showError(error.message || t('token.edit.messages.load_failed'));
     }
     setLoading(false);
-  }, [navigate, syncTokenState, t, tokenId]);
+  }, [navigate, syncTokenState, t, tokenId, apiBase, tokenListPath]);
 
   const loadAvailableModels = useCallback(async () => {
     try {
@@ -628,7 +638,7 @@ const EditToken = () => {
         showError(t('token.edit.messages.id_required'));
         return;
       }
-      res = await API.put(`/api/v1/public/token/`, {
+      res = await API.put(`${apiBase}/`, {
         ...localInputs,
         id: normalizedTokenId,
       });
@@ -884,6 +894,30 @@ const EditToken = () => {
     </div>
   );
 
+  // OpenAI-compatible gateway: the call endpoint lives on the same origin under
+  // /v1, so derive the base URL from where the console is served rather than
+  // hardcoding a domain. Pair it with the just-created key to give the user a
+  // copy-paste first request instead of leaving them with a bare token.
+  const apiBaseUrl = `${String(window.location.origin || '').replace(/\/$/, '')}/v1`;
+  const createdTokenValue = createdToken ? renderFullToken(createdToken.key) : '';
+  // Prefer the token's own first allowed model so the example is runnable as-is;
+  // fall back to a placeholder when the token is unrestricted / has none picked.
+  const exampleModel =
+    Array.isArray(selectedModels) && selectedModels.length > 0 && selectedModels[0]
+      ? selectedModels[0]
+      : '<model>';
+  const buildTokenCurl = (bearer) =>
+    [
+      `curl ${apiBaseUrl}/chat/completions \\`,
+      `  -H "Authorization: Bearer ${bearer}" \\`,
+      '  -H "Content-Type: application/json" \\',
+      `  -d '{"model": "${exampleModel}", "messages": [{"role": "user", "content": "Hello"}]}'`,
+    ].join('\n');
+  const createdTokenCurl = createdToken ? buildTokenCurl(createdTokenValue) : '';
+  // Detail mode never has the raw key (shown once at creation), so the example
+  // uses a placeholder the user swaps for their own token.
+  const detailTokenCurl = buildTokenCurl('$ROUTER_API_KEY');
+
   return (
     <div className='dashboard-container'>
       {isDetailMode ? (
@@ -945,15 +979,15 @@ const EditToken = () => {
       )}
       {isCreateMode && createdToken ? (
             <div className='router-page-stack'>
-              <AppDetailSection title='令牌已创建'>
+              <AppDetailSection title={t('token.created.title')}>
                 <div className='router-section-message'>
-                  令牌只会在创建成功后显示一次，请现在保存到你的客户端或密钥管理工具中。离开当前页面后，系统不会再次展示完整令牌。
+                  {t('token.created.hint')}
                 </div>
                 <AppFormRow className='router-token-basic-info-row'>
                   <AppField label={t('token.table.token')} readOnly>
                     <AppTextarea
                       className='router-section-input'
-                      value={renderFullToken(createdToken.key)}
+                      value={createdTokenValue}
                       readOnly
                       autoSize={{ minRows: 2, maxRows: 5 }}
                     />
@@ -963,8 +997,7 @@ const EditToken = () => {
                   <AppButton
                     className='router-page-button'
                     onClick={async () => {
-                      const rawToken = renderFullToken(createdToken.key);
-                      if (await copy(rawToken)) {
+                      if (await copy(createdTokenValue)) {
                         showSuccess(t('token.messages.copy_success'));
                         return;
                       }
@@ -973,15 +1006,78 @@ const EditToken = () => {
                   >
                     {t('token.copy_options.raw')}
                   </AppButton>
+                </AppFormActions>
+              </AppDetailSection>
+
+              <AppDetailSection title={t('token.created.usage_title')}>
+                <div className='router-section-message'>
+                  {t('token.created.usage_desc')}
+                </div>
+                <AppFormRow className='router-token-basic-info-row'>
+                  <AppField label={t('token.created.base_url_label')} readOnly>
+                    <AppInput
+                      className='router-section-input'
+                      value={apiBaseUrl}
+                      readOnly
+                    />
+                  </AppField>
+                </AppFormRow>
+                <AppFormRow className='router-token-basic-info-row'>
+                  <AppField label={t('token.created.example_label')} readOnly>
+                    <AppTextarea
+                      className='router-section-input'
+                      value={createdTokenCurl}
+                      readOnly
+                      autoSize={{ minRows: 4, maxRows: 10 }}
+                    />
+                  </AppField>
+                </AppFormRow>
+                <div className='router-form-hint'>
+                  {t('token.created.example_note')}
+                </div>
+                <AppFormActions>
                   <AppButton
                     className='router-page-button'
-                    color='blue'
-                    onClick={() => navigate('/token')}
+                    onClick={async () => {
+                      if (await copy(apiBaseUrl)) {
+                        showSuccess(t('token.messages.copy_success'));
+                        return;
+                      }
+                      showError(t('token.messages.copy_failed'));
+                    }}
                   >
-                    {t('common.back')}
+                    {t('token.created.copy_base_url')}
+                  </AppButton>
+                  <AppButton
+                    className='router-page-button'
+                    onClick={async () => {
+                      if (await copy(createdTokenCurl)) {
+                        showSuccess(t('token.messages.copy_success'));
+                        return;
+                      }
+                      showError(t('token.messages.copy_failed'));
+                    }}
+                  >
+                    {t('token.created.copy_curl')}
+                  </AppButton>
+                  <AppButton
+                    className='router-page-button'
+                    onClick={() => navigate('/workspace/service/cli-guide')}
+                  >
+                    {t('token.created.view_guide')}
                   </AppButton>
                 </AppFormActions>
               </AppDetailSection>
+
+              <AppFormActions>
+                <AppButton
+                  className='router-page-button'
+                  color='blue'
+                  onClick={() => navigate('/workspace/token')}
+                >
+                  {t('common.back')}
+                </AppButton>
+              </AppFormActions>
             </div>
       ) : isCreateMode ? (
             <div className='router-page-stack'>
@@ -1003,6 +1099,17 @@ const EditToken = () => {
                   <label>{t('token.edit.models')}</label>
                   {renderModelScopeControls(false)}
                 </div>
+                <AppFormRow>
+                  <AppField label='默认模型路由' hint='模型级规则优先于此设置'>
+                    <AppSelect
+                      className='router-section-dropdown'
+                      name='route_policy'
+                      options={routePolicyOptions}
+                      value={inputs.route_policy}
+                      onChange={handleInputChange}
+                    />
+                  </AppField>
+                </AppFormRow>
                 <AppFormRow>
                   <AppField label={t('token.edit.ip_limit')}>
                     <AppInput
@@ -1115,6 +1222,7 @@ const EditToken = () => {
               items={[
                 { key: 'basic', label: t('common.basic_info') },
                 { key: 'models', label: t('token.detail.sections.models') },
+                { key: 'usage', label: t('token.detail.sections.usage') },
               ]}
             />
           </div>
@@ -1195,6 +1303,18 @@ const EditToken = () => {
                         value={inputs.subnet}
                         autoComplete='new-password'
                         readOnly={basicReadonly}
+                      />
+                    </AppField>
+                  </AppFormRow>
+                  <AppFormRow>
+                    <AppField label='默认模型路由' hint='模型级规则优先于此设置'>
+                      <AppSelect
+                        className='router-section-dropdown'
+                        name='route_policy'
+                        options={routePolicyOptions}
+                        value={inputs.route_policy}
+                        onChange={handleInputChange}
+                        disabled={basicReadonly}
                       />
                     </AppField>
                   </AppFormRow>
@@ -1320,6 +1440,67 @@ const EditToken = () => {
               >
                   {renderModelScopeControls(modelsReadonly)}
             </AppDetailSection>
+            ) : null}
+            {activeDetailTab === 'usage' ? (
+              <AppDetailSection title={t('token.created.usage_title')}>
+                <div className='router-section-message'>
+                  {t('token.created.usage_desc')}
+                </div>
+                <AppFormRow className='router-token-basic-info-row'>
+                  <AppField label={t('token.created.base_url_label')} readOnly>
+                    <AppInput
+                      className='router-section-input'
+                      value={apiBaseUrl}
+                      readOnly
+                    />
+                  </AppField>
+                </AppFormRow>
+                <AppFormRow className='router-token-basic-info-row'>
+                  <AppField label={t('token.created.example_label')} readOnly>
+                    <AppTextarea
+                      className='router-section-input'
+                      value={detailTokenCurl}
+                      readOnly
+                      autoSize={{ minRows: 4, maxRows: 10 }}
+                    />
+                  </AppField>
+                </AppFormRow>
+                <div className='router-form-hint'>
+                  {t('token.detail.usage_key_note')}
+                </div>
+                <AppFormActions>
+                  <AppButton
+                    className='router-page-button'
+                    onClick={async () => {
+                      if (await copy(apiBaseUrl)) {
+                        showSuccess(t('token.messages.copy_success'));
+                        return;
+                      }
+                      showError(t('token.messages.copy_failed'));
+                    }}
+                  >
+                    {t('token.created.copy_base_url')}
+                  </AppButton>
+                  <AppButton
+                    className='router-page-button'
+                    onClick={async () => {
+                      if (await copy(detailTokenCurl)) {
+                        showSuccess(t('token.messages.copy_success'));
+                        return;
+                      }
+                      showError(t('token.messages.copy_failed'));
+                    }}
+                  >
+                    {t('token.created.copy_curl')}
+                  </AppButton>
+                  <AppButton
+                    className='router-page-button'
+                    onClick={() => navigate('/workspace/service/cli-guide')}
+                  >
+                    {t('token.created.view_guide')}
+                  </AppButton>
+                </AppFormActions>
+              </AppDetailSection>
             ) : null}
           </div>
         </div>

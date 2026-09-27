@@ -79,9 +79,12 @@ type Log struct {
 	BillingChargeDeltaAmount         int64   `json:"billing_charge_delta_amount" gorm:"bigint;default:0"`
 	PromptTokens                     int     `json:"prompt_tokens" gorm:"default:0"`
 	CompletionTokens                 int     `json:"completion_tokens" gorm:"default:0"`
-	ChannelId                        string  `json:"channel" gorm:"type:varchar(64);index"`
+	ChannelId                        string  `json:"channel" gorm:"column:channel_id;type:varchar(64);index"`
 	Provider                         string  `json:"provider,omitempty" gorm:"type:varchar(128);index"`
 	ChannelName                      string  `json:"channel_name,omitempty" gorm:"-"`
+	UpstreamSource                   string  `json:"upstream_source" gorm:"type:varchar(32);default:'';index"`
+	PersonalProviderId               string  `json:"personal_provider_id" gorm:"type:char(36);default:'';index"`
+	PersonalProviderName             string  `json:"personal_provider_name" gorm:"type:varchar(96);default:''"`
 	RequestModelName                 string  `json:"request_model_name" gorm:"type:varchar(191);index;default:''"`
 	ActualModelName                  string  `json:"actual_model_name" gorm:"type:varchar(191);index;default:''"`
 	UpstreamEndpoint                 string  `json:"upstream_endpoint" gorm:"type:varchar(191);index;default:''"`
@@ -112,8 +115,9 @@ const (
 )
 
 const (
-	LogBillingSourceBalance = "balance"
-	LogBillingSourcePackage = "package"
+	LogBillingSourceBalance          = "balance"
+	LogBillingSourcePackage          = "package"
+	LogBillingSourcePersonalProvider = "personal_provider"
 )
 
 func ResolveConsumeLogBillingSource(chargeUserBalance bool) string {
@@ -135,6 +139,16 @@ func ApplyConsumeLogBillingSource(log *Log, chargeUserBalance bool, packageSourc
 	log.BillingSourceID = source.ID
 	log.BillingSourceName = source.Name
 	log.BillingSourceDetail = source.Detail
+}
+
+func ApplyPersonalProviderLogBillingSource(log *Log) {
+	if log == nil {
+		return
+	}
+	log.BillingSource = LogBillingSourcePersonalProvider
+	log.BillingSourceID = ""
+	log.BillingSourceName = "未扣社区套餐"
+	log.BillingSourceDetail = ""
 }
 
 type LogBillingSourceSnapshot struct {
@@ -163,12 +177,12 @@ func RecordTestLog(ctx context.Context, log *Log) {
 	mustLogRepo().RecordTestLog(ctx, log)
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, groupID string, startIdx int, num int, channel string) ([]*Log, error) {
-	return mustLogRepo().GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, groupID, startIdx, num, channel)
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, groupID string, startIdx int, num int, channel string, orderBy string, order string) ([]*Log, error) {
+	return mustLogRepo().GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, groupID, startIdx, num, channel, orderBy, order)
 }
 
-func GetUserLogs(userId string, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int) ([]*Log, error) {
-	return mustLogRepo().GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, startIdx, num)
+func GetUserLogs(userId string, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, orderBy string, order string) ([]*Log, error) {
+	return mustLogRepo().GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, startIdx, num, orderBy, order)
 }
 
 func GetLogByID(logID string) (*Log, error) {

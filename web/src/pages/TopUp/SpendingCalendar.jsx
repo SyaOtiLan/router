@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts';
 import { API } from '../../helpers/api';
+import { showError } from '../../helpers';
 import {
   buildPublicDisplayCurrencyIndex,
   convertChargeAmountToDisplayAmount,
@@ -18,15 +19,24 @@ import {
   loadPublicDisplayCurrencyCatalog,
 } from '../../helpers/billing';
 import {
+  AppButton,
   AppSection,
   AppSegmented,
   AppToolbar,
+  chartAxisStyle,
+  chartCategoricalPalette,
+  chartGridStyle,
+  chartTooltipStyle,
 } from '../../router-ui';
 import './SpendingCalendar.css';
 
+// Series colors come from the validated categorical palette so the calendar
+// chart matches every other revenue/cost chart across the product. The two
+// hues (`tokens` purple, `cost` cyan) are the only units the calendar can be
+// shown in, so they stay fixed regardless of the data they carry.
 const chartColors = {
-  cost: '#00B5D8',
-  tokens: '#6C63FF',
+  cost: chartCategoricalPalette[4],
+  tokens: chartCategoricalPalette[3],
 };
 
 const calendarSpanDefaults = {
@@ -372,8 +382,9 @@ const SpendingCalendar = () => {
     } catch (error) {
       console.error('Failed to fetch calendar data:', error);
       setCalendarData([]);
+      showError(error?.message || t('dashboard.spending.calendar.load_failed'));
     }
-  }, [calendarGranularity]);
+  }, [calendarGranularity, t]);
 
   useEffect(() => {
     loadDisplayCurrencies().then();
@@ -398,6 +409,25 @@ const SpendingCalendar = () => {
       };
     });
   }, [calendarData, calendarGranularity, calendarUnit, toUsd]);
+
+  // Only the day view is laid out as a real weekday grid, so the "日一二…六"
+  // header lines up with the columns. Pad the front with blanks equal to the
+  // first bucket's weekday (0=Sun…6=Sat) so the earliest day sits under its
+  // actual column instead of always starting in column one.
+  const dayLeadingBlankCount = useMemo(() => {
+    if (calendarGranularity !== 'day') return 0;
+    const first = calendarBuckets[0];
+    if (!first) return 0;
+    const parsed = parseDateInput(first.label);
+    if (!parsed || Number.isNaN(parsed.getTime())) return 0;
+    return parsed.getDay();
+  }, [calendarGranularity, calendarBuckets]);
+
+  const calendarTotal = useMemo(
+    () =>
+      calendarBuckets.reduce((sum, bucket) => sum + (Number(bucket.value) || 0), 0),
+    [calendarBuckets],
+  );
 
   const calendarViewOptions = useMemo(
     () =>
@@ -451,6 +481,16 @@ const SpendingCalendar = () => {
     <AppSection
       className='dashboard-spend-card'
       title={t('dashboard.spending.calendar.title')}
+      extra={
+        <div className='dashboard-calendar-total'>
+          <span className='dashboard-calendar-total-label'>
+            {t('dashboard.spending.calendar.total_label')}
+          </span>
+          <strong className='dashboard-calendar-total-value'>
+            {formatCalendarValue(calendarTotal)}
+          </strong>
+        </div>
+      }
     >
       <AppToolbar
         className='dashboard-calendar-toolbar'
@@ -489,8 +529,10 @@ const SpendingCalendar = () => {
         <>
           {calendarGranularity === 'day' && (
             <div className='dashboard-calendar-weekdays'>
-              {['日', '一', '二', '三', '四', '五', '六'].map((label) => (
-                <div key={label} className='dashboard-calendar-weekday'>
+              {(t('dashboard.spending.calendar.weekdays', {
+                returnObjects: true,
+              }) || []).map((label, index) => (
+                <div key={`weekday-${index}`} className='dashboard-calendar-weekday'>
                   {label}
                 </div>
               ))}
@@ -503,22 +545,41 @@ const SpendingCalendar = () => {
           >
             {calendarBuckets.length === 0 ? (
               <div className='dashboard-calendar-empty'>
-                {t('dashboard.spending.calendar.empty')}
+                <div className='router-empty-cta'>
+                  <div className='router-empty-cta-text'>
+                    {t('dashboard.spending.calendar.empty')}
+                  </div>
+                  <AppButton
+                    color='blue'
+                    onClick={() => navigate('/workspace/models')}
+                  >
+                    {t('dashboard.spending.calendar.empty_cta_action')}
+                  </AppButton>
+                </div>
               </div>
             ) : (
-              calendarBuckets.map((item) => (
-                <button
-                  type='button'
-                  key={item.label}
-                  className='dashboard-calendar-cell dashboard-calendar-cell-button'
-                  onClick={() => handleCalendarBucketClick(item)}
-                >
-                  <div className='dashboard-calendar-label'>{item.label}</div>
-                  <div className='dashboard-calendar-value'>
-                    {formatCalendarValue(item.value)}
-                  </div>
-                </button>
-              ))
+              <>
+                {Array.from({ length: dayLeadingBlankCount }).map((_, index) => (
+                  <div
+                    key={`calendar-blank-${index}`}
+                    className='dashboard-calendar-cell-placeholder'
+                    aria-hidden='true'
+                  />
+                ))}
+                {calendarBuckets.map((item) => (
+                  <button
+                    type='button'
+                    key={item.label}
+                    className='dashboard-calendar-cell dashboard-calendar-cell-button'
+                    onClick={() => handleCalendarBucketClick(item)}
+                  >
+                    <div className='dashboard-calendar-label'>{item.label}</div>
+                    <div className='dashboard-calendar-value'>
+                      {formatCalendarValue(item.value)}
+                    </div>
+                  </button>
+                ))}
+              </>
             )}
           </div>
         </>
@@ -526,26 +587,15 @@ const SpendingCalendar = () => {
         <div className='chart-container'>
           <ResponsiveContainer width='100%' height={220}>
             <BarChart data={calendarBuckets}>
-              <CartesianGrid strokeDasharray='3 3' vertical={false} opacity={0.1} />
+              <CartesianGrid {...chartGridStyle()} />
               <XAxis
                 dataKey='label'
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 12, fill: '#A3AED0' }}
+                {...chartAxisStyle()}
                 minTickGap={10}
               />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 12, fill: '#A3AED0' }}
-              />
+              <YAxis {...chartAxisStyle()} />
               <Tooltip
-                contentStyle={{
-                  background: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                }}
+                {...chartTooltipStyle()}
                 formatter={(value) => formatCalendarValue(value)}
                 labelFormatter={(label) =>
                   `${t('dashboard.statistics.tooltip.date')}: ${label}`

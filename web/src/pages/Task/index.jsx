@@ -1,26 +1,46 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { API, showError, showSuccess, timestamp2string } from '../../helpers';
+import { API, showError, showInfo, showSuccess, timestamp2string } from '../../helpers';
+import useBatchRowActions from '../../hooks/useBatchRowActions';
+import useList, {
+  adaptListResponse,
+  sorterToSort,
+  sortOrderForColumn,
+} from '../../hooks/useList';
+import { parseListPageSize } from '../../hooks/useUrlState';
 import {
   TASK_LIST_COLUMN_WIDTHS,
   TASK_LIST_TABLE_MIN_WIDTH,
 } from '../../constants/tableWidthPresets';
 import {
   AppButton,
+  AppEmpty,
+  AppErrorState,
   AppFilterHeader,
-  AppFormActions,
   AppPagination,
-  AppPopover,
-  resolvePopupContainer,
-  AppSelect,
+  AppPopconfirm,
   AppTable,
   AppTableActionButton,
   AppTag,
   AppToolbar,
 } from '../../router-ui';
+import ListFilterBar from '../../components/ListFilterBar';
+import ChannelSectionTabs from '../../components/ChannelSectionTabs';
+import UserSectionTabs from '../../components/UserSectionTabs';
 
 const PAGE_SIZE = 20;
+const TASK_QUERY_KEYS = [
+  'page',
+  'page_size',
+  'order_by',
+  'order',
+  'type',
+  'status',
+  'channel_id',
+  'model',
+  'user_keyword',
+];
 export const TASK_PAGE_KIND_WORKSPACE_USER = 'workspace_user';
 export const TASK_PAGE_KIND_ADMIN_USER = 'admin_user';
 export const TASK_PAGE_KIND_ADMIN_SYSTEM = 'admin_system';
@@ -181,7 +201,7 @@ const renderTaskFilterSummary = (filterKey, filters, t, optionResolvers = {}) =>
   return value;
 };
 
-const Task = ({ pageKind: pageKindOverride = '' }) => {
+const Task = ({ pageKind: pageKindOverride = '', embedded = false }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -245,13 +265,6 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
     () => new URLSearchParams(location.search),
     [location.search],
   );
-  const [items, setItems] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(() => {
-    const parsed = Number(initialQuery.get('page') || 1);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
-  });
-  const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState(() => ({
     type: (initialQuery.get('type') || '').trim(),
     status: (initialQuery.get('status') || '').trim(),
@@ -259,6 +272,9 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
     model: (initialQuery.get('model') || '').trim(),
     user_keyword: (initialQuery.get('user_keyword') || '').trim(),
   }));
+  const [batchRunning, setBatchRunning] = useState(false);
+  const batchActions = useBatchRowActions();
+  const { isSelecting: isBatchSelecting, selectedCount: batchSelectedCount } = batchActions;
   const [activeFilterKeys, setActiveFilterKeys] = useState(() => {
     const keys = [];
     if ((initialQuery.get('type') || '').trim() !== '') {
@@ -278,19 +294,11 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
     }
     return keys;
   });
-  const [addFilterPopupOpen, setAddFilterPopupOpen] = useState(false);
-  const [draftFilterKey, setDraftFilterKey] = useState('');
-  const [draftFilterValue, setDraftFilterValue] = useState('');
   const [filterOptions, setFilterOptions] = useState({
     models: [],
     channels: [],
     users: [],
   });
-
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(total / PAGE_SIZE)),
-    [total],
-  );
 
   const taskTypeOptions = useMemo(
     () => getTaskTypeOptions(t, isUserTaskPage ? 'user' : 'admin'),
@@ -305,6 +313,86 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
     () => getTaskOptionsEndpoint(pageKind),
     [pageKind],
   );
+
+  const fetchTasks = useCallback(
+    async ({ page: reqPage, pageSize, orderBy, order }) => {
+      const enabledFilters = new Set(activeFilterKeys);
+      const res = await API.get(endpoint, {
+        params: {
+          page: reqPage,
+          page_size: pageSize,
+          order_by: orderBy || '',
+          order: order || '',
+          type: enabledFilters.has('type') ? filters.type : '',
+          status: enabledFilters.has('status') ? filters.status : '',
+          channel_id: enabledFilters.has('channel_id')
+            ? filters.channel_id.trim()
+            : '',
+          model: enabledFilters.has('model') ? filters.model.trim() : '',
+          user_keyword:
+            isAdminUserTaskPage && enabledFilters.has('user_keyword')
+              ? filters.user_keyword.trim()
+              : '',
+        },
+      });
+      const { success, message } = res.data || {};
+      if (!success) {
+        showError(message || t('task.messages.load_failed'));
+        throw new Error(message || 'load failed');
+      }
+      return adaptListResponse(res.data);
+    },
+    [
+      activeFilterKeys,
+      endpoint,
+      filters.channel_id,
+      filters.model,
+      filters.status,
+      filters.type,
+      filters.user_keyword,
+      isAdminUserTaskPage,
+      t,
+    ],
+  );
+
+  const {
+    rows: items,
+    total,
+    loading,
+    loadError,
+    page,
+    pageSize,
+    sort,
+    setPage,
+    load: loadTasks,
+    setPageSize,
+    setSort,
+  } = useList({
+    fetcher: fetchTasks,
+    pageSize: (() => {
+      const raw = initialQuery.get('page_size');
+      return raw ? parseListPageSize(raw) : PAGE_SIZE;
+    })(),
+    initialPage: (() => {
+      const parsed = Number(initialQuery.get('page') || 1);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+    })(),
+    initialSort: (() => {
+      const field = (initialQuery.get('order_by') || '').trim();
+      if (field === '') {
+        return null;
+      }
+      return { field, order: (initialQuery.get('order') || '').trim() === 'asc' ? 'asc' : 'desc' };
+    })(),
+  });
+
+  const handleTableChange = useCallback(
+    (_pagination, _filters, sorter) => {
+      setSort(sorterToSort(sorter));
+    },
+    [setSort],
+  );
+
   const conditionalFilterConfig = useMemo(() => {
     const items = [
       {
@@ -392,45 +480,40 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
     [activeFilterKeys, conditionalFilterOptions],
   );
 
-  const closeFilterDraft = useCallback(() => {
-    setAddFilterPopupOpen(false);
-    setDraftFilterKey('');
-    setDraftFilterValue('');
-  }, []);
-
-  const openFilterDraft = useCallback(
-    (filterKey) => {
-      const config = conditionalFilterConfig.find((item) => item.key === filterKey);
-      if (!config) {
-        return;
-      }
-      setDraftFilterKey(filterKey);
-      setDraftFilterValue((filters?.[filterKey] || '').toString());
-      setAddFilterPopupOpen(true);
-    },
-    [conditionalFilterConfig, filters],
+  const getTaskFilterConfig = useCallback(
+    (filterKey) =>
+      conditionalFilterConfig.find((item) => item.key === filterKey) || null,
+    [conditionalFilterConfig],
   );
 
-  const applyFilterDraft = useCallback(() => {
-    const nextFilterKey = (draftFilterKey || '').trim();
-    if (nextFilterKey === '') {
-      return;
-    }
-    const nextValue = (draftFilterValue || '').toString().trim();
-    if (nextValue === '') {
-      showError(t('task.filters.value_required'));
-      return;
-    }
-    setFilters((prev) => ({
-      ...prev,
-      [nextFilterKey]: nextValue,
-    }));
-    setActiveFilterKeys((prev) =>
-      prev.includes(nextFilterKey) ? prev : [...prev, nextFilterKey],
-    );
-    setPage(1);
-    closeFilterDraft();
-  }, [closeFilterDraft, draftFilterKey, draftFilterValue, t]);
+  const getTaskInitialDraft = useCallback(
+    (filterKey) => ({ value: (filters?.[filterKey] || '').toString() }),
+    [filters],
+  );
+
+  const applyTaskFilterDraft = useCallback(
+    (filterKey, draft) => {
+      const nextFilterKey = (filterKey || '').trim();
+      if (nextFilterKey === '') {
+        return false;
+      }
+      const nextValue = (draft?.value || '').toString().trim();
+      if (nextValue === '') {
+        showError(t('task.filters.value_required'));
+        return false;
+      }
+      setFilters((prev) => ({
+        ...prev,
+        [nextFilterKey]: nextValue,
+      }));
+      setActiveFilterKeys((prev) =>
+        prev.includes(nextFilterKey) ? prev : [...prev, nextFilterKey],
+      );
+      setPage(1);
+      return true;
+    },
+    [setPage, t],
+  );
 
   const removeConditionalFilter = useCallback((filterKey) => {
     setActiveFilterKeys((prev) => prev.filter((item) => item !== filterKey));
@@ -486,64 +569,24 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
     }
   }, [optionsEndpoint, t]);
 
-  const loadTasks = useCallback(
-    async (targetPage = 1) => {
-      setLoading(true);
-      try {
-        const enabledFilters = new Set(activeFilterKeys);
-        const res = await API.get(endpoint, {
-          params: {
-            page: targetPage,
-            page_size: PAGE_SIZE,
-            type: enabledFilters.has('type') ? filters.type : '',
-            status: enabledFilters.has('status') ? filters.status : '',
-            channel_id: enabledFilters.has('channel_id')
-              ? filters.channel_id.trim()
-              : '',
-            model: enabledFilters.has('model') ? filters.model.trim() : '',
-            user_keyword:
-              isAdminUserTaskPage && enabledFilters.has('user_keyword')
-                ? filters.user_keyword.trim()
-                : '',
-          },
-        });
-        const { success, message, data } = res.data || {};
-        if (!success) {
-          showError(message || t('task.messages.load_failed'));
-          return;
-        }
-        setItems(Array.isArray(data?.items) ? data.items : []);
-        setTotal(Number(data?.total || 0));
-        setPage(Number(data?.page || targetPage || 1));
-      } catch (error) {
-        showError(error?.message || t('task.messages.load_failed'));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      activeFilterKeys,
-      endpoint,
-      filters.channel_id,
-      filters.model,
-      filters.status,
-      filters.type,
-      filters.user_keyword,
-      isAdminUserTaskPage,
-      t,
-    ],
-  );
-
+  // Reload page 1 whenever the request shape (filters / endpoint) changes.
+  // `loadTasks` (useList.load) is stable, so `fetchTasks` is the real trigger.
   useEffect(() => {
-    loadTasks(1).then();
-  }, [loadTasks]);
+    loadTasks(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchTasks]);
 
   useEffect(() => {
     loadFilterOptions().then();
   }, [loadFilterOptions]);
 
   useEffect(() => {
-    const query = new URLSearchParams();
+    // Task can be embedded in a domain shell such as
+    // /admin/user?tab=tasks. Only replace task-owned query keys; rebuilding
+    // the entire query would erase the host tab and immediately return users
+    // to the shell default view.
+    const query = new URLSearchParams(location.search);
+    TASK_QUERY_KEYS.forEach((key) => query.delete(key));
     if (page > 1) {
       query.set('page', String(page));
     }
@@ -569,6 +612,13 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
       filters.channel_id.trim()
     ) {
       query.set('channel_id', filters.channel_id.trim());
+    }
+    if (sort?.field) {
+      query.set('order_by', sort.field);
+      query.set('order', sort.order === 'asc' ? 'asc' : 'desc');
+    }
+    if (Number(pageSize) !== PAGE_SIZE) {
+      query.set('page_size', String(pageSize));
     }
     const nextSearch = query.toString();
     const currentSearch = location.search.startsWith('?')
@@ -597,6 +647,8 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
     location.pathname,
     navigate,
     page,
+    pageSize,
+    sort,
     taskPageNavState,
   ]);
 
@@ -641,13 +693,8 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
       }));
       setActiveFilterKeys((prev) => prev.filter((item) => item !== 'type'));
     }
-    if (draftFilterKey !== '' && !allowedFilterKeys.has(draftFilterKey)) {
-      closeFilterDraft();
-    }
   }, [
-    closeFilterDraft,
     conditionalFilterConfig,
-    draftFilterKey,
     filters.channel_id,
     filters.type,
     filters.user_keyword,
@@ -666,7 +713,7 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
       loadTasks(page).then();
     }, 2500);
     return () => window.clearInterval(timer);
-  }, [items, loadTasks, page]);
+  }, [batchRunning, isBatchSelecting, items, loadTasks, page]);
 
   const handleRetryTask = async (taskId) => {
     try {
@@ -697,6 +744,72 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
       showError(error?.message || t('task.messages.cancel_failed'));
     }
   };
+
+  // 批量重试/取消:后端无批量接口,沿用 ChannelsTable/告警面板的「串行循环+聚合
+  // toast」模式;仅系统任务页启用,用户任务不可触发(per-row 已被隐藏)。
+  const runBatchTaskAction = useCallback(
+    async (action) => {
+      if (batchRunning) return;
+      if (action !== 'retry' && action !== 'cancel') return;
+      if (!isSystemTaskPage) return;
+      const selected = new Set(batchActions.selectedRowKeys);
+      const targets = items.filter((item) => {
+        const id = getTaskId(item);
+        if (!selected.has(id)) return false;
+        const status = normalizeTaskStatus(item?.status);
+        return action === 'retry'
+          ? status === 'failed' || status === 'canceled'
+          : status === 'pending' || status === 'running';
+      });
+      if (targets.length === 0) {
+        showInfo(t(`task.batch.no_${action}_target`));
+        return;
+      }
+      const endpoint =
+        action === 'retry'
+          ? (id) => `/api/v1/admin/tasks/${id}/retry`
+          : (id) => `/api/v1/admin/tasks/${id}/cancel`;
+      setBatchRunning(true);
+      let successCount = 0;
+      const failures = [];
+      for (const item of targets) {
+        const id = getTaskId(item);
+        try {
+          const res = await API.post(endpoint(id));
+          if (res?.data?.success) {
+            successCount += 1;
+          } else {
+            failures.push(id);
+          }
+        } catch (error) {
+          console.error(`Failed to batch ${action} task:`, error);
+          failures.push(id);
+        }
+      }
+      setBatchRunning(false);
+      const failedCount = failures.length;
+      if (failedCount === 0) {
+        showSuccess(
+          t(`task.batch.all_success_${action}`, { count: successCount }),
+        );
+      } else if (successCount === 0) {
+        showError(
+          t(`task.batch.all_failed_${action}`, { count: failedCount }),
+        );
+      } else {
+        showError(
+          t('task.batch.partial', {
+            action: t(`task.batch.action_${action}`),
+            success: successCount,
+            failed: failedCount,
+          }),
+        );
+      }
+      batchActions.exit();
+      loadTasks(page).then();
+    },
+    [batchActions, batchRunning, isSystemTaskPage, items, loadTasks, page, t],
+  );
 
   const handleDownloadTaskArtifact = useCallback(
     async (item) => {
@@ -841,14 +954,12 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
   const rootBreadcrumbs = isSystemTaskPage
     ? [
         { key: 'workspace', label: t('header.admin_workspace') },
-        { key: 'resource', label: t('header.model') },
         { key: 'channel', label: t('header.channel') },
         { key: 'task', label: pageTitle, active: true },
       ]
     : isAdminPage
       ? [
           { key: 'workspace', label: t('header.admin_workspace') },
-          { key: 'operation', label: t('header.operation') },
           { key: 'task', label: pageTitle, active: true },
         ]
       : [
@@ -858,7 +969,7 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
         ];
 
   return (
-    <div className='dashboard-container'>
+    <div className={embedded ? '' : 'dashboard-container'}>
       {returnPath !== '' ? (
         <AppFilterHeader
           breadcrumbs={
@@ -908,164 +1019,46 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
         />
       ) : null}
       <AppFilterHeader
-            breadcrumbs={returnPath === '' ? rootBreadcrumbs : undefined}
-            title={returnPath === '' ? pageTitle : undefined}
+            breadcrumbs={returnPath === '' && !embedded ? rootBreadcrumbs : undefined}
+            title={returnPath === '' && !embedded ? pageTitle : undefined}
             titleClassName='router-ui-section-title'
-            picker={
-              <AppPopover
-                open={addFilterPopupOpen}
-                trigger='click'
-                placement='bottomLeft'
-                onOpenChange={(open) => {
-                  if (!open) {
-                    closeFilterDraft();
-                  }
-                }}
-                content={
-                  <div className='router-log-filter-picker'>
-                    <div className='router-log-filter-picker-options'>
-                      {availableConditionalFilterOptions.map((item) => (
-                        <AppButton
-                          key={item.value}
-                          type='button'
-                          className='router-inline-button'
-                          color={draftFilterKey === item.value ? 'blue' : undefined}
-                          onClick={() => openFilterDraft(item.value)}
-                        >
-                          {item.text}
-                        </AppButton>
-                      ))}
-                    </div>
-                    {draftFilterKey !== '' && (
-                      <div className='router-log-filter-editor'>
-                        <div className='router-log-filter-editor-title'>
-                          {
-                            conditionalFilterConfig.find(
-                              (item) => item.key === draftFilterKey,
-                            )?.label
-                          }
-                        </div>
-                        {conditionalFilterConfig.find(
-                          (item) => item.key === draftFilterKey,
-                        )?.type === 'select' ? (
-                          <AppSelect
-                            className='router-section-dropdown router-log-filter-select'
-                            fluid
-                            search
-                            clearable
-                            getPopupContainer={resolvePopupContainer}
-                            options={
-                              conditionalFilterConfig.find(
-                                (item) => item.key === draftFilterKey,
-                              )?.options || []
-                            }
-                            value={draftFilterValue}
-                            onChange={(e, { value }) =>
-                              setDraftFilterValue(value ? String(value) : '')
-                            }
-                          />
-                        ) : (
-                          <input
-                            className='router-log-filter-editor-input'
-                            type='text'
-                            value={draftFilterValue}
-                            placeholder={
-                              conditionalFilterConfig.find(
-                                (item) => item.key === draftFilterKey,
-                              )?.placeholder || ''
-                            }
-                            onChange={(e) =>
-                              setDraftFilterValue(e.target.value)
-                            }
-                          />
-                        )}
-                        <AppFormActions className='router-log-filter-editor-actions'>
-                          <AppButton
-                            type='button'
-                            className='router-inline-button'
-                            onClick={closeFilterDraft}
-                          >
-                            {t('common.cancel')}
-                          </AppButton>
-                          <AppButton
-                            type='button'
-                            className='router-inline-button'
-                            color='blue'
-                            onClick={applyFilterDraft}
-                          >
-                            {t('common.confirm')}
-                          </AppButton>
-                        </AppFormActions>
-                      </div>
-                    )}
-                  </div>
-                }
-              >
-                <AppButton
-                  type='button'
-                  className='router-page-button'
-                  disabled={availableConditionalFilterOptions.length === 0}
-                  onClick={() => setAddFilterPopupOpen(true)}
-                >
-                  {t('task.filters.add')}
-                </AppButton>
-              </AppPopover>
-            }
             query={
-              <>
-              <div className='router-log-query-box router-log-query-box-inline'>
-                <div className='router-log-query-fields'>
-                  {visibleFilterConfig.length === 0 ? (
-                    <div className='router-log-filter-chip router-log-filter-chip-static'>
-                      <span className='router-log-filter-chip-label'>
-                        {t('task.filters.none')}
-                      </span>
-                    </div>
-                  ) : (
-                    visibleFilterConfig.map((item) => (
-                      <div
-                        key={item.key}
-                        className='router-log-filter-chip router-log-filter-chip-static'
-                      >
-                        <span className='router-log-filter-chip-label'>
-                          {item.label}
-                        </span>
-                        <span className='router-log-filter-chip-value'>
-                          {renderTaskFilterSummary(item.key, filters, t, {
-                            type: resolveTypeLabel,
-                            status: resolveStatusLabel,
-                            model: (value) =>
-                              resolveFilterOptionLabel('model', value),
-                            channel_id: (value) =>
-                              resolveFilterOptionLabel('channel_id', value),
-                            user_keyword: (value) =>
-                              resolveFilterOptionLabel('user_keyword', value),
-                          })}
-                        </span>
-                        <button
-                          type='button'
-                          className='router-log-filter-chip-remove'
-                          onClick={() => removeConditionalFilter(item.key)}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-              <AppButton
-                type='button'
-                className='router-page-button router-log-query-button'
-                onClick={() => loadTasks(page)}
-                loading={loading}
-              >
-                {t('task.buttons.query')}
-              </AppButton>
-              </>
+              <ListFilterBar
+                availableOptions={availableConditionalFilterOptions}
+                visibleFilters={visibleFilterConfig}
+                getFilterConfig={getTaskFilterConfig}
+                getInitialDraft={getTaskInitialDraft}
+                onApplyDraft={applyTaskFilterDraft}
+                onRemoveFilter={removeConditionalFilter}
+                renderSummary={(key) =>
+                  renderTaskFilterSummary(key, filters, t, {
+                    type: resolveTypeLabel,
+                    status: resolveStatusLabel,
+                    model: (value) => resolveFilterOptionLabel('model', value),
+                    channel_id: (value) =>
+                      resolveFilterOptionLabel('channel_id', value),
+                    user_keyword: (value) =>
+                      resolveFilterOptionLabel('user_keyword', value),
+                  })
+                }
+                onQuery={() => loadTasks(page)}
+                queryLoading={loading}
+                addButtonText={t('task.filters.add')}
+                addButtonClassName='router-page-button'
+                queryButtonText={t('task.buttons.query')}
+                queryButtonClassName='router-page-button router-log-query-button'
+                emptyChipText={t('task.filters.none')}
+              />
             }
             endClassName='router-log-query-wrap'
       />
+
+      {isSystemTaskPage && returnPath === '' && !embedded ? (
+        <ChannelSectionTabs active='tasks' />
+      ) : null}
+      {isAdminUserTaskPage && returnPath === '' && !embedded ? (
+        <UserSectionTabs active='tasks' />
+      ) : null}
 
       <div className='router-table-scroll-x'>
         <AppTable
@@ -1074,22 +1067,53 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
               scroll={{ x: TASK_LIST_TABLE_MIN_WIDTH }}
               rowKey={(item) => getTaskId(item)}
               dataSource={items}
-              locale={{ emptyText: loading ? t('common.loading') : t('task.empty') }}
+              onChange={handleTableChange}
+              rowSelection={
+                isSystemTaskPage && isBatchSelecting
+                  ? {
+                      ...batchActions.tableSelection,
+                      renderCell: (_, __, ___, originNode) => (
+                        <span
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {originNode}
+                        </span>
+                      ),
+                    }
+                  : undefined
+              }
+              locale={{
+                emptyText: loading ? (
+                  t('common.loading')
+                ) : loadError ? (
+                  <AppErrorState
+                    message={t('common.load_failed')}
+                    onRetry={() => loadTasks(page)}
+                    retryText={t('common.retry')}
+                  />
+                ) : (
+                  <AppEmpty>{t('task.empty')}</AppEmpty>
+                ),
+              }}
               onRow={(item) => {
                 const taskId = getTaskId(item);
                 return {
-                  className: 'router-row-clickable',
-                  onClick: () =>
-                    navigate(`${detailBasePath}/${taskId}`, {
-                      state: {
-                        from: currentPagePath,
-                        fromLabel: pageTitle,
-                        contextType,
-                        contextLabel,
-                        originPath: returnPath,
-                        originLabel: contextLabel || returnLabel,
-                      },
-                    }),
+                  className: isBatchSelecting
+                    ? undefined
+                    : 'router-row-clickable',
+                  onClick: isBatchSelecting
+                    ? undefined
+                    : () =>
+                        navigate(`${detailBasePath}/${taskId}`, {
+                          state: {
+                            from: currentPagePath,
+                            fromLabel: pageTitle,
+                            contextType,
+                            contextLabel,
+                            originPath: returnPath,
+                            originLabel: contextLabel || returnLabel,
+                          },
+                        }),
                 };
               }}
               columns={[
@@ -1149,6 +1173,8 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
                 key: 'created_at',
                 className: 'router-table-col-datetime',
                 width: TASK_LIST_COLUMN_WIDTHS.createdAt,
+                sorter: true,
+                sortOrder: sortOrderForColumn(sort, 'created_at'),
                 render: (value) => (value ? timestamp2string(value) : '-'),
               },
               {
@@ -1255,18 +1281,96 @@ const Task = ({ pageKind: pageKindOverride = '' }) => {
                     </span>
                   }
                   end={
-                    <AppPagination
+                    <div className='router-task-footer-actions'>
+                      {isSystemTaskPage ? (
+                        isBatchSelecting ? (
+                          <>
+                            <AppPopconfirm
+                              title={t('task.batch.confirm_retry', {
+                                count: batchSelectedCount,
+                              })}
+                              okText={t('common.confirm')}
+                              cancelText={t('common.cancel')}
+                              disabled={
+                                batchSelectedCount === 0 || batchRunning
+                              }
+                              onConfirm={() => runBatchTaskAction('retry')}
+                            >
+                              <AppButton
+                                className='router-page-button'
+                                color='blue'
+                                disabled={
+                                  batchSelectedCount === 0 || batchRunning
+                                }
+                                loading={batchRunning}
+                              >
+                                {t('task.batch.retry_selected', {
+                                  count: batchSelectedCount,
+                                })}
+                              </AppButton>
+                            </AppPopconfirm>
+                            <AppPopconfirm
+                              title={t('task.batch.confirm_cancel', {
+                                count: batchSelectedCount,
+                              })}
+                              okText={t('common.confirm')}
+                              cancelText={t('common.cancel')}
+                              disabled={
+                                batchSelectedCount === 0 || batchRunning
+                              }
+                              onConfirm={() => runBatchTaskAction('cancel')}
+                            >
+                              <AppButton
+                                className='router-page-button'
+                                color='red'
+                                disabled={
+                                  batchSelectedCount === 0 || batchRunning
+                                }
+                                loading={batchRunning}
+                              >
+                                {t('task.batch.cancel_selected', {
+                                  count: batchSelectedCount,
+                                })}
+                              </AppButton>
+                            </AppPopconfirm>
+                            <AppButton
+                              className='router-page-button'
+                              disabled={batchRunning}
+                              onClick={batchActions.exit}
+                            >
+                              {t('task.batch.cancel_selection')}
+                            </AppButton>
+                          </>
+                        ) : (
+                          <AppButton
+                            className='router-page-button'
+                            disabled={batchRunning || loading}
+                            onClick={batchActions.enter}
+                          >
+                            {t('task.batch.enter_selection')}
+                          </AppButton>
+                        )
+                      ) : null}
+                      <AppPagination
                       className='router-page-pagination'
                       activePage={page}
-                      totalPages={totalPages}
+                      total={total}
+                      pageSize={pageSize}
                       siblingRange={1}
                       boundaryRange={0}
-                      onPageChange={(e, { activePage }) => {
+                      onPageChange={(e, { activePage, pageSize: nextSize }) => {
+                        const size = Number(nextSize) > 0 ? Number(nextSize) : pageSize;
+                        if (size !== pageSize) {
+                          // Page-size change reloads page 1; URL effect mirrors it.
+                          setPageSize(size);
+                          return;
+                        }
                         const nextPage = Number(activePage || 1);
                         setPage(nextPage);
                         loadTasks(nextPage).then();
                       }}
                     />
+                    </div>
                   }
                 />
               )}

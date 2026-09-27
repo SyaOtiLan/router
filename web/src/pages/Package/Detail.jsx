@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { API, showError, showInfo, showSuccess, timestamp2string } from '../../helpers';
 import {
   buildBillingCurrencyIndex,
@@ -233,6 +233,15 @@ const normalizeModels = (models) =>
 const PackageDetail = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnPath = useMemo(() => {
+    const from = location.state?.from;
+    if (typeof from !== 'string') {
+      return '';
+    }
+    const normalized = from.trim();
+    return normalized.startsWith('/') ? normalized : '';
+  }, [location.state]);
   const { id } = useParams();
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState(null);
@@ -1108,11 +1117,10 @@ const PackageDetail = () => {
       <AppFilterHeader
         breadcrumbs={[
           { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'model', label: t('header.model') },
           {
             key: 'entitlement',
             label: t('header.entitlement'),
-            onClick: () => navigate('/admin/entitlement'),
+            onClick: () => navigate(returnPath || '/admin/entitlement'),
           },
           { key: 'package-current', label: product?.id || normalizedId || '-', active: true },
         ]}
@@ -1185,11 +1193,32 @@ const PackageDetail = () => {
                             <AppInput className='router-section-input' value={detail?.name || '-'} readOnly />
                           </AppField>
                           <AppField label={t('package_manage.table.group')} readOnly>
-                            <AppInput
-                              className='router-section-input'
-                              value={detail?.group_name || detail?.group_id || '-'}
-                              readOnly
-                            />
+                            {detail?.group_id ? (
+                              <button
+                                type='button'
+                                className='router-link-button router-link-inline'
+                                onClick={() =>
+                                  navigate(
+                                    `/admin/group/detail/${encodeURIComponent(
+                                      detail.group_id,
+                                    )}`,
+                                    {
+                                      state: {
+                                        from: `${location.pathname}${location.search}`,
+                                      },
+                                    },
+                                  )
+                                }
+                              >
+                                {detail?.group_name || detail?.group_id}
+                              </button>
+                            ) : (
+                              <AppInput
+                                className='router-section-input'
+                                value={detail?.group_name || detail?.group_id || '-'}
+                                readOnly
+                              />
+                            )}
                           </AppField>
                         </AppFormRow>
                         <AppFormRow>
@@ -1454,7 +1483,29 @@ const PackageDetail = () => {
                                           title: t('user.table.username'),
                                           dataIndex: 'name',
                                           key: 'name',
-                                          render: (value) => value || '-',
+                                          render: (value, row) =>
+                                            row?.id ? (
+                                              <button
+                                                type='button'
+                                                className='router-link-button router-link-inline'
+                                                onClick={() =>
+                                                  navigate(
+                                                    `/admin/user/detail/${encodeURIComponent(
+                                                      row.id,
+                                                    )}`,
+                                                    {
+                                                      state: {
+                                                        from: `${location.pathname}${location.search}`,
+                                                      },
+                                                    },
+                                                  )
+                                                }
+                                              >
+                                                {value || row.id}
+                                              </button>
+                                            ) : (
+                                              value || '-'
+                                            ),
                                         },
                                         {
                                           title: t('user.table.wallet'),

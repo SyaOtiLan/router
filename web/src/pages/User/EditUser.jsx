@@ -15,6 +15,8 @@ import {
 } from '../../helpers/billing';
 import UnitDropdown from '../../components/UnitDropdown';
 import BusinessRecordsTable from '../../components/BusinessRecordsTable';
+import TokensTable from '../../components/TokensTable';
+import CopyButton from '../../components/CopyButton';
 import {
   AppButton,
   AppCompact,
@@ -27,6 +29,7 @@ import {
   AppInputNumber,
   AppModal,
   AppPagination,
+  AppPopconfirm,
   AppSelect,
   AppTable,
   AppTabs,
@@ -35,6 +38,7 @@ import {
 } from '../../router-ui';
 import {
   formatAmountWithUnit,
+  formatIdentifierPreview,
 } from '../../helpers/render';
 import {
   formatRequestCount,
@@ -381,6 +385,8 @@ const UserDetail = () => {
     created_at: 0,
     updated_at: 0,
   });
+  const [rolePopOpen, setRolePopOpen] = useState(false);
+  const [pendingRole, setPendingRole] = useState(null);
   const [basicEditInputs, setBasicEditInputs] = useState({
     username: '',
     email: '',
@@ -468,7 +474,7 @@ const UserDetail = () => {
   }, [t, userId]);
 
   const loadBalanceLots = useCallback(
-    async ({ silent = false, page = balanceLotsPage } = {}) => {
+    async ({ silent = false, page = balanceLotsPage, pageSize = balanceLotsPageSize } = {}) => {
       const normalizedUserId = (userId || '').toString().trim();
       if (normalizedUserId === '') {
         setBalanceLots([]);
@@ -476,6 +482,7 @@ const UserDetail = () => {
         return;
       }
       const nextPage = Math.max(1, Number(page || 1) || 1);
+      const nextPageSize = Math.max(1, Number(pageSize || BALANCE_LOT_PAGE_SIZE) || BALANCE_LOT_PAGE_SIZE);
       if (!silent) {
         setBalanceLotsLoading(true);
       }
@@ -485,7 +492,7 @@ const UserDetail = () => {
           {
             params: {
               page: nextPage,
-              page_size: BALANCE_LOT_PAGE_SIZE,
+              page_size: nextPageSize,
               source_type: (balanceLotFilters.source_type || '').toString().trim() || undefined,
               status: (balanceLotFilters.status || '').toString().trim() || undefined,
               positive_only: balanceLotFilters.positive_only !== false,
@@ -519,6 +526,7 @@ const UserDetail = () => {
     },
     [
       balanceLotsPage,
+      balanceLotsPageSize,
       balanceLotFilters.positive_only,
       balanceLotFilters.source_type,
       balanceLotFilters.status,
@@ -781,53 +789,84 @@ const UserDetail = () => {
     }
   }, [balanceLotTotalPages, balanceLotsPage]);
 
+  const commitRoleChange = useCallback(async () => {
+    if (!persistedUsername || pendingRole == null) {
+      setRolePopOpen(false);
+      setPendingRole(null);
+      return;
+    }
+    const action = Number(pendingRole) === 10 ? 'promote' : 'demote';
+    setActionLoading(action);
+    try {
+      const res = await API.post('/api/v1/admin/user/manage', {
+        username: persistedUsername,
+        action,
+      });
+      const { success, message } = res.data || {};
+      if (!success) {
+        showError(message);
+        return;
+      }
+      showSuccess(t('user.messages.operation_success'));
+      await loadUser();
+    } catch (error) {
+      showError(error?.message || error);
+    } finally {
+      setActionLoading('');
+      setRolePopOpen(false);
+      setPendingRole(null);
+    }
+  }, [loadUser, pendingRole, persistedUsername, t]);
+
   const roleControl = useMemo(() => {
     return (
-      <AppSelect
-        className='router-section-input'
-        options={ROLE_OPTIONS(t)}
-        value={Number(inputs.role || 1)}
-        disabled={!canManageRole || loading || actionLoading !== '' || editSection !== ''}
-        onChange={(e, { value }) => {
-          const nextRole = Number(value);
-          if (!Number.isFinite(nextRole) || nextRole === Number(inputs.role)) {
-            return;
+      <AppPopconfirm
+        open={rolePopOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setRolePopOpen(false);
+            setPendingRole(null);
           }
-          const action = nextRole === 10 ? 'promote' : 'demote';
-          if (!persistedUsername || actionLoading !== '') {
-            return;
-          }
-          setActionLoading(action);
-          API.post('/api/v1/admin/user/manage', {
-            username: persistedUsername,
-            action,
-          })
-            .then((res) => {
-              const { success, message } = res.data || {};
-              if (!success) {
-                showError(message);
-                return;
-              }
-              showSuccess(t('user.messages.operation_success'));
-              return loadUser();
-            })
-            .catch((error) => {
-              showError(error?.message || error);
-            })
-            .finally(() => {
-              setActionLoading('');
-            });
         }}
-      />
+        title={
+          Number(pendingRole) === 10
+            ? t('user.edit.role.confirm_promote')
+            : t('user.edit.role.confirm_demote')
+        }
+        okText={t('user.edit.role.confirm_action')}
+        cancelText={t('user.edit.role.cancel_action')}
+        okButtonProps={{ danger: true }}
+        onConfirm={commitRoleChange}
+      >
+        <AppSelect
+          className='router-section-input'
+          options={ROLE_OPTIONS(t)}
+          value={Number(inputs.role || 1)}
+          disabled={!canManageRole || loading || actionLoading !== '' || editSection !== ''}
+          onChange={(e, { value }) => {
+            const nextRole = Number(value);
+            if (!Number.isFinite(nextRole) || nextRole === Number(inputs.role)) {
+              return;
+            }
+            if (!persistedUsername || actionLoading !== '') {
+              return;
+            }
+            setPendingRole(nextRole);
+            setRolePopOpen(true);
+          }}
+        />
+      </AppPopconfirm>
     );
   }, [
     actionLoading,
     canManageRole,
+    commitRoleChange,
     editSection,
     inputs.role,
-    loadUser,
     loading,
+    pendingRole,
     persistedUsername,
+    rolePopOpen,
     t,
   ]);
 
@@ -925,11 +964,7 @@ const UserDetail = () => {
   }, [basicEditInputs.email, basicEditInputs.username, inputs.group, updateUser]);
 
   const backToList = useCallback(() => {
-    if (returnPath !== '') {
-      navigate(-1);
-      return;
-    }
-    navigate('/admin/user');
+    navigate(returnPath || '/admin/user');
   }, [navigate, returnPath]);
 
   const refreshBalanceSection = useCallback(async () => {
@@ -1099,10 +1134,12 @@ const UserDetail = () => {
   );
 
   const renderReadonlyMetaField = useCallback(
-    ({ label, value, action = null }) => (
+    ({ label, value, title = '', action = null }) => (
       <AppField className='router-section-input' label={label} readOnly>
         <div className='router-inline-meta-card'>
-          <div className='router-inline-meta-value'>{value}</div>
+          <div className='router-inline-meta-value' title={title || undefined}>
+            {value}
+          </div>
           {action ? <div className='router-inline-meta-action'>{action}</div> : null}
         </div>
       </AppField>
@@ -1186,6 +1223,11 @@ const UserDetail = () => {
       label: t('topup.payment_history.title'),
       disabled: editSection !== '' && activeDetailTab !== 'records',
     },
+    {
+      key: 'tokens',
+      label: t('user.detail.tokens_title'),
+      disabled: editSection !== '' && activeDetailTab !== 'tokens',
+    },
   ];
 
   return (
@@ -1193,7 +1235,6 @@ const UserDetail = () => {
       <AppFilterHeader
         breadcrumbs={[
           { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'business', label: t('header.operation') },
           {
             key: 'user-list',
             label: t('header.user'),
@@ -1257,11 +1298,16 @@ const UserDetail = () => {
               >
                 <AppFormRow>
                   <AppField label={t('user.detail.user_id')} readOnly>
-                    <AppInput
-                      className='router-section-input router-machine-input'
-                      value={readOnlyValue(userId)}
-                      readOnly
-                    />
+                    <div className='router-action-group-tight'>
+                      <AppInput
+                        className='router-section-input router-machine-input'
+                        value={readOnlyValue(userId)}
+                        readOnly
+                      />
+                      {userId ? (
+                        <CopyButton value={userId} size='small' basic />
+                      ) : null}
+                    </div>
                   </AppField>
                 </AppFormRow>
 
@@ -1320,11 +1366,25 @@ const UserDetail = () => {
                   })}
                   {renderReadonlyMetaField({
                     label: t('user.table.wallet_identity'),
-                    value: readOnlyValue(inputs.wallet_identity_did),
+                    value: formatIdentifierPreview(inputs.wallet_identity_did, 18, 8) || '-',
+                    title: inputs.wallet_identity_did,
+                    action: inputs.wallet_identity_did ? (
+                      <CopyButton
+                        value={inputs.wallet_identity_did}
+                        iconOnly
+                      />
+                    ) : null,
                   })}
                   {renderReadonlyMetaField({
-                    label: t('user.table.wallet'),
-                    value: readOnlyValue(inputs.wallet_address),
+                    label: t('user.table.wallet_address'),
+                    value: formatIdentifierPreview(inputs.wallet_address, 10, 8) || '-',
+                    title: inputs.wallet_address,
+                    action: inputs.wallet_address ? (
+                      <CopyButton
+                        value={inputs.wallet_address}
+                        iconOnly
+                      />
+                    ) : null,
                   })}
                 </AppFormRow>
 
@@ -1377,6 +1437,28 @@ const UserDetail = () => {
                       const usage = item?.usage || null;
                       const groupLabel =
                         readOnlyValue(item?.group_name || item?.group_id);
+                      const groupId = (item?.group_id || '').toString().trim();
+                      const packageId = (item?.package_id || '').toString().trim();
+                      const linkState = {
+                        from: `${location.pathname}${location.search}`,
+                      };
+                      const renderGroupLink = () =>
+                        groupId ? (
+                          <button
+                            type='button'
+                            className='router-link-button router-link-inline'
+                            onClick={() =>
+                              navigate(
+                                `/admin/group/detail/${encodeURIComponent(groupId)}`,
+                                { state: linkState },
+                              )
+                            }
+                          >
+                            {groupLabel}
+                          </button>
+                        ) : (
+                          groupLabel
+                        );
                       return (
                         <div
                           key={item.id || item.package_id}
@@ -1385,10 +1467,31 @@ const UserDetail = () => {
                           <div className='router-package-purchase-card-header'>
                             <div>
                               <div className='router-package-purchase-card-title'>
-                                {readOnlyValue(item?.package_name || item?.package_id)}
+                                {packageId ? (
+                                  <button
+                                    type='button'
+                                    className='router-link-button router-link-inline'
+                                    onClick={() =>
+                                      navigate(
+                                        `/admin/entitlement/package/detail/${encodeURIComponent(
+                                          packageId,
+                                        )}`,
+                                        { state: linkState },
+                                      )
+                                    }
+                                  >
+                                    {readOnlyValue(
+                                      item?.package_name || item?.package_id,
+                                    )}
+                                  </button>
+                                ) : (
+                                  readOnlyValue(
+                                    item?.package_name || item?.package_id,
+                                  )
+                                )}
                               </div>
                               <div className='router-text-muted router-package-purchase-description'>
-                                {groupLabel}
+                                {renderGroupLink()}
                               </div>
                             </div>
                             {renderPackageStatusLabel(item?.status, t)}
@@ -1399,7 +1502,7 @@ const UserDetail = () => {
                                 {t('user.detail.package_group')}
                               </div>
                               <div className='router-current-package-info-value'>
-                                {groupLabel}
+                                {renderGroupLink()}
                               </div>
                             </div>
                             <div className='router-current-package-info-card'>
@@ -1711,8 +1814,18 @@ const UserDetail = () => {
                       <div className='router-pagination-wrap'>
                         <AppPagination
                           activePage={balanceLotsPage}
-                          totalPages={balanceLotTotalPages}
-                          onPageChange={(event, { activePage }) => setBalanceLotsPage(activePage)}
+                          total={balanceLotsTotal}
+                          pageSize={balanceLotsPageSize}
+                          onPageChange={(event, { activePage, pageSize: nextSize }) => {
+                            const size = Number(nextSize) > 0 ? Number(nextSize) : balanceLotsPageSize;
+                            if (size !== balanceLotsPageSize) {
+                              // 改每页条数:回第 1 页,[loadBalanceLots] effect 会按新尺寸重载。
+                              setBalanceLotsPageSize(size);
+                              setBalanceLotsPage(1);
+                              return;
+                            }
+                            setBalanceLotsPage(activePage);
+                          }}
                         />
                       </div>
                     ) : null}
@@ -1742,6 +1855,14 @@ const UserDetail = () => {
                     return `/admin/user/detail/${encodeURIComponent(userId)}/payment/${encodeURIComponent(paymentID)}`;
                   }}
                 />
+              </AppDetailSection>
+              ) : null}
+
+              {activeDetailTab === 'tokens' ? (
+              <AppDetailSection
+                title={t('user.detail.tokens_title')}
+              >
+                <TokensTable admin embedded userId={userId} />
               </AppDetailSection>
               ) : null}
         </div>

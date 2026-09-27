@@ -2,11 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { API, showError, timestamp2string } from '../../helpers';
+import CopyButton from '../../components/CopyButton';
+import { formatPaymentAmount } from '../../helpers/render';
 import {
   AppButton,
   AppDetailSection,
+  AppErrorState,
   AppFilterHeader,
   AppIcon,
+  AppSkeleton,
   AppTag,
 } from '../../router-ui';
 
@@ -131,14 +135,14 @@ const renderReconcileStage = (row, t) => {
 
 const formatAmount = (row) =>
   Number(row?.amount || 0) > 0
-    ? `${readOnlyText(row?.currency || 'CNY')} ${Number(row?.amount || 0).toFixed(2)}`
+    ? formatPaymentAmount(row?.amount, row?.currency)
     : '-';
 
 const resolveListPath = (stateFrom, currentPath = '') => {
   const normalizedCurrentPath = (currentPath || '').toString().trim();
   if (typeof stateFrom !== 'string') {
     if (normalizedCurrentPath.startsWith('/admin/entitlement/payments/')) {
-      return '/admin/entitlement/payments';
+      return '/admin/entitlement?tab=records';
     }
     return '/admin/user';
   }
@@ -154,12 +158,12 @@ const resolveListPath = (stateFrom, currentPath = '') => {
     }
   }
   if (normalized.startsWith('/admin/entitlement/payments/')) {
-    return '/admin/entitlement/payments';
+    return '/admin/entitlement?tab=records';
   }
   if (normalized.startsWith('/admin/entitlement/topup/payment/')) {
     return '/admin/user';
   }
-  if (normalized === '/admin/entitlement/payments') {
+  if (normalized === '/admin/entitlement?tab=records') {
     return normalized;
   }
   return normalized || '/admin/user';
@@ -174,6 +178,7 @@ const PaymentRecordDetail = () => {
   const isPurchaseDetail = location.pathname.startsWith('/admin/entitlement/payments/');
   const [productKind, setProductKind] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [order, setOrder] = useState(null);
 
@@ -186,8 +191,8 @@ const PaymentRecordDetail = () => {
     if (fromUserDetail) {
       return t('topup.payment_history.title');
     }
-    if (listPath.startsWith('/admin/entitlement/payments')) {
-      return '支付记录';
+    if (listPath.startsWith('/admin/entitlement?tab=records')) {
+      return t('flow.records.purchase_title');
     }
     return t('flow.topup_reconcile.title');
   }, [fromUserDetail, listPath, t]);
@@ -195,10 +200,6 @@ const PaymentRecordDetail = () => {
     if (fromUserDetail) {
       return [
         { key: 'admin', label: t('header.admin_workspace') },
-        {
-          key: 'operation',
-          label: t('header.operation'),
-        },
         {
           key: 'user-list',
           label: t('header.user'),
@@ -225,7 +226,6 @@ const PaymentRecordDetail = () => {
     }
     return [
       { key: 'admin', label: t('header.admin_workspace') },
-      { key: 'model', label: t('header.model') },
       {
         key: 'entitlement',
         label: t('header.entitlement'),
@@ -256,9 +256,11 @@ const PaymentRecordDetail = () => {
       const res = await API.get(endpoint);
       const { success, message, data } = res.data || {};
       if (!success) {
+        setLoadError(true);
         showError(message || t('flow.topup_reconcile.detail.messages.load_failed'));
         return;
       }
+      setLoadError(false);
       if (isPurchaseDetail) {
         setProductKind((data?.product_kind || '').toString());
         setOrder(data?.record || null);
@@ -267,6 +269,7 @@ const PaymentRecordDetail = () => {
         setOrder(data || null);
       }
     } catch (error) {
+      setLoadError(true);
       showError(error?.message || t('flow.topup_reconcile.detail.messages.load_failed'));
     } finally {
       setLoading(false);
@@ -322,23 +325,48 @@ const PaymentRecordDetail = () => {
         >
 
               {loading ? (
-                <div className='router-empty-cell'>{t('common.loading')}</div>
+                <AppSkeleton variant='text' />
+              ) : loadError && !order ? (
+                <AppErrorState
+                  message={t('flow.topup_reconcile.detail.messages.load_failed')}
+                  onRetry={loadDetail}
+                  retryText={t('common.retry')}
+                />
               ) : (
                 <div className='router-detail-grid'>
                   <div className='router-detail-item'>
                     <div className='router-detail-label'>
                       {t('flow.topup_reconcile.detail.fields.id')}
                     </div>
-                    <pre className='router-detail-value router-monospace-value'>
-                      {readOnlyText(order?.id || id)}
-                    </pre>
+                    <div className='router-action-group-tight'>
+                      <pre className='router-detail-value router-monospace-value'>
+                        {readOnlyText(order?.id || id)}
+                      </pre>
+                      {order?.id || id ? (
+                        <CopyButton value={order?.id || id} size='small' basic />
+                      ) : null}
+                    </div>
                   </div>
                   <div className='router-detail-item'>
                     <div className='router-detail-label'>
                       {t('flow.topup_reconcile.detail.fields.user')}
                     </div>
                     <pre className='router-detail-value'>
-                      {readOnlyText(order?.username || order?.user_id)}
+                      {order?.user_id ? (
+                        <button
+                          type='button'
+                          className='router-link-button router-link-inline'
+                          onClick={() =>
+                            navigate(`/admin/user/detail/${encodeURIComponent(order.user_id)}`, {
+                              state: { from: `${location.pathname}${location.search}` },
+                            })
+                          }
+                        >
+                          {readOnlyText(order?.username || order?.user_id)}
+                        </button>
+                      ) : (
+                        readOnlyText(order?.username || order?.user_id)
+                      )}
                     </pre>
                   </div>
                   <div className='router-detail-item'>
@@ -346,7 +374,7 @@ const PaymentRecordDetail = () => {
                       {t('flow.topup_reconcile.detail.fields.business_type')}
                     </div>
                     <pre className='router-detail-value'>
-                      {productKind === 'subscription' ? '订阅' : formatTopupBusinessType(order?.business_type, t)}
+                      {productKind === 'subscription' ? t('flow.purchase.kind.subscription') : formatTopupBusinessType(order?.business_type, t)}
                     </pre>
                   </div>
                   <div className='router-detail-item'>
@@ -380,11 +408,33 @@ const PaymentRecordDetail = () => {
                   </div>
                   <div className='router-detail-item'>
                     <div className='router-detail-label'>{t('flow.topup_reconcile.detail.fields.transaction_id')}</div>
-                    <pre className='router-detail-value router-monospace-value'>{readOnlyText(order?.transaction_id)}</pre>
+                    <div className='router-action-group-tight'>
+                      <pre className='router-detail-value router-monospace-value'>
+                        {readOnlyText(order?.transaction_id)}
+                      </pre>
+                      {order?.transaction_id ? (
+                        <CopyButton
+                          value={order.transaction_id}
+                          size='small'
+                          basic
+                        />
+                      ) : null}
+                    </div>
                   </div>
                   <div className='router-detail-item'>
                     <div className='router-detail-label'>{t('flow.topup_reconcile.detail.fields.provider_order_id')}</div>
-                    <pre className='router-detail-value router-monospace-value'>{readOnlyText(order?.provider_order_id)}</pre>
+                    <div className='router-action-group-tight'>
+                      <pre className='router-detail-value router-monospace-value'>
+                        {readOnlyText(order?.provider_order_id)}
+                      </pre>
+                      {order?.provider_order_id ? (
+                        <CopyButton
+                          value={order.provider_order_id}
+                          size='small'
+                          basic
+                        />
+                      ) : null}
+                    </div>
                   </div>
                   <div className='router-detail-item'>
                     <div className='router-detail-label'>

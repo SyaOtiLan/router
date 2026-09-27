@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useLocation,
@@ -7,25 +7,22 @@ import {
   useSearchParams,
 } from 'react-router-dom';
 import { API, showError, showSuccess, timestamp2string } from '../../helpers';
+import CopyButton from '../../components/CopyButton';
 import {
   buildBillingCurrencyIndex,
   buildFaceValueUnitOptions,
 } from '../../helpers/billing';
 import {
-  formatAmountWithUnit,
-  formatCreditAmount,
-} from '../../helpers/render';
-import UnitDropdown from '../../components/UnitDropdown';
-import {
   AppButton,
-  AppCompact,
   AppDetailSection,
+  AppEmpty,
+  AppErrorState,
   AppField,
   AppFilterHeader,
   AppFormRow,
   AppInput,
-  AppInputNumber,
   AppSelect,
+  AppSkeleton,
   AppTag,
 } from '../../router-ui';
 
@@ -67,23 +64,6 @@ const toGroupOptions = (rows) =>
     text: item.name || item.id,
   }));
 
-const computeChargePreview = (amountValue, unitValue, currencyIndex) => {
-  const amount = Number.parseFloat(`${amountValue ?? ''}`);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return 0;
-  }
-  const normalizedUnit = (unitValue || YYC_UNIT).toString().trim().toUpperCase();
-  if (normalizedUnit === YYC_UNIT) {
-    return Math.round(amount);
-  }
-  const currency = currencyIndex[normalizedUnit];
-  const rate = Number(currency?.charge_rate || 0);
-  if (!Number.isFinite(rate) || rate <= 0) {
-    return 0;
-  }
-  return Math.round(amount * rate);
-};
-
 const normalizeFaceValueAmount = (data) => `${Number(data?.quota_amount_snapshot || 0)}`;
 const normalizeFaceValueUnit = (data) => (data?.quota_currency_snapshot || 'YYC').toString().trim().toUpperCase();
 
@@ -96,8 +76,6 @@ const formatGroupLabel = (data) => {
   return id || '-';
 };
 
-const resolveCreditedChargeAmount = (data) => Number(data?.quota_amount_snapshot || 0);
-
 const RedemptionDetail = () => {
   const { t } = useTranslation();
   const location = useLocation();
@@ -105,6 +83,7 @@ const RedemptionDetail = () => {
   const { id } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [redemption, setRedemption] = useState(null);
@@ -128,11 +107,6 @@ const RedemptionDetail = () => {
     const normalized = from.trim();
     return normalized.startsWith('/') ? normalized : '';
   })();
-
-  const chargePreview = useMemo(
-    () => computeChargePreview(inputs.face_value_amount, inputs.face_value_unit, currencyIndex),
-    [currencyIndex, inputs.face_value_amount, inputs.face_value_unit]
-  );
 
   const syncInputs = useCallback((data) => {
     setInputs({
@@ -207,13 +181,16 @@ const RedemptionDetail = () => {
       const res = await API.get(`/api/v1/admin/redemption/${id}`);
       const { success, message, data } = res.data;
       if (success) {
+        setLoadError(false);
         setRedemption(data);
         syncInputs(data);
         await loadOptions(normalizeFaceValueUnit(data));
       } else {
+        setLoadError(true);
         showError(message);
       }
     } catch (error) {
+      setLoadError(true);
       showError(error.message);
     } finally {
       setLoading(false);
@@ -232,10 +209,6 @@ const RedemptionDetail = () => {
   const submitEdit = async () => {
     if ((inputs.name || '').trim() === '') {
       showError(t('redemption.messages.name_required'));
-      return;
-    }
-    if ((inputs.group_id || '').trim() === '') {
-      showError(t('redemption.messages.group_required'));
       return;
     }
     setSaving(true);
@@ -270,11 +243,7 @@ const RedemptionDetail = () => {
     t('redemption.table.not_redeemed');
 
   const handleBack = () => {
-    if (returnPath !== '') {
-      navigate(-1);
-      return;
-    }
-    navigate('/admin/redemption');
+    navigate(returnPath || '/admin/redemption');
   };
 
   return (
@@ -282,7 +251,6 @@ const RedemptionDetail = () => {
       <AppFilterHeader
         breadcrumbs={[
           { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'business', label: t('header.operation') },
           {
             key: 'redemption-list',
             label: t('header.redemption'),
@@ -297,6 +265,17 @@ const RedemptionDetail = () => {
         title={t('redemption.detail.title')}
       />
       <div className='router-entity-detail-page'>
+        {loading && !redemption ? (
+          <AppSkeleton variant='text' />
+        ) : loadError && !redemption ? (
+          <AppErrorState
+            message={t('common.load_failed')}
+            onRetry={loadRedemption}
+            retryText={t('common.retry')}
+          />
+        ) : !redemption ? (
+          <AppEmpty>{t('common.no_data')}</AppEmpty>
+        ) : (
         <AppDetailSection
           title={t('common.basic_info')}
           headerStart={redemption ? renderStatus(redemption.status, t) : null}
@@ -333,7 +312,7 @@ const RedemptionDetail = () => {
           bodyClassName='router-page-stack'
         >
                 <AppFormRow>
-                  {isEditing && false ? (
+                  {isEditing ? (
                     <AppField label={t('redemption.edit.name')}>
                       <AppInput
                         className='router-section-input'
@@ -353,15 +332,24 @@ const RedemptionDetail = () => {
                     </AppField>
                   )}
                   <AppField label={t('redemption.detail.code')} readOnly>
-                    <AppInput
-                      className='router-section-input router-machine-input'
-                      value={redemption?.code || ''}
-                      readOnly
-                    />
+                    <div className='router-action-group-tight'>
+                      <AppInput
+                        className='router-section-input router-machine-input'
+                        value={redemption?.code || ''}
+                        readOnly
+                      />
+                      {redemption?.code ? (
+                        <CopyButton
+                          value={redemption.code}
+                          size='small'
+                          basic
+                        />
+                      ) : null}
+                    </div>
                   </AppField>
                 </AppFormRow>
                 <AppFormRow>
-                  <AppField label='权益名称' readOnly>
+                  <AppField label={t('redemption.table.product_name')} readOnly>
                     <button
                       type='button'
                       className='router-link-button router-link-inline'
@@ -374,114 +362,54 @@ const RedemptionDetail = () => {
                     </button>
                   </AppField>
                   <AppField label={t('redemption.detail.redeemed_by')} readOnly>
+                    {redemption?.redeemed_by_user_id ? (
+                      <button
+                        type='button'
+                        className='router-link-button router-link-inline'
+                        onClick={() =>
+                          navigate(
+                            `/admin/user/detail/${encodeURIComponent(
+                              redemption.redeemed_by_user_id,
+                            )}`,
+                            {
+                              state: {
+                                from: `${location.pathname}${location.search}`,
+                              },
+                            },
+                          )
+                        }
+                      >
+                        {redeemedByValue}
+                      </button>
+                    ) : (
+                      <AppInput
+                        className='router-section-input'
+                        value={redeemedByValue}
+                        readOnly
+                      />
+                    )}
+                  </AppField>
+                </AppFormRow>
+	                <AppFormRow>
+                  <AppField label={t('redemption.detail.code_validity_days')} readOnly>
                     <AppInput
                       className='router-section-input'
-                      value={redeemedByValue}
+                      value={Number(redemption?.code_validity_days || 0) > 0
+                        ? `${Number(redemption?.code_validity_days || 0)} ${t('common.day')}`
+                        : t('common.never')}
                       readOnly
                     />
                   </AppField>
-                </AppFormRow>
-	                {false && <AppFormRow>
-	                  {isEditing && false ? (
-	                    <AppField label={t('redemption.edit.face_value_amount')}>
-	                      <AppCompact className='router-section-input-with-unit' block>
-	                        <AppInputNumber
-	                          className='router-section-input router-section-input-with-unit-field'
-	                          fluid
-	                          name='face_value_amount'
-	                          value={inputs.face_value_amount}
-	                          placeholder={t('redemption.edit.face_value_amount_placeholder')}
-	                          onChange={handleInputChange}
-	                          step={inputs.face_value_unit === YYC_UNIT ? 1 : 0.01}
-	                          min={0}
-	                        />
-	                        <UnitDropdown
-	                          variant='inputUnit'
-	                          name='face_value_unit'
-	                          placeholder={t('redemption.edit.face_value_unit_placeholder')}
-	                          options={unitOptions}
-	                          value={inputs.face_value_unit}
-	                          onChange={handleInputChange}
-	                        />
-	                      </AppCompact>
-	                    </AppField>
-	                  ) : (
-                    <AppField label='权益额度' readOnly>
-                      <AppInput
-                        className='router-section-input'
-                        value={formatAmountWithUnit(
-                          redemption?.quota_amount_snapshot || 0,
-                          redemption?.quota_currency_snapshot || 'YYC'
-                        )}
-                        readOnly
-                      />
-                    </AppField>
-                  )}
-	                  {isEditing && !redemption?.entitlement_product_id ? (
-	                    <AppField label={t('redemption.edit.credit_yyc')} readOnly>
-	                      <AppInput
-	                        className='router-section-input'
-	                        value={chargePreview > 0 ? formatCreditAmount(chargePreview) : '-'}
-	                        readOnly
-	                      />
-	                    </AppField>
-	                  ) : (
-	                    <AppField label={t('redemption.table.credited_yyc')} readOnly>
-	                      <AppInput
-	                        className='router-section-input'
-                        value={redemption ? formatCreditAmount(resolveCreditedChargeAmount(redemption)) : ''}
-                        readOnly
-                      />
-                    </AppField>
-                  )}
-	                </AppFormRow>}
-	                <AppFormRow>
-                  {isEditing && false ? (
-                    <AppField label={t('redemption.edit.code_validity_days')}>
-                      <AppInputNumber
-                        className='router-section-input'
-                        fluid
-                        name='code_validity_days'
-                        value={inputs.code_validity_days}
-                        placeholder={t('redemption.edit.code_validity_days_placeholder')}
-                        onChange={handleInputChange}
-                        min={0}
-                      />
-                    </AppField>
-                  ) : (
-                    <AppField label={t('redemption.detail.code_validity_days')} readOnly>
-                      <AppInput
-                        className='router-section-input'
-                        value={Number(redemption?.code_validity_days || 0) > 0
-                          ? `${Number(redemption?.code_validity_days || 0)} ${t('common.day')}`
-                          : t('common.never')}
-                        readOnly
-                      />
-                    </AppField>
-                  )}
-                  {isEditing ? (
-                    <AppField label={t('redemption.edit.credit_validity_days')}>
-                      <AppInputNumber
-                        className='router-section-input'
-                        fluid
-                        name='credit_validity_days'
-                        value={inputs.credit_validity_days}
-                        placeholder={t('redemption.edit.credit_validity_days_placeholder')}
-                        onChange={handleInputChange}
-                        min={0}
-                      />
-                    </AppField>
-                  ) : (
-                    <AppField label={t('redemption.detail.credit_validity_days')} readOnly>
-                      <AppInput
-                        className='router-section-input'
-                        value={Number(redemption?.validity_days_snapshot || 0) > 0
-                          ? `${Number(redemption?.validity_days_snapshot || 0)} ${t('common.day')}`
-                          : t('common.never')}
-                        readOnly
-                      />
-                    </AppField>
-                  )}
+                  {/* credit_validity_days 后端更新接口不支持写入,故仅只读展示 */}
+                  <AppField label={t('redemption.detail.credit_validity_days')} readOnly>
+                    <AppInput
+                      className='router-section-input'
+                      value={Number(redemption?.validity_days_snapshot || 0) > 0
+                        ? `${Number(redemption?.validity_days_snapshot || 0)} ${t('common.day')}`
+                        : t('common.never')}
+                      readOnly
+                    />
+                  </AppField>
                 </AppFormRow>
                 <AppFormRow>
                   <AppField label={t('redemption.table.created_time')} readOnly>
@@ -508,7 +436,7 @@ const RedemptionDetail = () => {
                   </AppField>
                 </AppFormRow>
                 <AppFormRow>
-                  <AppField label='过期时间' readOnly>
+                  <AppField label={t('redemption.detail.code_expires_at')} readOnly>
                     <AppInput
                       className='router-section-input'
                       value={
@@ -532,6 +460,7 @@ const RedemptionDetail = () => {
                   </AppField>
                 </AppFormRow>
         </AppDetailSection>
+        )}
       </div>
     </div>
   );

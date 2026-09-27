@@ -7,6 +7,7 @@
 | 文件 | 用途 | 典型场景 |
 | --- | --- | --- |
 | `scripts/starter.sh` | 启动、停止或重启 Router 进程 | 本地运行、部署后拉起服务、进程重启 |
+| `scripts/service.sh` / `scripts/service.ps1` | 安装、卸载和管理系统服务 | macOS、Linux、Windows 服务化运行 |
 | `scripts/deploy.sh` | 构建前后端产物并替换部署目录中的 Router 二进制 | 单机部署或手工发布 |
 | `scripts/package.sh` | 基于 Git tag 或远端 `main` 生成发布包 | 制作可分发版本包 |
 | `scripts/health-check.sh` | 检查 Router 存活、就绪和依赖状态 | 部署验收、启动等待、故障排查 |
@@ -34,6 +35,40 @@ scripts/starter.sh restart
 - 启动 `build/router`，并将进程号写入 `run/router.pid`。
 - 日志目录默认是 `logs/`，可通过 `ROUTER_LOG_DIR` 覆盖。
 - 服务端口默认是 `3011`，可通过 `ROUTER_PORT` 覆盖。
+
+### `scripts/service.sh` / `scripts/service.ps1`
+
+用于将当前 Router 安装为系统级自动启动任务，或按需卸载。运行前需要先生成 `build/router`（Windows 为 `build/router.exe`）。
+
+macOS 和 Ubuntu/Linux：
+
+```bash
+scripts/service.sh install
+scripts/service.sh status
+scripts/service.sh restart
+scripts/service.sh stop
+scripts/service.sh uninstall
+```
+
+macOS 使用当前用户的 `launchd` LaunchAgent；Linux 使用 `systemd`，安装和卸载时可能需要 `sudo`。Windows PowerShell：
+
+```powershell
+.\scripts\service.ps1 install
+.\scripts\service.ps1 status
+.\scripts\service.ps1 restart
+.\scripts\service.ps1 stop
+.\scripts\service.ps1 uninstall
+```
+
+Windows 使用任务计划程序托管控制台进程，并配置登录时启动和失败重试。它不依赖额外的 NSSM 或第三方服务包装器。
+
+可通过环境变量覆盖默认配置：
+
+- `ROUTER_SERVICE_NAME`：服务或任务名，默认 macOS/Linux 为 `yeying-router-localhost`，Windows 为 `YeyingRouter`。
+- `ROUTER_BINARY`：Router 可执行文件路径。
+- `ROUTER_PORT`：监听端口，默认 `3011`。
+- `ROUTER_LOG_DIR`：日志目录，默认项目目录下的 `logs/`。
+- `ROUTER_SERVICE_USER`：Linux systemd 运行用户，默认当前用户。
 
 ### `scripts/deploy.sh`
 
@@ -130,7 +165,7 @@ scripts/config_backup.sh
 ```bash
 scripts/health-check.sh --level readiness
 scripts/health-check.sh --level all --format json
-scripts/health-check.sh --wait 30 --base-url http://127.0.0.1:3011
+scripts/health-check.sh --wait 30 --base-url http://localhost:3011
 ```
 
 主要检查层级：

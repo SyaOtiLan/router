@@ -37,21 +37,99 @@ func init() {
 
 var invalidateTokenCacheFn = model.InvalidateTokenCache
 
-func GetAll(userId string, start, num int, order string) ([]*model.Token, error) {
+// tokenSortColumns 是令牌列表的排序白名单：order_by 值 -> 安全 SQL 列名。
+// 所有列名均为代码常量，绝不来自请求原文。默认列为 created_time。
+var tokenSortColumns = map[string]string{
+	"created_time":         "created_time",
+	"updated_time":         "updated_time",
+	"accessed_time":        "accessed_time",
+	"expired_time":         "expired_time",
+	"remain_quota":         "remain_quota",
+	"used_quota":           "used_quota",
+	"remain_request_count": "remain_request_count",
+	"used_request_count":   "used_request_count",
+}
+
+const tokenDefaultSortColumn = "created_time"
+
+// buildTokenOrder 根据白名单把 order_by/order 转换为安全的 gorm Order 字符串。
+// 列名只来自 tokenSortColumns，方向只来自 asc/desc 常量。
+func buildTokenOrder(orderBy string, order string) string {
+	direction := "desc"
+	if strings.EqualFold(strings.TrimSpace(order), "asc") {
+		direction = "asc"
+	}
+	column, ok := tokenSortColumns[strings.TrimSpace(orderBy)]
+	if !ok {
+		column = tokenDefaultSortColumn
+	}
+	// 兼容旧枚举语义：按剩余额度排序时,无限额度令牌排在最前。
+	if column == "remain_quota" {
+		return fmt.Sprintf("unlimited_quota %s, remain_quota %s", direction, direction)
+	}
+	return column + " " + direction
+}
+
+func GetAll(userId string, start, num int, orderBy string, order string) ([]*model.Token, error) {
+	return GetAllFiltered(userId, start, num, orderBy, order, 0)
+}
+
+// GetAllFiltered 列出某用户的令牌,可选按状态过滤。statusFilter 传 0 表示不过滤。
+func GetAllFiltered(userId string, start, num int, orderBy string, order string, statusFilter int) ([]*model.Token, error) {
 	var tokens []*model.Token
 	query := model.DB.Where("user_id = ?", userId)
-
-	switch order {
-	case "remain_quota":
-		query = query.Order("unlimited_quota desc, remain_quota desc")
-	case "used_quota":
-		query = query.Order("used_quota desc")
-	default:
-		query = query.Order("created_time desc")
+	if statusFilter != 0 {
+		query = query.Where("status = ?", statusFilter)
 	}
+
+	query = query.Order(buildTokenOrder(orderBy, order))
 
 	err := query.Limit(num).Offset(start).Find(&tokens).Error
 	return tokens, err
+}
+
+// CountFiltered 统计某用户令牌总数,过滤条件与 GetAllFiltered 保持一致。
+func CountFiltered(userId string, statusFilter int) (int64, error) {
+	query := model.DB.Model(&model.Token{}).Where("user_id = ?", userId)
+	if statusFilter != 0 {
+		query = query.Where("status = ?", statusFilter)
+	}
+	var total int64
+	err := query.Count(&total).Error
+	return total, err
+}
+
+// buildAdminTokenQuery 组装 admin 全站令牌查询的公共过滤条件(不加 user 作用域):
+// statusFilter!=0 按状态过滤;userID 非空按属主过滤;keyword 非空按 name/id 模糊匹配。
+func buildAdminTokenQuery(statusFilter int, keyword, userID string) *gorm.DB {
+	query := model.DB.Model(&model.Token{})
+	if statusFilter != 0 {
+		query = query.Where("status = ?", statusFilter)
+	}
+	if id := strings.TrimSpace(userID); id != "" {
+		query = query.Where("user_id = ?", id)
+	}
+	if kw := strings.TrimSpace(keyword); kw != "" {
+		likeKeyword := "%" + kw + "%"
+		query = query.Where("name LIKE ? OR id LIKE ?", likeKeyword, likeKeyword)
+	}
+	return query
+}
+
+// GetAllAdminFiltered 列出全站令牌(跨用户),支持状态/属主/关键词过滤与分页排序。
+// 排序复用 buildTokenOrder 的列白名单,列名绝不来自请求原文。
+func GetAllAdminFiltered(start, num int, orderBy, order string, statusFilter int, keyword, userID string) ([]*model.Token, error) {
+	var tokens []*model.Token
+	query := buildAdminTokenQuery(statusFilter, keyword, userID).Order(buildTokenOrder(orderBy, order))
+	err := query.Limit(num).Offset(start).Find(&tokens).Error
+	return tokens, err
+}
+
+// CountAdminFiltered 统计全站令牌总数,过滤条件与 GetAllAdminFiltered 一致。
+func CountAdminFiltered(statusFilter int, keyword, userID string) (int64, error) {
+	var total int64
+	err := buildAdminTokenQuery(statusFilter, keyword, userID).Count(&total).Error
+	return total, err
 }
 
 func GetFirstAvailable(userId string) (*model.Token, error) {
@@ -90,12 +168,10 @@ func ValidateUserToken(key string) (*model.Token, error) {
 		}
 		return nil, errors.New("令牌验证失败")
 	}
-	if token.Status == model.TokenStatusExhausted {
-		return token, fmt.Errorf("令牌 %s（#%s）额度已用尽", token.Name, token.Id)
-	} else if token.Status == model.TokenStatusExpired {
+	if token.Status == model.TokenStatusExpired {
 		return token, errors.New("该令牌已过期")
 	}
-	if token.Status != model.TokenStatusEnabled {
+	if token.Status != model.TokenStatusEnabled && token.Status != model.TokenStatusExhausted {
 		return token, errors.New("该令牌状态不可用")
 	}
 	if token.ExpiredTime != -1 && token.ExpiredTime < helper.GetTimestamp() {
@@ -108,26 +184,27 @@ func ValidateUserToken(key string) (*model.Token, error) {
 		}
 		return token, errors.New("该令牌已过期")
 	}
-	if !token.UnlimitedQuota && token.RemainQuota <= 0 {
-		if !common.RedisEnabled {
-			token.Status = model.TokenStatusExhausted
-			err := SelectUpdate(token)
-			if err != nil {
-				logger.SysError("failed to update token status" + err.Error())
-			}
-		}
-		return token, errors.New("该令牌额度已用尽")
-	}
 	if !token.UnlimitedRequestCount && token.RemainRequestCount <= 0 {
-		if !common.RedisEnabled {
-			token.Status = model.TokenStatusExhausted
-			err := SelectUpdate(token)
-			if err != nil {
-				logger.SysError("failed to update token status" + err.Error())
-			}
-		}
 		return token, errors.New("该令牌请求次数已用尽")
 	}
+	if token.Status == model.TokenStatusExhausted {
+		// Older releases persisted exhausted when the monetary balance reached
+		// zero. Monetary balance is now enforced only for community settlement,
+		// so restore this token once its independent request-count limit allows
+		// use. This keeps the management UI consistent with personal routing.
+		token.Status = model.TokenStatusEnabled
+		if err := SelectUpdate(token); err != nil {
+			logger.SysError("failed to restore token status after monetary exhaustion: " + err.Error())
+		} else if err := invalidateTokenCacheFn(token.Key); err != nil {
+			logger.SysError("failed to invalidate restored token cache: " + err.Error())
+		}
+	}
+	// Monetary quota is checked when the selected upstream is settled. Personal
+	// provider requests do not spend Router monetary quota, so rejecting here
+	// would make an otherwise valid personal-only token unusable before routing.
+	// TokenStatusExhausted from older versions is therefore tolerated when its
+	// request-count limit remains available; community requests still fail in
+	// their existing pre-consumption path if monetary quota is insufficient.
 	return token, nil
 }
 
@@ -163,7 +240,7 @@ func Create(token *model.Token) error {
 }
 
 func Update(token *model.Token) error {
-	if err := model.DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "remain_request_count", "unlimited_request_count", "models", "subnet", "updated_time").Updates(token).Error; err != nil {
+	if err := model.DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "remain_request_count", "unlimited_request_count", "models", "route_policy", "subnet", "updated_time").Updates(token).Error; err != nil {
 		return err
 	}
 	return invalidateTokenCacheFn(token.Key)

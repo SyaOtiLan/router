@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { API, showError } from '../../helpers';
 import {
   AppButton,
+  AppEmpty,
   AppFilterHeader,
   AppPagination,
   AppSelect,
+  AppSkeleton,
 } from '../../router-ui';
 import QuotaCardItem from './QuotaCardItem';
 import TopUpWorkspaceProvider from './provider.jsx';
+import useUrlState, { parsePageParam } from '../../hooks/useUrlState';
 import {
   renderTopupIntegerAmountWithExactPopup,
   useTopUpWorkspace,
@@ -17,15 +20,19 @@ import {
 
 const PAGE_SIZE = 20;
 
-const QuotaHistoryPageInner = () => {
+export const QuotaHistoryPageInner = ({ embedded = false }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentPagePath = `${location.pathname}${location.search}${location.hash}`;
   const { displayCurrency, displayCurrencyIndex } = useTopUpWorkspace();
   const [cards, setCards] = useState([]);
-  const [page, setPage] = useState(1);
+  const [{ kind, page }, patchQuery] = useUrlState({
+    kind: { param: 'hist_kind', default: 'all' },
+    page: { param: 'hist_page', default: 1, parse: parsePageParam },
+  });
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [kind, setKind] = useState('all');
 
   const loadCards = useCallback(
     async (nextPage = page) => {
@@ -48,7 +55,7 @@ const QuotaHistoryPageInner = () => {
         setCards(
           Array.isArray(payload.data?.items) ? payload.data.items : [],
         );
-        setPage(Number(payload.data?.page || nextPage) || 1);
+        patchQuery({ page: Number(payload.data?.page || nextPage) || 1 });
         setTotal(Number(payload.data?.total || 0) || 0);
       } catch (error) {
         showError(error?.message || t('topup.quota_cards.load_failed'));
@@ -56,7 +63,7 @@ const QuotaHistoryPageInner = () => {
         setLoading(false);
       }
     },
-    [kind, page, t],
+    [kind, page, patchQuery, t],
   );
 
   useEffect(() => {
@@ -92,10 +99,82 @@ const QuotaHistoryPageInner = () => {
     (card) => {
       navigate(
         `/workspace/topup/cards/${encodeURIComponent(card.kind)}/${encodeURIComponent(card.id)}`,
+        { state: { from: currentPagePath } },
       );
     },
-    [navigate],
+    [navigate, currentPagePath],
   );
+
+  const historyBody = (
+    <>
+      {cards.length > 0 ? (
+        <div className='router-quota-card-grid'>
+          {cards.map((card) => (
+            <QuotaCardItem
+              key={`${card.kind}-${card.id}`}
+              card={card}
+              renderAmount={renderAmount}
+              onClick={openCardDetail}
+              t={t}
+            />
+          ))}
+        </div>
+      ) : loading ? (
+        <AppSkeleton variant='cards' count={6} />
+      ) : (
+        <AppEmpty
+          action={
+            <AppButton
+              color='blue'
+              onClick={() => navigate('/workspace/service/pricing')}
+            >
+              {t('topup.quota_cards.history_empty_cta')}
+            </AppButton>
+          }
+        >
+          {t('topup.quota_cards.history_empty')}
+        </AppEmpty>
+      )}
+      {totalPages > 1 ? (
+        <div className='router-pagination-wrap-md'>
+          <AppPagination
+            activePage={page}
+            totalPages={totalPages}
+            onPageChange={(_, { activePage }) =>
+              patchQuery({ page: Number(activePage) || 1 })
+            }
+          />
+        </div>
+      ) : null}
+    </>
+  );
+
+  const toolbar = (
+    <>
+      <AppButton loading={loading} onClick={() => loadCards(page)}>
+        {t('common.refresh')}
+      </AppButton>
+      <AppSelect
+        className='router-quota-history-kind-select'
+        options={kindOptions}
+        value={kind}
+        onChange={(event, { value }) => {
+          patchQuery({ kind: String(value || 'all'), page: 1 });
+        }}
+      />
+    </>
+  );
+
+  // Embedded inside the TopUp usage hub: the layout already owns the
+  // breadcrumb/header, so only render the toolbar + list here.
+  if (embedded) {
+    return (
+      <div className='router-topup-history-panel'>
+        <div className='router-topup-history-toolbar'>{toolbar}</div>
+        {historyBody}
+      </div>
+    );
+  }
 
   return (
     <div className='dashboard-container'>
@@ -114,54 +193,9 @@ const QuotaHistoryPageInner = () => {
           },
         ]}
         title={t('topup.quota_cards.history_title')}
-        actions={
-          <>
-          <AppButton
-            loading={loading}
-            onClick={() => loadCards(page)}
-          >
-            {t('common.refresh')}
-          </AppButton>
-            <AppSelect
-              className='router-quota-history-kind-select'
-              options={kindOptions}
-              value={kind}
-              onChange={(event, { value }) => {
-                setKind(String(value || 'all'));
-                setPage(1);
-              }}
-            />
-          </>
-        }
+        actions={toolbar}
       />
-      {cards.length > 0 ? (
-        <div className='router-quota-card-grid'>
-          {cards.map((card) => (
-            <QuotaCardItem
-              key={`${card.kind}-${card.id}`}
-              card={card}
-              renderAmount={renderAmount}
-              onClick={openCardDetail}
-              t={t}
-            />
-          ))}
-        </div>
-      ) : loading ? null : (
-        <div className='router-empty'>
-          {t('topup.quota_cards.history_empty')}
-        </div>
-      )}
-      {totalPages > 1 ? (
-        <div className='router-pagination-wrap-md'>
-          <AppPagination
-            activePage={page}
-            totalPages={totalPages}
-            onPageChange={(_, { activePage }) =>
-              setPage(Number(activePage) || 1)
-            }
-          />
-        </div>
-      ) : null}
+      {historyBody}
     </div>
   );
 };

@@ -61,6 +61,13 @@ type versionedMigration struct {
 func runMainVersionedMigrations(db *gorm.DB) error {
 	migrations := []versionedMigration{
 		{
+			Version:     "202609231030_personal_provider_routing",
+			Description: "add encrypted personal provider connections, model route rules, and token route policy",
+			Up: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&PersonalProviderConnection{}, &PersonalModelRoute{}, &Token{}, &Log{})
+			},
+		},
+		{
 			Version:     "202608081100_identity_passkey_login",
 			Description: "add wallet identity passkey PKCE login sessions",
 			Up: func(tx *gorm.DB) error {
@@ -2033,6 +2040,37 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 				return ensureChannelBillingSnapshotPurchaseFieldsWithDB(tx)
 			},
 		},
+		{
+			Version:     "202609201000_user_low_balance_preferences",
+			Description: "add per-user low balance threshold and notify switch to users",
+			Up: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&User{})
+			},
+		},
+		{
+			Version:     "202609201100_refresh_official_provider_catalog",
+			Description: "refresh official provider models and verified pricing from the September catalog review",
+			Up: func(tx *gorm.DB) error {
+				return replaceProviderMigrationSeedsWithDB(tx)
+			},
+		},
+		{
+			Version:     "202609201200_expand_official_provider_catalog",
+			Description: "add reviewed mainstream model providers from the OpenRouter provider landscape",
+			Up: func(tx *gorm.DB) error {
+				return upsertProviderMigrationProvidersWithDB(
+					tx,
+					"moonshot",
+					"amazon-nova",
+					"meta",
+					"black-forest-labs",
+					"perplexity",
+					"voyageai",
+					"deepgram",
+					"assemblyai",
+				)
+			},
+		},
 	}
 	return runVersionedMigrations(db, migrationScopeMain, migrations)
 }
@@ -3299,6 +3337,13 @@ func backfillLogRouteModelNamesWithDB(db *gorm.DB) error {
 
 func runLogVersionedMigrations(db *gorm.DB) error {
 	migrations := []versionedMigration{
+		{
+			Version:     "202609231030_log_personal_provider_routing",
+			Description: "add personal provider route source fields to request logs",
+			Up: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&Log{})
+			},
+		},
 		{
 			Version:     "202603101930_log_baseline_v6",
 			Description: "baseline: create current log schema",

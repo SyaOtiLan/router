@@ -12,48 +12,11 @@
   gap: 10px;
 }
 
-.workspace-models-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-  gap: 8px;
-}
-
-.workspace-models-summary-item {
-  min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
-  background: #f8fafc;
-}
-
-.workspace-models-summary-item span {
-  display: block;
+.workspace-models-count {
   color: #64748b;
   font-size: 12px;
-  line-height: 1.4;
-}
-
-.workspace-models-summary-item strong {
-  display: block;
-  margin-top: 5px;
-  color: #0f172a;
-  font-size: 18px;
-  font-weight: 700;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.workspace-models-summary-item-green strong {
-  color: #16a34a;
-}
-
-.workspace-models-summary-item-orange strong {
-  color: #d97706;
-}
-
-.workspace-models-summary-item-red strong {
-  color: #dc2626;
 }
 
 .workspace-models-controls {
@@ -353,6 +316,26 @@
   overflow-wrap: anywhere;
 }
 
+/* Admin-only deep link from a model to a channel's publish tab: render the
+   count value inline (strip the default button chrome) so it aligns with the
+   other metric values, only signalling interactivity on hover. */
+.workspace-model-metric strong .workspace-model-channel-link.router-button,
+.workspace-model-metric strong .workspace-model-channel-link {
+  height: auto;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.workspace-model-channel-popover {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
 .workspace-model-footer {
   display: flex;
   align-items: center;
@@ -378,6 +361,14 @@
   font-size: 12px;
   line-height: 1.5;
   white-space: nowrap;
+}
+
+.workspace-model-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 @media (max-width: 1180px) {
