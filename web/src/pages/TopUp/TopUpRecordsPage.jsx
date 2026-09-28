@@ -1,82 +1,63 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { API, timestamp2string, showError, showSuccess } from '../../helpers';
+import { API, timestamp2string, showError, showSuccess, withCardLabels } from '../../helpers';
+import { exportCSV } from '../../helpers/csv';
+import { formatPaymentAmount } from '../../helpers/render';
+import useUrlState, { parsePageParam } from '../../hooks/useUrlState';
 import {
   TOPUP_RECORD_COLUMN_WIDTHS,
   TOPUP_RECORD_TABLE_MIN_WIDTH,
-  TOPUP_REDEMPTION_RECORD_TABLE_MIN_WIDTH,
 } from '../../constants/tableWidthPresets';
 import {
   AppButton,
+  AppEmpty,
   AppPagination,
+  AppPopconfirm,
   AppSection,
+  AppSkeleton,
   AppTable,
-  AppTag,
   AppTooltip,
 } from '../../router-ui';
 import {
   formatTopupBusinessType,
   formatTopupOrderStatusHint,
-  normalizeRedemptionRecord,
   useTopUpWorkspace,
   renderTopupOrderStatus,
 } from './shared.jsx';
-import RedeemCodePage from './RedeemCodePage';
 
 const PAGE_SIZE = 10;
 const REFRESHABLE_TOPUP_ORDER_STATUSES = new Set(['created', 'pending']);
 
-const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
+const TopUpRecordsPage = ({ embedded = false }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { renderDisplayAmount } = useTopUpWorkspace();
-  const isRedemptionRecord = recordKey === 'redeem';
-  const isPackageRecord = recordKey === 'package';
-  const isGiftRecord = recordKey === 'gift';
-  const isPaymentRecord = recordKey === 'payment';
+  const [{ page }, patchQuery] = useUrlState({
+    page: { param: 'page', default: 1, parse: parsePageParam },
+  });
   const [orders, setOrders] = useState([]);
-  const [ordersPage, setOrdersPage] = useState(1);
   const [ordersTotal, setOrdersTotal] = useState(0);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [refreshingOrderID, setRefreshingOrderID] = useState('');
-  const [redemptionRecords, setRedemptionRecords] = useState([]);
-  const [redemptionPage, setRedemptionPage] = useState(1);
-  const [redemptionTotal, setRedemptionTotal] = useState(0);
-  const [loadingRedemptionRecords, setLoadingRedemptionRecords] = useState(false);
-  const [redeemModalOpen, setRedeemModalOpen] = useState(false);
-
-  const currentBusinessType = useMemo(() => {
-    if (recordKey === 'package') {
-      return 'package_purchase';
-    }
-    if (recordKey === 'payment') {
-      return '';
-    }
-    return 'balance_topup';
-  }, [recordKey]);
 
   const loadOrders = useCallback(
-    async (page = 1) => {
+    async (targetPage = 1) => {
       setLoadingOrders(true);
       try {
         const res = await API.get('/api/v1/public/user/topup/orders', {
           params: {
-            page,
+            page: targetPage,
             page_size: PAGE_SIZE,
-            business_type: currentBusinessType,
-            credit_origin: isGiftRecord
-              ? 'gift'
-              : recordKey === 'topup' || isPaymentRecord
-                ? 'paid'
-                : undefined,
+            business_type: '',
+            credit_origin: 'paid',
           },
         });
         const { success, message, data } = res?.data || {};
         if (success) {
           setOrders(Array.isArray(data?.items) ? data.items : []);
-          setOrdersPage(Number(data?.page || page) || 1);
+          patchQuery({ page: Number(data?.page || targetPage) || 1 });
           setOrdersTotal(Number(data?.total || 0) || 0);
           return;
         }
@@ -87,83 +68,14 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
         setLoadingOrders(false);
       }
     },
-    [currentBusinessType, isGiftRecord, isPaymentRecord, recordKey, t],
+    [patchQuery, t],
   );
 
-  const loadRedemptionRecords = useCallback(
-    async (page = 1) => {
-      setLoadingRedemptionRecords(true);
-      try {
-        const res = await API.get('/api/v1/public/user/topup/redemptions', {
-          params: {
-            page,
-            page_size: PAGE_SIZE,
-          },
-        });
-        const { success, message, data, meta } = res?.data || {};
-        if (success) {
-          const items = Array.isArray(data)
-            ? data
-            : Array.isArray(data?.items)
-              ? data.items
-              : [];
-          setRedemptionRecords(
-            items.map(normalizeRedemptionRecord).filter(Boolean),
-          );
-          setRedemptionPage(
-            Number(data?.page || meta?.page || page) || 1,
-          );
-          setRedemptionTotal(Number(data?.total || meta?.total || 0) || 0);
-          return;
-        }
-        showError(message || t('topup.redeem.request_failed'));
-      } catch (error) {
-        showError(error?.message || t('topup.redeem.request_failed'));
-      } finally {
-        setLoadingRedemptionRecords(false);
-      }
-    },
-    [t],
-  );
-
-  const refreshCurrent = useCallback(async () => {
-    if (isRedemptionRecord) {
-      await loadRedemptionRecords(redemptionPage);
-      return;
-    }
-    await loadOrders(ordersPage);
-  }, [
-    isRedemptionRecord,
-    loadOrders,
-    loadRedemptionRecords,
-    ordersPage,
-    redemptionPage,
-  ]);
-
   useEffect(() => {
-    if (isRedemptionRecord) {
-      loadRedemptionRecords(redemptionPage).then();
-      return;
-    }
-    loadOrders(ordersPage).then();
-  }, [
-    isRedemptionRecord,
-    loadOrders,
-    loadRedemptionRecords,
-    ordersPage,
-    redemptionPage,
-  ]);
-
-  useEffect(() => {
-    setOrdersPage(1);
-    setRedemptionPage(1);
-  }, [recordKey]);
+    loadOrders(page).then();
+  }, [loadOrders, page]);
 
   const ordersTotalPages = Math.max(1, Math.ceil(ordersTotal / PAGE_SIZE));
-  const redemptionTotalPages = Math.max(
-    1,
-    Math.ceil(redemptionTotal / PAGE_SIZE),
-  );
 
   const refreshOrderStatus = useCallback(
     async (orderID) => {
@@ -206,7 +118,7 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
       }
       if (['paid', 'fulfilled'].includes(targetOrder.status)) {
         showSuccess(t('topup.records.order_paid'));
-        loadOrders(ordersPage).then();
+        loadOrders(page).then();
         return;
       }
       const redirectURL = (targetOrder.redirect_url || '').trim();
@@ -219,7 +131,7 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
         showError(t('topup.external_topup.popup_blocked'));
       }
     },
-    [loadOrders, ordersPage, refreshOrderStatus, t],
+    [loadOrders, page, refreshOrderStatus, t],
   );
 
   const manualRefreshOrder = useCallback(
@@ -270,20 +182,14 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
         return;
       }
       const currentPagePath = `${location.pathname}${location.search}${location.hash}`;
-      const orderRecordKey = isGiftRecord
-        ? 'gift'
-        : order?.business_type === 'package_purchase'
-          ? 'package'
-          : 'topup';
       navigate(`/workspace/topup/orders/${encodeURIComponent(normalizedOrderID)}`, {
         state: {
           from: currentPagePath,
-          recordKey: orderRecordKey,
+          recordKey: 'payment',
         },
       });
     },
     [
-      isGiftRecord,
       location.hash,
       location.pathname,
       location.search,
@@ -291,68 +197,6 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
     ],
   );
 
-  const actionButton = useMemo(() => {
-    switch (recordKey) {
-      case 'package':
-        return {
-          label: t('topup.record_nav.package'),
-          onClick: () => navigate('/workspace/service/pricing'),
-        };
-      case 'redeem':
-        return {
-          label: t('topup.record_nav.redeem'),
-          onClick: () => setRedeemModalOpen(true),
-        };
-      case 'gift':
-        return null;
-      case 'payment':
-        return {
-          label: t('topup.record_nav.package'),
-          onClick: () => navigate('/workspace/service/pricing'),
-        };
-      case 'topup':
-      default:
-        return {
-          label: t('topup.record_nav.topup'),
-          onClick: () => navigate('/workspace/service/pricing'),
-        };
-    }
-  }, [navigate, recordKey, t]);
-  const redemptionColumns = useMemo(
-    () => [
-      {
-        title: t('topup.redemption_records.columns.time'),
-        dataIndex: 'created_at',
-        key: 'created_at',
-        className: 'router-table-col-datetime',
-        width: TOPUP_RECORD_COLUMN_WIDTHS.time,
-        render: (value) => (value ? timestamp2string(value) : '-'),
-      },
-      {
-        title: t('topup.redemption_records.columns.amount'),
-        dataIndex: 'chargeAmount',
-        key: 'chargeAmount',
-        width: TOPUP_RECORD_COLUMN_WIDTHS.amount,
-        render: (value) =>
-          value ? (
-            <AppTag color='green' className='router-tag'>
-              {renderDisplayAmount(value)}
-            </AppTag>
-          ) : (
-            '-'
-          ),
-      },
-      {
-        title: t('topup.redemption_records.columns.redemption_code'),
-        dataIndex: 'redemptionCode',
-        key: 'redemptionCode',
-        width: TOPUP_RECORD_COLUMN_WIDTHS.redemptionCode,
-        ellipsis: true,
-        render: (value) => value || '-',
-      },
-    ],
-    [renderDisplayAmount, t],
-  );
   const orderColumns = useMemo(
     () => [
       {
@@ -401,43 +245,28 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
         width: TOPUP_RECORD_COLUMN_WIDTHS.amount,
         render: (_, order) =>
           order.amount > 0
-            ? `${order.currency || 'CNY'} ${Number(order.amount || 0).toFixed(2)}`
+            ? formatPaymentAmount(order.amount, order.currency)
             : order.quota > 0
               ? renderDisplayAmount(order.quota)
               : '-',
       },
       {
-        title: isPaymentRecord
-          ? t('topup.external_topup_orders.columns.name')
-          : isPackageRecord
-            ? t('topup.external_topup_orders.columns.package_name')
-            : t('topup.external_topup_orders.columns.quota'),
-        dataIndex: isPackageRecord ? 'package_name' : 'quota',
-        key: isPaymentRecord
-          ? 'name'
-          : isPackageRecord
-            ? 'package_name'
-            : 'quota',
+        title: t('topup.external_topup_orders.columns.name'),
+        dataIndex: 'quota',
+        key: 'name',
         width: TOPUP_RECORD_COLUMN_WIDTHS.quotaOrPackage,
         ellipsis: true,
         render: (_, order) => {
-          if (isPaymentRecord) {
-            return order.business_type === 'package_purchase'
-              ? order.package_name || order.title || '-'
-              : order.quota > 0
-                ? renderDisplayAmount(order.quota)
-                : order.title || '-';
+          if (order.business_type === 'package_purchase') {
+            return order.package_name || order.title || '-';
           }
-          return isPackageRecord
-            ? order.package_name || '-'
-            : order.quota > 0
-              ? renderDisplayAmount(order.quota)
-              : '-';
+          if (order.quota > 0) {
+            return renderDisplayAmount(order.quota);
+          }
+          return order.title || '-';
         },
       },
-      isGiftRecord
-        ? null
-        : {
+      {
         title: t('topup.external_topup_orders.columns.action'),
         key: 'action',
         className: 'router-table-col-actions-token',
@@ -472,29 +301,32 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
               >
                 {t('topup.records.continue_pay')}
               </AppButton>
-              <AppButton
-                className='router-inline-button'
-                onClick={(event) => {
-                  event.stopPropagation();
-                  cancelPay(order.id);
-                }}
-                loading={refreshingOrderID === order.id}
-                disabled={refreshingOrderID === order.id}
+              <AppPopconfirm
+                title={t('topup.records.cancel_pay_confirm')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                onConfirm={() => cancelPay(order.id)}
               >
-                {t('topup.records.cancel_pay')}
-              </AppButton>
+                <AppButton
+                  className='router-inline-button'
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                  loading={refreshingOrderID === order.id}
+                  disabled={refreshingOrderID === order.id}
+                >
+                  {t('topup.records.cancel_pay')}
+                </AppButton>
+              </AppPopconfirm>
             </div>
           );
         },
-        },
-    ].filter(Boolean),
+      },
+    ],
     [
       cancelPay,
       continuePay,
       formatTopupBusinessType,
-      isGiftRecord,
-      isPackageRecord,
-      isPaymentRecord,
       manualRefreshOrder,
       refreshingOrderID,
       renderDisplayAmount,
@@ -502,105 +334,71 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
     ],
   );
 
-  const sectionTitle = isRedemptionRecord
-    ? t('topup.redemption_records.title', '兑换记录')
-    : isPaymentRecord
-      ? t('topup.payment_history.title')
-    : isPackageRecord
-      ? t('topup.records.package_title', '套餐订单')
-      : isGiftRecord
-        ? t('topup.records.gift_title', '赠送记录')
-        : t('topup.records.title', '充值订单');
-  const shouldShowSectionExtra = !(embedded && isPaymentRecord);
+  const sectionTitle = t('topup.payment_history.title');
+  const shouldShowSectionExtra = !embedded;
+  const handleExportCsv = useCallback(() => {
+    const stamp = timestamp2string(Math.floor(Date.now() / 1000)).replace(
+      /[^0-9]/g,
+      '',
+    );
+    exportCSV(
+      `topup-payment-${stamp}.csv`,
+      [
+        {
+          key: 'created_at',
+          label: t('topup.external_topup_orders.columns.time'),
+          format: (v) => (v ? timestamp2string(v) : ''),
+        },
+        {
+          key: 'business_type',
+          label: t('topup.external_topup_orders.columns.business_type'),
+          format: (v) => formatTopupBusinessType(v, t),
+        },
+        {
+          key: 'status',
+          label: t('topup.external_topup_orders.columns.status'),
+        },
+        {
+          key: 'amount',
+          label: t('topup.external_topup_orders.columns.amount'),
+        },
+        {
+          key: 'quota',
+          label: t('topup.external_topup_orders.columns.quota'),
+        },
+        {
+          key: 'package_name',
+          label: t('topup.external_topup_orders.columns.package_name'),
+        },
+      ],
+      orders,
+    );
+    showSuccess(t('topup.records.export_success', { count: orders.length }));
+  }, [orders, t]);
   const sectionExtra = shouldShowSectionExtra ? (
     <>
-      {isPaymentRecord ? (
-        <AppButton
-          className='router-section-button'
-          onClick={() => navigate('/workspace/service/pricing')}
-        >
-          {t('topup.payment_history.back_to_pricing')}
-        </AppButton>
-      ) : null}
-      {actionButton ? (
-        <AppButton
-          color='blue'
-          className='router-section-button'
-          onClick={actionButton.onClick}
-        >
-          {actionButton.label}
-        </AppButton>
-      ) : null}
       <AppButton
         className='router-section-button'
-        onClick={refreshCurrent}
-        loading={loadingOrders || loadingRedemptionRecords}
+        onClick={() => navigate('/workspace/service/pricing')}
+      >
+        {t('topup.payment_history.back_to_pricing')}
+      </AppButton>
+      <AppButton
+        className='router-section-button'
+        onClick={handleExportCsv}
+        disabled={orders.length === 0}
+      >
+        {t('common.export_csv')}
+      </AppButton>
+      <AppButton
+        className='router-section-button'
+        onClick={() => loadOrders(page)}
+        loading={loadingOrders}
       >
         {t('topup.records.refresh')}
       </AppButton>
     </>
   ) : null;
-  const recordsBody = isRedemptionRecord ? (
-    <>
-      <div className='router-table-scroll-x'>
-        <AppTable
-          className='router-list-table router-table-fit-page'
-          rowKey={(log) =>
-            log.id || log.trace_id || `${log.created_at}-${log.content}`
-          }
-          pagination={false}
-          scroll={{ x: TOPUP_REDEMPTION_RECORD_TABLE_MIN_WIDTH }}
-          loading={loadingRedemptionRecords}
-          locale={{ emptyText: t('topup.redemption_records.empty') }}
-          dataSource={redemptionRecords}
-          columns={redemptionColumns}
-        />
-      </div>
-      {redemptionTotalPages > 1 ? (
-        <div className='router-pagination-wrap-md'>
-          <AppPagination
-            className='router-section-pagination'
-            activePage={redemptionPage}
-            totalPages={redemptionTotalPages}
-            onPageChange={(_, { activePage: nextActivePage }) => {
-              setRedemptionPage(Number(nextActivePage) || 1);
-            }}
-          />
-        </div>
-      ) : null}
-    </>
-  ) : (
-    <>
-      <div className='router-table-scroll-x'>
-        <AppTable
-          className='router-list-table router-table-fit-page'
-          rowKey='id'
-          pagination={false}
-          scroll={{ x: TOPUP_RECORD_TABLE_MIN_WIDTH }}
-          loading={loadingOrders}
-          locale={{ emptyText: t('topup.records.order_empty') }}
-          dataSource={orders}
-          columns={orderColumns}
-          onRow={(order) => ({
-            onClick: () => openOrderDetailPage(order),
-            style: { cursor: 'pointer' },
-          })}
-        />
-      </div>
-      {ordersTotalPages > 1 ? (
-        <div className='router-pagination-wrap-md'>
-          <AppPagination
-            className='router-section-pagination'
-            activePage={ordersPage}
-            totalPages={ordersTotalPages}
-            onPageChange={(_, { activePage: nextActivePage }) => {
-              setOrdersPage(Number(nextActivePage) || 1);
-            }}
-          />
-        </div>
-      ) : null}
-    </>
-  );
 
   return (
     <>
@@ -609,18 +407,105 @@ const TopUpRecordsPage = ({ recordKey = 'topup', embedded = false }) => {
           {sectionExtra ? (
             <div className='router-topup-history-toolbar'>{sectionExtra}</div>
           ) : null}
-          {recordsBody}
+          {loadingOrders && orders.length === 0 ? (
+            <AppSkeleton variant='list' count={6} />
+          ) : (
+            <div className='router-table-scroll-x'>
+              <AppTable
+                className='router-list-table router-table-fit-page router-table-cardify'
+                rowKey='id'
+                pagination={false}
+                scroll={{ x: TOPUP_RECORD_TABLE_MIN_WIDTH }}
+                loading={loadingOrders}
+                locale={{
+                  emptyText: (
+                    <AppEmpty
+                      action={
+                        <AppButton
+                          color='blue'
+                          onClick={() => navigate('/workspace/service/pricing')}
+                        >
+                          {t('topup.record_nav.topup')}
+                        </AppButton>
+                      }
+                    >
+                      {t('topup.records.order_empty')}
+                    </AppEmpty>
+                  ),
+                }}
+                dataSource={orders}
+                columns={withCardLabels(orderColumns)}
+                onRow={(order) => ({
+                  onClick: () => openOrderDetailPage(order),
+                  style: { cursor: 'pointer' },
+                })}
+              />
+            </div>
+          )}
+          {ordersTotalPages > 1 ? (
+            <div className='router-pagination-wrap-md'>
+              <AppPagination
+                className='router-section-pagination'
+                activePage={page}
+                totalPages={ordersTotalPages}
+                onPageChange={(_, { activePage: nextActivePage }) => {
+                  patchQuery({ page: Number(nextActivePage) || 1 });
+                }}
+              />
+            </div>
+          ) : null}
         </div>
       ) : (
         <AppSection title={sectionTitle} extra={sectionExtra}>
-          {recordsBody}
+          {loadingOrders && orders.length === 0 ? (
+            <AppSkeleton variant='list' count={6} />
+          ) : (
+            <div className='router-table-scroll-x'>
+              <AppTable
+                className='router-list-table router-table-fit-page router-table-cardify'
+                rowKey='id'
+                pagination={false}
+                scroll={{ x: TOPUP_RECORD_TABLE_MIN_WIDTH }}
+                loading={loadingOrders}
+                locale={{
+                  emptyText: (
+                    <AppEmpty
+                      action={
+                        <AppButton
+                          color='blue'
+                          onClick={() => navigate('/workspace/service/pricing')}
+                        >
+                          {t('topup.record_nav.topup')}
+                        </AppButton>
+                      }
+                    >
+                      {t('topup.records.order_empty')}
+                    </AppEmpty>
+                  ),
+                }}
+                dataSource={orders}
+                columns={withCardLabels(orderColumns)}
+                onRow={(order) => ({
+                  onClick: () => openOrderDetailPage(order),
+                  style: { cursor: 'pointer' },
+                })}
+              />
+            </div>
+          )}
+          {ordersTotalPages > 1 ? (
+            <div className='router-pagination-wrap-md'>
+              <AppPagination
+                className='router-section-pagination'
+                activePage={page}
+                totalPages={ordersTotalPages}
+                onPageChange={(_, { activePage: nextActivePage }) => {
+                  patchQuery({ page: Number(nextActivePage) || 1 });
+                }}
+              />
+            </div>
+          ) : null}
         </AppSection>
       )}
-      <RedeemCodePage
-        open={redeemModalOpen}
-        onClose={() => setRedeemModalOpen(false)}
-        onRedeemed={refreshCurrent}
-      />
     </>
   );
 };

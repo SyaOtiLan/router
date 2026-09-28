@@ -190,6 +190,10 @@ const TopupPlanDetail = () => {
     location.state.from.startsWith('/admin/redemption/')
     ? location.state.from
     : '';
+  const returnPath = typeof location.state?.from === 'string' &&
+    location.state.from.trim().startsWith('/')
+    ? location.state.from.trim()
+    : '';
   const [activeTabKey, setActiveTabKey] = useState('basic');
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState(null);
@@ -590,11 +594,25 @@ const TopupPlanDetail = () => {
           <AppInput className='router-section-input' value={readOnlyText(plan?.name)} readOnly />
         </AppField>
         <AppField label={t('topup.manage.columns.group')} readOnly>
-          <AppInput
-            className='router-section-input'
-            value={readOnlyText(plan?.group_name || plan?.group_id)}
-            readOnly
-          />
+          {plan?.group_id ? (
+            <button
+              type='button'
+              className='router-link-button router-link-inline'
+              onClick={() =>
+                navigate(`/admin/group/detail/${encodeURIComponent(plan.group_id)}`, {
+                  state: { from: `${location.pathname}${location.search}` },
+                })
+              }
+            >
+              {readOnlyText(plan?.group_name || plan?.group_id)}
+            </button>
+          ) : (
+            <AppInput
+              className='router-section-input'
+              value={readOnlyText(plan?.group_name || plan?.group_id)}
+              readOnly
+            />
+          )}
         </AppField>
       </AppFormRow>
       <AppFormRow>
@@ -862,7 +880,6 @@ const TopupPlanDetail = () => {
           { key: 'admin', label: t('header.admin_workspace') },
           ...(redemptionSourcePath
             ? [
-                { key: 'operation', label: t('header.operation') },
                 {
                   key: 'redemption-source',
                   label: t('header.redemption'),
@@ -878,11 +895,10 @@ const TopupPlanDetail = () => {
               ]
             : []),
           ...(redemptionSourcePath ? [] : [
-            { key: 'model', label: t('header.model') },
             {
               key: 'entitlement',
               label: t('header.entitlement'),
-              onClick: () => navigate('/admin/entitlement'),
+              onClick: () => navigate(returnPath || '/admin/entitlement'),
             },
           ]),
           {

@@ -149,6 +149,42 @@ func TestValidateUserTokenRejectsExhaustedRequestCount(t *testing.T) {
 	}
 }
 
+func TestValidateUserTokenAllowsZeroMonetaryQuotaForPersonalRouting(t *testing.T) {
+	db := newTokenRepositoryTestDB(t)
+	token := &model.Token{
+		Id:                    "token-personal-only",
+		UserId:                "user-1",
+		Key:                   "personal-zero-quota-key",
+		Name:                  "personal token",
+		Status:                model.TokenStatusExhausted,
+		ExpiredTime:           -1,
+		RemainQuota:           0,
+		UnlimitedQuota:        false,
+		RemainRequestCount:    10,
+		UnlimitedRequestCount: false,
+		CreatedTime:           100,
+		UpdatedTime:           100,
+	}
+	if err := db.Create(token).Error; err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+
+	validated, err := ValidateUserToken(token.Key)
+	if err != nil {
+		t.Fatalf("ValidateUserToken() error = %v", err)
+	}
+	if validated == nil || validated.Id != token.Id {
+		t.Fatalf("validated token = %#v", validated)
+	}
+	var stored model.Token
+	if err := db.First(&stored, "id = ?", token.Id).Error; err != nil {
+		t.Fatalf("load restored token: %v", err)
+	}
+	if stored.Status != model.TokenStatusEnabled {
+		t.Fatalf("stored status = %d, want enabled", stored.Status)
+	}
+}
+
 func TestConsumeTokenRequestCountDecrementsFiniteLimit(t *testing.T) {
 	db := newTokenRepositoryTestDB(t)
 	token := &model.Token{
@@ -220,3 +256,61 @@ func TestConsumeTokenRequestCountRejectsInsufficientFiniteLimit(t *testing.T) {
 func stringPtr(value string) *string {
 	return &value
 }
+
+func TestGetAllAdminFilteredSpansUsers(t *testing.T) {
+	db := newTokenRepositoryTestDB(t)
+	seed := []*model.Token{
+		{Id: "t1", UserId: "user-1", Key: "k1", Name: "alpha", Status: model.TokenStatusEnabled, CreatedTime: 100, UpdatedTime: 100},
+		{Id: "t2", UserId: "user-2", Key: "k2", Name: "beta", Status: model.TokenStatusDisabled, CreatedTime: 200, UpdatedTime: 200},
+		{Id: "t3", UserId: "user-2", Key: "k3", Name: "gamma", Status: model.TokenStatusEnabled, CreatedTime: 300, UpdatedTime: 300},
+	}
+	for _, tok := range seed {
+		if err := db.Create(tok).Error; err != nil {
+			t.Fatalf("create token %s: %v", tok.Id, err)
+		}
+	}
+
+	// 无过滤:跨全部用户返回 3 条。
+	all, err := GetAllAdminFiltered(0, 100, "", "", 0, "", "")
+	if err != nil {
+		t.Fatalf("GetAllAdminFiltered all: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("all tokens = %d, want 3", len(all))
+	}
+	total, err := CountAdminFiltered(0, "", "")
+	if err != nil {
+		t.Fatalf("CountAdminFiltered all: %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("count all = %d, want 3", total)
+	}
+
+	// 按属主过滤。
+	byUser, err := GetAllAdminFiltered(0, 100, "", "", 0, "", "user-2")
+	if err != nil {
+		t.Fatalf("GetAllAdminFiltered user-2: %v", err)
+	}
+	if len(byUser) != 2 {
+		t.Fatalf("user-2 tokens = %d, want 2", len(byUser))
+	}
+
+	// 按状态过滤。
+	enabled, err := CountAdminFiltered(model.TokenStatusEnabled, "", "")
+	if err != nil {
+		t.Fatalf("CountAdminFiltered enabled: %v", err)
+	}
+	if enabled != 2 {
+		t.Fatalf("enabled count = %d, want 2", enabled)
+	}
+
+	// 按关键词(name/id 模糊)过滤。
+	byKeyword, err := GetAllAdminFiltered(0, 100, "", "", 0, "beta", "")
+	if err != nil {
+		t.Fatalf("GetAllAdminFiltered keyword: %v", err)
+	}
+	if len(byKeyword) != 1 || byKeyword[0].Id != "t2" {
+		t.Fatalf("keyword tokens = %#v, want single t2", byKeyword)
+	}
+}
+

@@ -4,13 +4,14 @@ import {
   showError,
   showSuccess,
   timestamp2string,
-  hasLoadedPagedRows,
-  writePagedRows,
 } from '../helpers';
 import { useTranslation } from 'react-i18next';
 import UnitDropdown from './UnitDropdown';
+import useList, { sorterToSort, sortOrderForColumn } from '../hooks/useList';
+import { parseListPageSize, parsePageParam } from '../hooks/useUrlState';
 
-import { ITEMS_PER_PAGE } from '../constants';
+import { LIST_PAGE_SIZE } from '../constants';
+import { exportCSV } from '../helpers/csv';
 import {
   renderColorLabel,
   isChargeDisplayedInCurrency,
@@ -31,492 +32,44 @@ import {
 } from '../constants/tableWidthPresets';
 import {
   AppButton,
+  AppEmpty,
+  AppErrorState,
   AppFilterHeader,
   AppFormActions,
   AppModal,
   AppPagination,
-  AppPopover,
   AppPopconfirm,
-  resolvePopupContainer,
-  AppSelect,
   AppTable,
   AppTag,
   AppToolbar,
 } from '../router-ui';
-
-const USER_LOG_COLUMN_ORDER_STORAGE_KEY = 'router_user_log_column_order_v1';
-const ADMIN_LOG_COLUMN_ORDER_STORAGE_KEY = 'router_admin_log_column_order_v1';
-const USER_LOG_COLUMN_WIDTH_STORAGE_KEY = 'router_user_log_column_width_v1';
-const ADMIN_LOG_COLUMN_WIDTH_STORAGE_KEY = 'router_admin_log_column_width_v1';
-const LOG_COLUMN_MIN_WIDTH = 72;
-const LOG_COLUMN_MAX_WIDTH = 420;
-const DEFAULT_USER_LOG_COLUMN_ORDER = [
-  'created_at',
-  'billingSource',
-  'model_name',
-  'token_name',
-  'prompt_tokens',
-  'completion_tokens',
-  'cacheQuantity',
-  'chargeAmount',
-];
-const DEFAULT_ADMIN_LOG_COLUMN_ORDER = [
-  'created_at',
-  'channel',
-  'group_id',
-  'type',
-  'model_name',
-  'username',
-  'token_name',
-  'prompt_tokens',
-  'completion_tokens',
-  'cacheQuantity',
-  'chargeAmount',
-];
-const DEFAULT_LOG_COLUMN_WIDTHS = {
-  created_at: LOG_LIST_COLUMN_WIDTHS.time,
-  channel: LOG_LIST_COLUMN_WIDTHS.channel,
-  group_id: LOG_LIST_COLUMN_WIDTHS.group,
-  type: LOG_LIST_COLUMN_WIDTHS.type,
-  billingSource: LOG_LIST_COLUMN_WIDTHS.billingSource,
-  model_name: LOG_LIST_COLUMN_WIDTHS.model,
-  username: LOG_LIST_COLUMN_WIDTHS.username,
-  token_name: LOG_LIST_COLUMN_WIDTHS.tokenName,
-  prompt_tokens: LOG_LIST_COLUMN_WIDTHS.promptTokens,
-  completion_tokens: LOG_LIST_COLUMN_WIDTHS.completionTokens,
-  cacheQuantity: LOG_LIST_COLUMN_WIDTHS.cacheTokens,
-  chargeAmount: LOG_LIST_COLUMN_WIDTHS.quota,
-};
-
-function getLogColumnOrderStorageKey(isAdminScope) {
-  return isAdminScope
-    ? ADMIN_LOG_COLUMN_ORDER_STORAGE_KEY
-    : USER_LOG_COLUMN_ORDER_STORAGE_KEY;
-}
-
-function getLogColumnWidthStorageKey(isAdminScope) {
-  return isAdminScope
-    ? ADMIN_LOG_COLUMN_WIDTH_STORAGE_KEY
-    : USER_LOG_COLUMN_WIDTH_STORAGE_KEY;
-}
-
-function getDefaultLogColumnOrder(isAdminScope) {
-  return isAdminScope
-    ? DEFAULT_ADMIN_LOG_COLUMN_ORDER
-    : DEFAULT_USER_LOG_COLUMN_ORDER;
-}
-
-function normalizeLogColumnOrder(rawOrder, isAdminScope) {
-  const defaultOrder = getDefaultLogColumnOrder(isAdminScope);
-  const nextOrder = [];
-  const seen = new Set();
-  const append = (key) => {
-    const normalizedKey = !isAdminScope && key === 'type' ? 'billingSource' : key;
-    if (
-      !defaultOrder.includes(normalizedKey) ||
-      seen.has(normalizedKey)
-    ) {
-      return;
-    }
-    seen.add(normalizedKey);
-    nextOrder.push(normalizedKey);
-  };
-  if (Array.isArray(rawOrder)) {
-    rawOrder.forEach((key) => append(String(key || '').trim()));
-  }
-  defaultOrder.forEach(append);
-  return nextOrder;
-}
-
-function loadLogColumnOrder(isAdminScope) {
-  if (typeof window === 'undefined') {
-    return [...getDefaultLogColumnOrder(isAdminScope)];
-  }
-  try {
-    const stored = JSON.parse(
-      window.localStorage.getItem(getLogColumnOrderStorageKey(isAdminScope)) || '[]',
-    );
-    return normalizeLogColumnOrder(stored, isAdminScope);
-  } catch (error) {
-    return [...getDefaultLogColumnOrder(isAdminScope)];
-  }
-}
-
-function normalizeLogColumnWidths(rawWidths) {
-  const nextWidths = {};
-  Object.entries(DEFAULT_LOG_COLUMN_WIDTHS).forEach(([key, defaultWidth]) => {
-    const storedWidth = Number(rawWidths?.[key]);
-    nextWidths[key] = Math.min(
-      LOG_COLUMN_MAX_WIDTH,
-      Math.max(
-        LOG_COLUMN_MIN_WIDTH,
-        Number.isFinite(storedWidth) && storedWidth > 0
-          ? storedWidth
-          : defaultWidth,
-      ),
-    );
-  });
-  return nextWidths;
-}
-
-function loadLogColumnWidths(isAdminScope) {
-  if (typeof window === 'undefined') {
-    return normalizeLogColumnWidths({});
-  }
-  try {
-    const stored = JSON.parse(
-      window.localStorage.getItem(getLogColumnWidthStorageKey(isAdminScope)) || '{}',
-    );
-    return normalizeLogColumnWidths(stored);
-  } catch (error) {
-    return normalizeLogColumnWidths({});
-  }
-}
-
-const compareTextValue = (left, right) =>
-  String(left || '').localeCompare(String(right || ''));
-
-const compareNumberValue = (left, right) =>
-  Number(left || 0) - Number(right || 0);
-
-function formatCompactNumber(value) {
-  const numericValue = Number(value || 0);
-  if (!Number.isFinite(numericValue) || numericValue === 0) {
-    return '';
-  }
-  if (Number.isInteger(numericValue)) {
-    return numericValue.toLocaleString();
-  }
-  return numericValue.toLocaleString(undefined, {
-    maximumFractionDigits: 6,
-  });
-}
-
-function renderTimestamp(timestamp) {
-  return <code>{timestamp2string(timestamp)}</code>;
-}
-
-function renderType(type) {
-  switch (type) {
-    case 1:
-      return (
-        <AppTag color='green' className='router-tag'>
-          充值
-        </AppTag>
-      );
-    case 2:
-      return (
-        <AppTag color='olive' className='router-tag'>
-          消费
-        </AppTag>
-      );
-    case 3:
-      return (
-        <AppTag color='orange' className='router-tag'>
-          管理
-        </AppTag>
-      );
-    case 4:
-      return (
-        <AppTag color='purple' className='router-tag'>
-          系统
-        </AppTag>
-      );
-    case 5:
-      return (
-        <AppTag color='violet' className='router-tag'>
-          测试
-        </AppTag>
-      );
-    case 6:
-      return (
-        <AppTag color='red' className='router-tag'>
-          失败
-        </AppTag>
-      );
-    default:
-      return (
-        <AppTag color='black' className='router-tag'>
-          未知
-        </AppTag>
-      );
-  }
-}
-
-function renderBillingSource(log, t) {
-  const name = String(log?.billing_source_name || '').trim();
-  const source = String(log?.billing_source || '').trim();
-  const fallback =
-    source === 'package'
-      ? t('log.detail.billing_sources.package')
-      : source === 'balance'
-        ? t('log.detail.billing_sources.balance')
-        : '';
-  const label = name || fallback || '-';
-  const color = source === 'package' ? 'blue' : source === 'balance' ? 'teal' : 'grey';
-  const sourceID = String(log?.billing_source_id || '').trim();
-  const sourceDetail = String(log?.billing_source_detail || '').trim();
-  const title = [sourceDetail, sourceID].filter(Boolean).join(' / ');
-
-  if (label === '-') {
-    return '-';
-  }
-  return (
-    <AppTag className='router-tag' color={color} title={title || label}>
-      {label}
-    </AppTag>
-  );
-}
-
-function getColorByElapsedTime(elapsedTime) {
-  if (elapsedTime === undefined || 0) return 'black';
-  if (elapsedTime < 1000) return 'green';
-  if (elapsedTime < 3000) return 'olive';
-  if (elapsedTime < 5000) return 'yellow';
-  if (elapsedTime < 10000) return 'orange';
-  return 'red';
-}
-
-function renderDetail(log) {
-  return (
-    <>
-      {log.content}
-      <br />
-      {log.elapsed_time && (
-        <AppTag className='router-tag' color={getColorByElapsedTime(log.elapsed_time)}>
-          {log.elapsed_time} ms
-        </AppTag>
-      )}
-      {log.is_stream && (
-        <AppTag className='router-tag' color='pink'>
-          Stream
-        </AppTag>
-      )}
-    </>
-  );
-}
-
-function getLogChannelLabel(log) {
-  if (!log) {
-    return '';
-  }
-  return log.channel_name || log.channel || '';
-}
-
-function getLogPublicModelName(log) {
-  return (log?.request_model_name || '').toString().trim();
-}
-
-function getLogActualModelName(log) {
-  return (log?.actual_model_name || '').toString().trim();
-}
-
-function normalizeLogEntry(log) {
-  const cacheReadQuantity = Number(log?.billing_cache_read_quantity ?? 0);
-  const cacheWriteQuantity = Number(log?.billing_cache_write_quantity ?? 0);
-  return {
-    ...(log || {}),
-    publicModelName: getLogPublicModelName(log),
-    actualModelName: getLogActualModelName(log),
-    // Prefer charge-amount settlement fields, fall back to legacy quota-based logs.
-    chargeAmount: Number(log?.charge_amount ?? log?.quota ?? 0),
-    userDailyChargeAmount: Number(log?.user_daily_charge_amount ?? log?.user_daily_quota ?? 0),
-    userEmergencyChargeAmount: Number(log?.user_emergency_charge_amount ?? log?.user_emergency_quota ?? 0),
-    cacheReadQuantity,
-    cacheWriteQuantity,
-    cacheQuantity: cacheReadQuantity + cacheWriteQuantity,
-  };
-}
-
-function toDatetimeLocalValue(value) {
-  const raw = (value || '').toString().trim();
-  if (raw === '') {
-  return '';
-}
-
-function toUserFilterOption(item) {
-  const username = (item?.username || '').toString().trim();
-  const displayName = (item?.display_name || '').toString().trim();
-  const walletAddress = (item?.wallet_address || '').toString().trim();
-  if (!username) {
-    return null;
-  }
-  const label = [displayName || username, walletAddress].filter(Boolean).join(' / ');
-  return {
-    key: username,
-    text: label || username,
-    value: username,
-  };
-}
-
-function toTokenFilterOption(item) {
-  const tokenName = (item?.name || '').toString().trim();
-  const tokenID = (item?.id || '').toString().trim();
-  if (!tokenName) {
-    return null;
-  }
-  return {
-    key: tokenName,
-    text: [tokenName, tokenID].filter(Boolean).join(' / '),
-    value: tokenName,
-  };
-}
-  if (raw.includes('T')) {
-    return raw.slice(0, 16);
-  }
-  if (raw.includes(' ')) {
-    return raw.replace(' ', 'T').slice(0, 16);
-  }
-  const parsed = Date.parse(raw);
-  if (!Number.isFinite(parsed)) {
-    return '';
-  }
-  const date = new Date(parsed);
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  const hour = `${date.getHours()}`.padStart(2, '0');
-  const minute = `${date.getMinutes()}`.padStart(2, '0');
-  return `${year}-${month}-${day}T${hour}:${minute}`;
-}
-
-function parseDatetimeInput(value) {
-  const raw = (value || '').toString().trim();
-  if (raw === '') {
-    return 0;
-  }
-  const parsed = Date.parse(raw);
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-  return Math.floor(parsed / 1000);
-}
-
-function cleanupDatetimeLocalValue() {
-  const date = new Date();
-  date.setMonth(date.getMonth() - 1);
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  const hour = `${date.getHours()}`.padStart(2, '0');
-  const minute = `${date.getMinutes()}`.padStart(2, '0');
-  return `${year}-${month}-${day}T${hour}:${minute}`;
-}
-
-function formatFilterDisplayValue(value) {
-  return (value || '').toString().trim().replace('T', ' ');
-}
-
-function normalizeSearchDateTimeValue(value) {
-  const raw = (value || '').toString().trim();
-  if (raw === '') {
-    return '';
-  }
-  if (/^\d+$/.test(raw)) {
-    const timestamp = Number(raw);
-    if (!Number.isFinite(timestamp)) {
-      return '';
-    }
-    const normalizedTimestamp = raw.length > 10 ? timestamp : timestamp * 1000;
-    const date = new Date(normalizedTimestamp);
-    if (Number.isNaN(date.getTime())) {
-      return '';
-    }
-    const year = date.getFullYear();
-    const month = `${date.getMonth() + 1}`.padStart(2, '0');
-    const day = `${date.getDate()}`.padStart(2, '0');
-    const hour = `${date.getHours()}`.padStart(2, '0');
-    const minute = `${date.getMinutes()}`.padStart(2, '0');
-    return `${year}-${month}-${day}T${hour}:${minute}`;
-  }
-  return toDatetimeLocalValue(raw);
-}
-
-function parseLogFiltersFromSearch(search, isAdminScope) {
-  const params = new URLSearchParams(search || '');
-  const nextInputs = {
-    username: '',
-    token_name: '',
-    model_name: '',
-    start_timestamp: '',
-    end_timestamp: '',
-    channel: '',
-    group_id: '',
-  };
-  const nextActiveFilterKeys = [];
-  const nextLogType = Number(params.get('log_type') || params.get('type') || 0);
-  if (Number.isFinite(nextLogType) && nextLogType > 0) {
-    nextActiveFilterKeys.push('log_type');
-  }
-  const nextStart = normalizeSearchDateTimeValue(params.get('start_timestamp'));
-  const nextEnd = normalizeSearchDateTimeValue(params.get('end_timestamp'));
-  if (nextStart !== '' || nextEnd !== '') {
-    nextInputs.start_timestamp = nextStart;
-    nextInputs.end_timestamp = nextEnd;
-    nextActiveFilterKeys.push('time_range');
-  }
-  const filterKeys = ['token_name', 'model_name'];
-  if (isAdminScope) {
-    filterKeys.push('channel', 'group_id', 'username');
-  }
-  filterKeys.forEach((key) => {
-    const value = (params.get(key) || '').toString().trim();
-    if (value === '') {
-      return;
-    }
-    nextInputs[key] = value;
-    nextActiveFilterKeys.push(key);
-  });
-  return {
-    inputs: nextInputs,
-    logType: Number.isFinite(nextLogType) && nextLogType > 0 ? nextLogType : 0,
-    activeFilterKeys: Array.from(new Set(nextActiveFilterKeys)),
-  };
-}
-
-function currentDatetimeLocalValue() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = `${now.getMonth() + 1}`.padStart(2, '0');
-  const day = `${now.getDate()}`.padStart(2, '0');
-  const hour = `${now.getHours()}`.padStart(2, '0');
-  const minute = `${now.getMinutes()}`.padStart(2, '0');
-  return `${year}-${month}-${day}T${hour}:${minute}`;
-}
-
-function startOfTodayDatetimeLocalValue() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const year = now.getFullYear();
-  const month = `${now.getMonth() + 1}`.padStart(2, '0');
-  const day = `${now.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}T00:00`;
-}
-
-function renderFilterSummary(filterKey, inputs, t, extra = {}) {
-  if (filterKey === 'time_range') {
-    const start = formatFilterDisplayValue(inputs?.start_timestamp);
-    const end = formatFilterDisplayValue(inputs?.end_timestamp);
-    if (start === '' && end === '') {
-      return t('log.filters.empty');
-    }
-    if (start !== '' && end !== '') {
-      return `${start} ${t('log.filters.range_separator')} ${end}`;
-    }
-    return start || end || t('log.filters.empty');
-  }
-  if (filterKey === 'log_type') {
-    return extra.logTypeLabel || t('log.filters.empty');
-  }
-  const value = (inputs?.[filterKey] || '').toString().trim();
-  if (value === '') {
-    return t('log.filters.empty');
-  }
-  if (typeof extra.resolveOptionLabel === 'function') {
-    return extra.resolveOptionLabel(filterKey, value) || value;
-  }
-  return value;
-}
+import ListFilterBar from './ListFilterBar';
+import {
+  DEFAULT_LOG_COLUMN_WIDTHS,
+  LOG_COLUMN_MAX_WIDTH,
+  LOG_COLUMN_MIN_WIDTH,
+  LOG_SORT_FIELD_MAP,
+  cleanupDatetimeLocalValue,
+  currentDatetimeLocalValue,
+  formatCompactNumber,
+  getLogChannelLabel,
+  getLogColumnOrderStorageKey,
+  getLogColumnWidthStorageKey,
+  loadLogColumnOrder,
+  loadLogColumnWidths,
+  normalizeLogColumnOrder,
+  normalizeLogEntry,
+  parseDatetimeInput,
+  parseLogFiltersFromSearch,
+  renderBillingSource,
+  renderFilterSummary,
+  renderTimestamp,
+  renderType,
+  startOfTodayDatetimeLocalValue,
+  toDatetimeLocalValue,
+  toTokenFilterOption,
+  toUserFilterOption,
+} from './LogsTable.helpers';
 
 const LogsTable = () => {
   const { t } = useTranslation();
@@ -536,10 +89,6 @@ const LogsTable = () => {
           ? t('header.admin_workspace')
           : t('header.user_workspace'),
       },
-      {
-        key: 'section',
-        label: isAdminScope ? t('header.operation') : t('header.mine'),
-      },
     ];
     if (!isAdminScope && logSource === 'quota') {
       items.push({
@@ -555,15 +104,19 @@ const LogsTable = () => {
     () => parseLogFiltersFromSearch(location.search, isAdminScope),
     [isAdminScope, location.search]
   );
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activePage, setActivePage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [tableSorter, setTableSorter] = useState({
-    columnKey: 'created_at',
-    order: 'descend',
-  });
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const initialPageSize = useMemo(() => {
+    const raw = new URLSearchParams(location.search).get('page_size');
+    return raw ? parseListPageSize(raw) : LIST_PAGE_SIZE;
+    // Seed once from the URL; later changes flow through setPageSize.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Seed the page from the URL once so returning from a log detail (or a shared
+  // link) restores the same page; filter/sort/size changes reset back to page 1.
+  const initialPage = useMemo(
+    () => parsePageParam(new URLSearchParams(location.search).get('page')),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const [logType, setLogType] = useState(initialSearchFilters.logType);
   const [filterOptions, setFilterOptions] = useState({
     tokenNames: [],
@@ -590,13 +143,6 @@ const LogsTable = () => {
   const [activeFilterKeys, setActiveFilterKeys] = useState(
     initialSearchFilters.activeFilterKeys
   );
-  const [addFilterPopupOpen, setAddFilterPopupOpen] = useState(false);
-  const [draftFilterKey, setDraftFilterKey] = useState('');
-  const [draftFilterInputs, setDraftFilterInputs] = useState({
-    value: '',
-    start_timestamp: '',
-    end_timestamp: '',
-  });
   const [displayUnit, setDisplayUnit] = useState('USD');
   const [currencyIndex, setCurrencyIndex] = useState(() =>
     buildPublicDisplayCurrencyIndex([])
@@ -617,6 +163,175 @@ const LogsTable = () => {
   const [cleaningLogs, setCleaningLogs] = useState(false);
   const draggingColumnKeyRef = useRef('');
   const resizingColumnRef = useRef(null);
+
+  // Seed the sort from the URL once (frontend column key + direction), defaulting
+  // to created-at descending to match the backend default.
+  const initialSort = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const field = (params.get('order_by') || '').trim();
+    const order = (params.get('order') || '').trim();
+    if (LOG_SORT_FIELD_MAP[field] && (order === 'asc' || order === 'desc')) {
+      return { field, order };
+    }
+    return { field: 'created_at', order: 'desc' };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Backend-paged fetcher: page-overwrite + true global sort. Frontend column
+  // keys map to whitelisted backend columns; structured filters are applied
+  // server-side. Filter identity changes reset to page 1 via the effect below.
+  const fetchLogs = useCallback(
+    async ({ page, pageSize, orderBy, order }) => {
+      const enabledFilters = new Set(activeFilterKeys);
+      const localStartTimestamp = enabledFilters.has('time_range')
+        ? parseDatetimeInput(start_timestamp)
+        : 0;
+      const localEndTimestamp = enabledFilters.has('time_range')
+        ? parseDatetimeInput(end_timestamp)
+        : 0;
+      const queryUsername = enabledFilters.has('username') ? username : '';
+      const queryTokenName = enabledFilters.has('token_name') ? token_name : '';
+      const queryModelName = enabledFilters.has('model_name') ? model_name : '';
+      const queryChannel = enabledFilters.has('channel') ? channel : '';
+      const queryGroupID = enabledFilters.has('group_id') ? group_id : '';
+      const queryLogType = enabledFilters.has('log_type') ? logType : 0;
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('page_size', String(pageSize));
+      const backendOrderBy = LOG_SORT_FIELD_MAP[orderBy] || '';
+      if (backendOrderBy) {
+        params.set('order_by', backendOrderBy);
+        params.set('order', order === 'asc' ? 'asc' : 'desc');
+      }
+      params.set('type', String(queryLogType));
+      params.set('token_name', queryTokenName);
+      params.set('model_name', queryModelName);
+      params.set('start_timestamp', String(localStartTimestamp));
+      params.set('end_timestamp', String(localEndTimestamp));
+      if (isAdminScope) {
+        params.set('username', queryUsername);
+        params.set('group_id', queryGroupID);
+        params.set('channel', queryChannel);
+      }
+      const base = isAdminScope ? '/api/v1/admin/log/' : '/api/v1/public/log';
+      const res = await API.get(`${base}?${params.toString()}`);
+      const { success, message, data, meta } = res.data;
+      if (!success) {
+        showError(message);
+        throw new Error(message || 'load logs failed');
+      }
+      const rows = Array.isArray(data) ? data.map(normalizeLogEntry) : [];
+      return { rows, total: Number(meta?.total || rows.length || 0) };
+    },
+    [
+      isAdminScope,
+      logType,
+      username,
+      token_name,
+      model_name,
+      start_timestamp,
+      end_timestamp,
+      channel,
+      group_id,
+      activeFilterKeys,
+    ],
+  );
+
+  const {
+    rows: logs,
+    total: totalCount,
+    loading,
+    loadError,
+    page: activePage,
+    pageSize,
+    sort,
+    load: loadLogs,
+    setPageSize,
+    setSort,
+  } = useList({
+    fetcher: fetchLogs,
+    pageSize: initialPageSize,
+    initialPage,
+    initialSort,
+  });
+
+  // Write active filters back to the URL so a refresh or shared link restores
+  // them. The written set mirrors parseLogFiltersFromSearch exactly, so the
+  // round-trip is symmetric; `source` (breadcrumb origin) is preserved and
+  // navigate replace avoids spamming history. A diff guard prevents loops.
+  useEffect(() => {
+    const query = new URLSearchParams();
+    const currentParams = new URLSearchParams(location.search || '');
+    // `tab` is owned by the embedding layout (e.g. /workspace/topup?tab=logs);
+    // rebuilding the query purely from LogsTable state would drop it and bounce
+    // the parent back to its default tab, so carry it through unchanged.
+    const tab = currentParams.get('tab');
+    if (tab) {
+      query.set('tab', tab);
+    }
+    const source = currentParams.get('source');
+    if (source) {
+      query.set('source', source);
+    }
+    if (activeFilterKeys.includes('log_type') && Number(logType) > 0) {
+      query.set('log_type', String(logType));
+    }
+    if (activeFilterKeys.includes('time_range')) {
+      if ((inputs.start_timestamp || '').trim() !== '') {
+        query.set('start_timestamp', inputs.start_timestamp);
+      }
+      if ((inputs.end_timestamp || '').trim() !== '') {
+        query.set('end_timestamp', inputs.end_timestamp);
+      }
+    }
+    const textFilterKeys = ['token_name', 'model_name'];
+    if (isAdminScope) {
+      textFilterKeys.push('channel', 'group_id', 'username');
+    }
+    textFilterKeys.forEach((key) => {
+      if (activeFilterKeys.includes(key) && (inputs[key] || '').trim() !== '') {
+        query.set(key, inputs[key].trim());
+      }
+    });
+    if (sort?.field) {
+      query.set('order_by', sort.field);
+      query.set('order', sort.order === 'asc' ? 'asc' : 'desc');
+    }
+    if (Number(pageSize) !== LIST_PAGE_SIZE) {
+      query.set('page_size', String(pageSize));
+    }
+    // Page position (default 1 is stripped). Folded into this rebuild-from-state
+    // effect so it stays consistent with the filters/sort/size it writes; any of
+    // those resets the page to 1 via loadLogs(1), which drops the param here.
+    if (Number(activePage) > 1) {
+      query.set('page', String(activePage));
+    }
+    const nextSearch = query.toString();
+    const currentSearch = location.search.startsWith('?')
+      ? location.search.slice(1)
+      : location.search;
+    if (nextSearch === currentSearch) {
+      return;
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : '',
+      },
+      { replace: true },
+    );
+  }, [
+    activeFilterKeys,
+    inputs,
+    logType,
+    sort,
+    pageSize,
+    activePage,
+    isAdminScope,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
 
   const LOG_OPTIONS = [
     { key: '0', text: t('log.type.all'), value: 0 },
@@ -645,14 +360,16 @@ const LogsTable = () => {
         key: 'token_name',
         label: t('log.table.token_name'),
         placeholder: t('log.table.token_name_placeholder'),
-        type: isAdminScope ? 'select' : 'text',
+        type:
+          isAdminScope || filterOptions.tokenNames.length > 0 ? 'select' : 'text',
         options: filterOptions.tokenNames,
       },
       {
         key: 'model_name',
         label: t('log.table.model_name'),
         placeholder: t('log.table.model_name_placeholder'),
-        type: isAdminScope ? 'select' : 'text',
+        type:
+          isAdminScope || filterOptions.modelNames.length > 0 ? 'select' : 'text',
         options: filterOptions.modelNames,
       },
     ];
@@ -727,7 +444,8 @@ const LogsTable = () => {
     setInputs(initialSearchFilters.inputs);
     setLogType(initialSearchFilters.logType);
     setActiveFilterKeys(initialSearchFilters.activeFilterKeys);
-    setActivePage(1);
+    // No explicit page reset: the filter change flows through `fetchLogs`, whose
+    // identity change triggers a reload to page 1.
   }, [initialSearchFilters]);
 
   const loadFilterOptions = useCallback(async (filterKey = '') => {
@@ -810,13 +528,21 @@ const LogsTable = () => {
           tokenNames:
             !normalizedFilterKey || normalizedFilterKey === 'token_name'
               ? Array.isArray(data?.token_names)
-                ? data.token_names
+                ? data.token_names.map((item) => ({
+                    key: item,
+                    text: item,
+                    value: item,
+                  }))
                 : []
               : prev.tokenNames,
           modelNames:
             !normalizedFilterKey || normalizedFilterKey === 'model_name'
               ? Array.isArray(data?.model_names)
-                ? data.model_names
+                ? data.model_names.map((item) => ({
+                    key: item,
+                    text: item,
+                    value: item,
+                  }))
                 : []
               : prev.modelNames,
         }));
@@ -835,14 +561,16 @@ const LogsTable = () => {
     }
   }, [isAdminScope, loadedFilterKeys, loadingFilterKeys, t]);
 
-  const openFilterDraft = useCallback(
+  const getLogFilterConfig = useCallback(
+    (filterKey) =>
+      conditionalFilterConfig.find((item) => item.key === filterKey) || null,
+    [conditionalFilterConfig]
+  );
+
+  const getLogInitialDraft = useCallback(
     (filterKey) => {
-      const config = conditionalFilterConfig.find((item) => item.key === filterKey);
-      if (!config) {
-        return;
-      }
-      if (config.type === 'time_range') {
-        setDraftFilterInputs({
+      if (filterKey === 'time_range') {
+        return {
           value: '',
           start_timestamp:
             toDatetimeLocalValue(inputs.start_timestamp) ||
@@ -850,86 +578,98 @@ const LogsTable = () => {
           end_timestamp:
             toDatetimeLocalValue(inputs.end_timestamp) ||
             currentDatetimeLocalValue(),
-        });
-      } else if (filterKey === 'log_type') {
-        setDraftFilterInputs({
-          value: logType > 0 ? logType : '',
-          start_timestamp: '',
-          end_timestamp: '',
-        });
-      } else {
-        setDraftFilterInputs({
-          value: (inputs[filterKey] || '').toString(),
-          start_timestamp: '',
-          end_timestamp: '',
-        });
+        };
       }
-      if (
-        ['channel', 'group_id'].includes(
-          filterKey
-        )
-      ) {
-        loadFilterOptions(filterKey).then();
+      if (filterKey === 'log_type') {
+        return { value: logType > 0 ? logType : '' };
       }
-      setDraftFilterKey(filterKey);
-      setAddFilterPopupOpen(true);
+      return { value: (inputs[filterKey] || '').toString() };
     },
-    [conditionalFilterConfig, inputs, loadFilterOptions, logType]
+    [inputs, logType]
   );
 
-  const closeFilterDraft = useCallback(() => {
-    setAddFilterPopupOpen(false);
-    setDraftFilterKey('');
-    setDraftFilterInputs({
-      value: '',
-      start_timestamp: '',
-      end_timestamp: '',
-    });
-  }, []);
+  const onLogDraftOpen = useCallback(
+    (filterKey) => {
+      if (['channel', 'group_id'].includes(filterKey)) {
+        loadFilterOptions(filterKey).then();
+      } else if (
+        !isAdminScope &&
+        ['token_name', 'model_name'].includes(filterKey)
+      ) {
+        // Normal users get a dropdown of the token/model names they have
+        // actually used (from /api/v1/public/log/options) instead of typing
+        // blind. Options load lazily on first open, mirroring channel/group.
+        loadFilterOptions(filterKey).then();
+      }
+    },
+    [isAdminScope, loadFilterOptions]
+  );
 
-  const applyFilterDraft = useCallback(() => {
-    if (draftFilterKey === '') {
-      return;
-    }
-    const config = conditionalFilterConfig.find((item) => item.key === draftFilterKey);
-    if (!config) {
-      return;
-    }
-    if (config.type === 'time_range') {
-      const nextStart = draftFilterInputs.start_timestamp.trim();
-      const nextEnd = draftFilterInputs.end_timestamp.trim();
-      if (nextStart === '' && nextEnd === '') {
-        showError(t('log.filters.empty'));
-        return;
+  const applyLogFilterDraft = useCallback(
+    (filterKey, draft) => {
+      if (filterKey === '') {
+        return false;
       }
-      setInputs((prev) => ({
-        ...prev,
-        start_timestamp: nextStart,
-        end_timestamp: nextEnd,
-      }));
-    } else if (draftFilterKey === 'log_type') {
-      const nextValue = Number(draftFilterInputs.value || 0);
-      if (!Number.isFinite(nextValue) || nextValue <= 0) {
-        showError(t('log.filters.empty'));
-        return;
+      const config = conditionalFilterConfig.find(
+        (item) => item.key === filterKey
+      );
+      if (!config) {
+        return false;
       }
-      setLogType(nextValue);
-    } else {
-      const nextValue = draftFilterInputs.value.trim();
-      if (nextValue === '') {
-        showError(t('log.filters.empty'));
-        return;
+      if (config.type === 'time_range') {
+        const nextStart = (draft.start_timestamp || '').trim();
+        const nextEnd = (draft.end_timestamp || '').trim();
+        if (nextStart === '' && nextEnd === '') {
+          showError(t('log.filters.empty'));
+          return false;
+        }
+        setInputs((prev) => ({
+          ...prev,
+          start_timestamp: nextStart,
+          end_timestamp: nextEnd,
+        }));
+      } else if (filterKey === 'log_type') {
+        const nextValue = Number(draft.value || 0);
+        if (!Number.isFinite(nextValue) || nextValue <= 0) {
+          showError(t('log.filters.empty'));
+          return false;
+        }
+        setLogType(nextValue);
+      } else {
+        const nextValue = (draft.value || '').toString().trim();
+        if (nextValue === '') {
+          showError(t('log.filters.empty'));
+          return false;
+        }
+        setInputs((prev) => ({
+          ...prev,
+          [filterKey]: nextValue,
+        }));
       }
-      setInputs((prev) => ({
-        ...prev,
-        [draftFilterKey]: nextValue,
-      }));
-    }
-    setActiveFilterKeys((prev) =>
-      prev.includes(draftFilterKey) ? prev : [...prev, draftFilterKey]
-    );
-    closeFilterDraft();
-  }, [closeFilterDraft, conditionalFilterConfig, draftFilterInputs, draftFilterKey, t]);
+      setActiveFilterKeys((prev) =>
+        prev.includes(filterKey) ? prev : [...prev, filterKey]
+      );
+      return true;
+    },
+    [conditionalFilterConfig, t]
+  );
+
+  const getLogSelectLoading = useCallback(
+    (filterKey) =>
+      filterKey === 'username'
+        ? userFilterSearchLoading
+        : filterKey === 'token_name'
+          ? tokenFilterSearchLoading
+          : filterKey === 'model_name'
+            ? modelFilterSearchLoading
+            : loadingFilterKeys.includes(filterKey),
+    [
+      loadingFilterKeys,
+      modelFilterSearchLoading,
+      tokenFilterSearchLoading,
+      userFilterSearchLoading,
+    ]
+  );
 
   const searchAdminUsers = useCallback(async (keyword) => {
     const normalizedKeyword = String(keyword || '').trim();
@@ -1027,6 +767,21 @@ const LogsTable = () => {
     }));
   }, []);
 
+  const clearAllFilters = useCallback(() => {
+    setActiveFilterKeys([]);
+    setLogType(0);
+    setInputs((prev) => ({
+      ...prev,
+      username: '',
+      token_name: '',
+      model_name: '',
+      start_timestamp: '',
+      end_timestamp: '',
+      channel: '',
+      group_id: '',
+    }));
+  }, []);
+
   const loadDisplayUnits = useCallback(async () => {
     try {
       if (!isAdminScope) {
@@ -1062,73 +817,18 @@ const LogsTable = () => {
     return effectiveLogType !== 5 && effectiveLogType !== 6;
   };
 
-  const loadLogs = useCallback(
-    async (page) => {
-      const normalizedPage = Number(page) > 0 ? Number(page) : 1;
-      let url = '';
-      const enabledFilters = new Set(activeFilterKeys);
-      const localStartTimestamp = enabledFilters.has('time_range')
-        ? parseDatetimeInput(start_timestamp)
-        : 0;
-      const localEndTimestamp = enabledFilters.has('time_range')
-        ? parseDatetimeInput(end_timestamp)
-        : 0;
-      const queryUsername = enabledFilters.has('username') ? username : '';
-      const queryTokenName = enabledFilters.has('token_name') ? token_name : '';
-      const queryModelName = enabledFilters.has('model_name') ? model_name : '';
-      const queryChannel = enabledFilters.has('channel') ? channel : '';
-      const queryGroupID = enabledFilters.has('group_id') ? group_id : '';
-      const queryLogType = enabledFilters.has('log_type') ? logType : 0;
-      if (isAdminScope) {
-        url = `/api/v1/admin/log/?page=${normalizedPage}&type=${queryLogType}&username=${queryUsername}&token_name=${queryTokenName}&model_name=${queryModelName}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group_id=${queryGroupID}&channel=${queryChannel}`;
-      } else {
-        url = `/api/v1/public/log?page=${normalizedPage}&type=${queryLogType}&token_name=${queryTokenName}&model_name=${queryModelName}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}`;
-      }
-      const res = await API.get(url);
-      const { success, message, data, meta } = res.data;
-      if (success) {
-        const normalizedRows = Array.isArray(data) ? data.map(normalizeLogEntry) : [];
-        setTotalCount(Number(meta?.total || data?.length || 0));
-        if (normalizedPage === 1) {
-          setLogs(normalizedRows);
-        } else {
-          setLogs((prev) => writePagedRows(prev, normalizedPage, ITEMS_PER_PAGE, normalizedRows));
-        }
-      } else {
-        showError(message);
-      }
-      setLoading(false);
-    },
-    [
-      isAdminScope,
-      logType,
-      username,
-      token_name,
-      model_name,
-      start_timestamp,
-      end_timestamp,
-      channel,
-      group_id,
-      activeFilterKeys,
-    ]
-  );
-
-  const onPaginationChange = (e, { activePage }) => {
-    (async () => {
-      const nextPage = Number(activePage) > 0 ? Number(activePage) : 1;
-      const hasLoadedPageRows = hasLoadedPagedRows(logs, nextPage, ITEMS_PER_PAGE);
-      if (searchKeyword.trim() === '' && !hasLoadedPageRows) {
-        await loadLogs(nextPage);
-      }
-      setActivePage(nextPage);
-    })();
+  const onPaginationChange = (e, { activePage: nextActivePage, pageSize: nextSize }) => {
+    const size = Number(nextSize) > 0 ? Number(nextSize) : pageSize;
+    if (size !== pageSize) {
+      // Page-size change reloads page 1 at the new size; the URL effect mirrors it.
+      setPageSize(size);
+      return;
+    }
+    const nextPage = Number(nextActivePage) > 0 ? Number(nextActivePage) : 1;
+    loadLogs(nextPage);
   };
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setActivePage(1);
-    await loadLogs(1);
-  }, [loadLogs]);
+  const refresh = useCallback(() => loadLogs(1), [loadLogs]);
 
   const deleteHistoryLogs = useCallback(async () => {
     const parsed = Date.parse(cleanupTimestamp);
@@ -1155,9 +855,17 @@ const LogsTable = () => {
     }
   }, [cleanupTimestamp, refresh, t]);
 
+  // `loadLogs` (useList.load) is stable, so `fetchLogs` is the real trigger:
+  // its identity changes with the filter deps, reloading page 1 on filter change.
+  // On the very first run we restore the seeded page instead; later filter
+  // changes reset to page 1 as usual.
+  const didInitLogsRef = useRef(false);
   useEffect(() => {
-    refresh().then();
-  }, [refresh]);
+    const firstRun = !didInitLogsRef.current;
+    didInitLogsRef.current = true;
+    loadLogs(firstRun ? initialPage : 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchLogs]);
 
   useEffect(() => {
     loadDisplayUnits().then();
@@ -1200,102 +908,107 @@ const LogsTable = () => {
     }
   }, [isAdminScope, logColumnWidths]);
 
-  useEffect(() => {
-    setActivePage(1);
-  }, [searchKeyword, activeFilterKeys, username, token_name, model_name, channel, group_id, start_timestamp, end_timestamp]);
-
   const handleTableChange = (_, __, sorter) => {
-    if (!sorter || Array.isArray(sorter) || !sorter.columnKey || !sorter.order) {
-      setTableSorter({ columnKey: null, order: null });
-      return;
-    }
-    setTableSorter({
-      columnKey: sorter.columnKey,
-      order: sorter.order,
-    });
+    setSort(sorterToSort(sorter));
   };
 
-  const filteredLogs = useMemo(() => {
-    const keyword = (searchKeyword || '').toString().trim().toLowerCase();
-    if (keyword === '') {
-      return logs;
-    }
-    return logs.filter((log) => {
-      const haystacks = [
-        log?.content,
-        log?.publicModelName,
-        log?.token_name,
-        log?.username,
-        log?.group_name,
-        log?.group_id,
-        log?.trace_id,
-        ...(isAdminScope
-          ? [
-              log?.model_name,
-              log?.actualModelName,
-              log?.channel_name,
-              log?.channel,
-            ]
-          : []),
-      ]
-        .map((item) => (item || '').toString().toLowerCase())
-        .filter((item) => item !== '');
-      return haystacks.some((item) => item.includes(keyword));
-    });
-  }, [isAdminScope, logs, searchKeyword]);
+  const [exportingFull, setExportingFull] = useState(false);
 
-  const sortedFilteredLogs = useMemo(() => {
-    if (!tableSorter.columnKey || !tableSorter.order) {
-      return filteredLogs;
+  const handleExportCsv = useCallback(() => {
+    const stamp = timestamp2string(Math.floor(Date.now() / 1000)).replace(
+      /[^0-9]/g,
+      '',
+    );
+    const columns = [
+      {
+        key: 'created_at',
+        label: t('log.table.time'),
+        format: (v) => (v ? timestamp2string(v) : ''),
+      },
+    ];
+    if (isAdminScope) {
+      columns.push({ key: 'channel', label: t('log.table.channel') });
+      columns.push({ key: 'username', label: t('log.table.username') });
     }
-    const nextLogs = [...filteredLogs];
-    nextLogs.sort((left, right) => {
-      switch (tableSorter.columnKey) {
-        case 'created_at':
-          return compareNumberValue(left.created_at, right.created_at);
-        case 'channel':
-          return compareTextValue(
-            getLogChannelLabel(left),
-            getLogChannelLabel(right),
-          );
-        case 'group_id':
-          return compareTextValue(
-            left.group_name || left.group_id,
-            right.group_name || right.group_id,
-          );
-        case 'type':
-          return compareNumberValue(left.type, right.type);
-        case 'billingSource':
-          return compareTextValue(
-            left.billing_source_name || left.billing_source,
-            right.billing_source_name || right.billing_source,
-          );
-        case 'model_name':
-          return compareTextValue(left.publicModelName, right.publicModelName);
-        case 'username':
-          return compareTextValue(left.username, right.username);
-        case 'token_name':
-          return compareTextValue(left.token_name, right.token_name);
-        case 'prompt_tokens':
-          return compareNumberValue(left.prompt_tokens, right.prompt_tokens);
-        case 'completion_tokens':
-          return compareNumberValue(
-            left.completion_tokens,
-            right.completion_tokens,
-          );
-        case 'cacheQuantity':
-          return compareNumberValue(left.cacheQuantity, right.cacheQuantity);
-        case 'chargeAmount':
-          return compareNumberValue(left.chargeAmount, right.chargeAmount);
-        default:
-          return 0;
+    columns.push(
+      { key: 'token_name', label: t('log.table.token_name') },
+      { key: 'publicModelName', label: t('log.table.model') },
+      { key: 'prompt_tokens', label: t('log.table.prompt_tokens') },
+      { key: 'completion_tokens', label: t('log.table.completion_tokens') },
+      { key: 'chargeAmount', label: t('log.table.quota') },
+      { key: 'content', label: t('log.table.detail') },
+    );
+    // 拉一份全量筛选结果(覆盖式分页下当前页不代表完整集合),
+    // 再就地 exportCSV;与现有 fetchLogs 走同一后端参数,避免重复拼接。
+    setExportingFull(true);
+    const params = new URLSearchParams();
+    params.set('page', '1');
+    // 10k 仍是 100 的整数倍;后端若有上限会失败由 try/catch 兜底。
+    params.set('page_size', '10000');
+    if (sort?.orderBy) {
+      const backendOrderBy = LOG_SORT_FIELD_MAP[sort.orderBy] || '';
+      if (backendOrderBy) {
+        params.set('order_by', backendOrderBy);
+        params.set('order', sort.order === 'asc' ? 'asc' : 'desc');
       }
-    });
-    if (tableSorter.order === 'descend') {
-      nextLogs.reverse();
     }
-    return nextLogs;
-  }, [filteredLogs, tableSorter]);
+    const queryLogType = activeFilterKeys.includes('log_type')
+      ? logType
+      : 0;
+    params.set('type', String(queryLogType));
+    params.set('token_name', activeFilterKeys.includes('token_name') ? token_name : '');
+    params.set('model_name', activeFilterKeys.includes('model_name') ? model_name : '');
+    params.set('start_timestamp', String(start_timestamp || 0));
+    params.set('end_timestamp', String(end_timestamp || 0));
+    if (isAdminScope) {
+      params.set('username', activeFilterKeys.includes('username') ? username : '');
+      params.set('group_id', activeFilterKeys.includes('group_id') ? group_id : '');
+      params.set('channel', activeFilterKeys.includes('channel') ? channel : '');
+    }
+    const base = isAdminScope ? '/api/v1/admin/log/' : '/api/v1/public/log';
+    API.get(`${base}?${params.toString()}`)
+      .then((res) => {
+        const { success, message, data } = res?.data || {};
+        if (!success) {
+          showError(message || t('log.messages.load_failed'));
+          return;
+        }
+        const rows = (Array.isArray(data) ? data : []).map((log) => ({
+          ...log,
+          channel: getLogChannelLabel(log),
+        }));
+        if (rows.length === 0) {
+          showError(t('log.export.empty'));
+          return;
+        }
+        exportCSV(
+          `logs-${isAdminScope ? 'admin' : 'mine'}-${stamp}.csv`,
+          columns,
+          rows,
+        );
+        showSuccess(t('log.export.success', { count: rows.length }));
+      })
+      .catch((error) => {
+        showError(error?.message || t('log.messages.load_failed'));
+      })
+      .finally(() => {
+        setExportingFull(false);
+      });
+  }, [
+    activeFilterKeys,
+    channel,
+    end_timestamp,
+    getLogChannelLabel,
+    group_id,
+    isAdminScope,
+    logType,
+    model_name,
+    sort,
+    start_timestamp,
+    t,
+    token_name,
+    username,
+  ]);
 
   const resolveOptionLabel = useCallback(
     (filterKey, value) => {
@@ -1320,13 +1033,6 @@ const LogsTable = () => {
     [LOG_OPTIONS, t]
   );
 
-  const totalPages = Math.max(
-    Math.ceil(
-      (searchKeyword.trim() === '' ? totalCount : filteredLogs.length) /
-        ITEMS_PER_PAGE,
-    ),
-    1,
-  );
 
   const detailBasePath = isAdminScope ? '/admin/log' : '/workspace/log';
   const logTableScrollWidth = Math.max(
@@ -1497,6 +1203,15 @@ const LogsTable = () => {
             clearColumnDragState();
           },
         }),
+        onCell: (record, index) => {
+          const previous =
+            typeof column.onCell === 'function'
+              ? column.onCell(record, index) || {}
+              : {};
+          return typeof originalTitle === 'string'
+            ? { ...previous, 'data-label': originalTitle }
+            : previous;
+        },
       };
     });
   };
@@ -1507,8 +1222,17 @@ const LogsTable = () => {
         breadcrumbs={breadcrumbs}
         title={t('header.log')}
         actions={
-          isAdminScope ? (
-            <div className='router-log-cleanup-actions'>
+          <div className='router-log-cleanup-actions'>
+            <AppButton
+              type='button'
+              className='router-section-button'
+              onClick={handleExportCsv}
+              disabled={loading || exportingFull}
+              loading={exportingFull}
+            >
+              {t('common.export_csv')}
+            </AppButton>
+            {isAdminScope ? (
               <AppButton
                 type='button'
                 className='router-section-button router-danger-button'
@@ -1517,211 +1241,53 @@ const LogsTable = () => {
               >
                 {t('log.cleanup.button')}
               </AppButton>
-            </div>
-          ) : null
-        }
-        picker={
-            <AppPopover
-              open={addFilterPopupOpen}
-              trigger='click'
-              placement='bottomLeft'
-              onOpenChange={(open) => {
-                if (open) {
-                  setAddFilterPopupOpen(true);
-                  return;
-                }
-                if (!open) {
-                  closeFilterDraft();
-                }
-              }}
-              content={
-                <div className='router-log-filter-picker'>
-                  <div className='router-log-filter-picker-options'>
-                    {availableConditionalFilterOptions.map((item) => (
-                      <AppButton
-                        key={item.value}
-                        type='button'
-                        className='router-inline-button'
-                        color={draftFilterKey === item.value ? 'blue' : undefined}
-                        basic={draftFilterKey !== item.value}
-                        onClick={() => openFilterDraft(item.value)}
-                      >
-                        {item.text}
-                      </AppButton>
-                    ))}
-                  </div>
-                  {draftFilterKey !== '' && (
-                    <div className='router-log-filter-editor'>
-                      <div className='router-log-filter-editor-title'>
-                        {
-                          conditionalFilterConfig.find((item) => item.key === draftFilterKey)
-                            ?.label
-                        }
-                      </div>
-                      {draftFilterKey === 'time_range' ? (
-                        <div className='router-log-filter-editor-range'>
-                          <input
-                            type='datetime-local'
-                            value={draftFilterInputs.start_timestamp}
-                            onChange={(e) =>
-                              setDraftFilterInputs((prev) => ({
-                                ...prev,
-                                start_timestamp: e.target.value,
-                              }))
-                            }
-                          />
-                          <input
-                            type='datetime-local'
-                            value={draftFilterInputs.end_timestamp}
-                            onChange={(e) =>
-                              setDraftFilterInputs((prev) => ({
-                                ...prev,
-                                end_timestamp: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      ) : conditionalFilterConfig.find((item) => item.key === draftFilterKey)
-                          ?.type === 'select' ? (
-                        <AppSelect
-                          className='router-section-dropdown router-log-filter-select'
-                          fluid
-                          search
-                          clearable
-                          loading={
-                            draftFilterKey === 'username'
-                              ? userFilterSearchLoading
-                              : draftFilterKey === 'token_name'
-                                ? tokenFilterSearchLoading
-                                : draftFilterKey === 'model_name'
-                                  ? modelFilterSearchLoading
-                                : loadingFilterKeys.includes(draftFilterKey)
-                          }
-                          getPopupContainer={resolvePopupContainer}
-                          options={
-                            conditionalFilterConfig.find((item) => item.key === draftFilterKey)
-                              ?.options || []
-                          }
-                          value={draftFilterInputs.value}
-                          onClick={() => {
-                            if (draftFilterKey === 'username') {
-                              searchAdminUsers(draftFilterInputs.value).then();
-                            } else if (draftFilterKey === 'token_name' && isAdminScope) {
-                              searchAdminTokens(draftFilterInputs.value).then();
-                            } else if (draftFilterKey === 'model_name' && isAdminScope) {
-                              searchAdminModels(draftFilterInputs.value).then();
-                            }
-                          }}
-                          onSearch={(value) => {
-                            if (draftFilterKey === 'username') {
-                              searchAdminUsers(value).then();
-                            } else if (draftFilterKey === 'token_name' && isAdminScope) {
-                              searchAdminTokens(value).then();
-                            } else if (draftFilterKey === 'model_name' && isAdminScope) {
-                              searchAdminModels(value).then();
-                            }
-                          }}
-                          onChange={(e, { value }) =>
-                            setDraftFilterInputs((prev) => ({
-                              ...prev,
-                              value:
-                                value === null || value === undefined || value === ''
-                                  ? ''
-                                  : value,
-                            }))
-                          }
-                        />
-                      ) : (
-                        <input
-                          className='router-log-filter-editor-input'
-                          type='text'
-                          value={draftFilterInputs.value}
-                          placeholder={
-                            conditionalFilterConfig.find((item) => item.key === draftFilterKey)
-                              ?.placeholder || ''
-                          }
-                          onChange={(e) =>
-                            setDraftFilterInputs((prev) => ({
-                              ...prev,
-                              value: e.target.value,
-                            }))
-                          }
-                        />
-                      )}
-                      <AppFormActions className='router-log-filter-editor-actions'>
-                        <AppButton
-                          type='button'
-                          className='router-inline-button'
-                          onClick={closeFilterDraft}
-                        >
-                          {t('common.cancel')}
-                        </AppButton>
-                        <AppButton
-                          type='button'
-                          className='router-inline-button'
-                          color='blue'
-                          onClick={applyFilterDraft}
-                        >
-                          {t('common.confirm')}
-                        </AppButton>
-                      </AppFormActions>
-                    </div>
-                  )}
-                </div>
-              }
-            >
-              <AppButton
-                type='button'
-                className='router-section-button'
-                disabled={availableConditionalFilterOptions.length === 0}
-                onClick={() => setAddFilterPopupOpen(true)}
-              >
-                {t('log.filters.add')}
-              </AppButton>
-            </AppPopover>
+            ) : null}
+          </div>
         }
         query={
-          <>
-            <div className='router-log-query-box router-log-query-box-inline'>
-              <div className='router-log-query-fields'>
-                {visibleFilterConfig.map((item) => (
-                  <div key={item.key} className='router-log-filter-chip router-log-filter-chip-static'>
-                    <span className='router-log-filter-chip-label'>
-                      {item.label}
-                    </span>
-                    <span className='router-log-filter-chip-value'>
-                      {renderFilterSummary(item.key, inputs, t, {
-                        resolveOptionLabel,
-                        logTypeLabel: getLogTypeLabel(logType),
-                      })}
-                    </span>
-                    <button
-                      type='button'
-                      className='router-log-filter-chip-remove'
-                      onClick={() => removeConditionalFilter(item.key)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-                <div className='router-log-search-input'>
-                  <input
-                    placeholder={t('log.search')}
-                    value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-            <AppButton
-              type='button'
-              className='router-section-button router-log-query-button'
-              onClick={refresh}
-              loading={loading}
-            >
-              {t('log.buttons.submit')}
-            </AppButton>
-          </>
+          <ListFilterBar
+            availableOptions={availableConditionalFilterOptions}
+            visibleFilters={visibleFilterConfig}
+            getFilterConfig={getLogFilterConfig}
+            getInitialDraft={getLogInitialDraft}
+            onDraftOpen={onLogDraftOpen}
+            getSelectLoading={getLogSelectLoading}
+            onSelectOpen={(filterKey, currentValue) => {
+              if (filterKey === 'username') {
+                searchAdminUsers(currentValue).then();
+              } else if (filterKey === 'token_name' && isAdminScope) {
+                searchAdminTokens(currentValue).then();
+              } else if (filterKey === 'model_name' && isAdminScope) {
+                searchAdminModels(currentValue).then();
+              }
+            }}
+            onSelectSearch={(filterKey, keyword) => {
+              if (filterKey === 'username') {
+                searchAdminUsers(keyword).then();
+              } else if (filterKey === 'token_name' && isAdminScope) {
+                searchAdminTokens(keyword).then();
+              } else if (filterKey === 'model_name' && isAdminScope) {
+                searchAdminModels(keyword).then();
+              }
+            }}
+            onApplyDraft={applyLogFilterDraft}
+            onRemoveFilter={removeConditionalFilter}
+            renderSummary={(key) =>
+              renderFilterSummary(key, inputs, t, {
+                resolveOptionLabel,
+                logTypeLabel: getLogTypeLabel(logType),
+              })
+            }
+            onQuery={refresh}
+            queryLoading={loading}
+            onClearFilters={clearAllFilters}
+            clearDisabled={activeFilterKeys.length === 0}
+            addButtonText={t('log.filters.add')}
+            addButtonClassName='router-section-button'
+            queryButtonText={t('log.buttons.submit')}
+            queryButtonClassName='router-section-button router-log-query-button'
+            pickerOptionBasic
+          />
         }
         endClassName='router-log-query-wrap'
       />
@@ -1765,7 +1331,7 @@ const LogsTable = () => {
       </AppModal>
       <div className='router-table-scroll-x'>
         <AppTable
-          className='router-list-table router-table-fit-page router-log-table'
+          className='router-list-table router-table-fit-page router-log-table router-table-cardify'
           pagination={false}
           scroll={{ x: logTableScrollWidth }}
           onChange={handleTableChange}
@@ -1774,10 +1340,31 @@ const LogsTable = () => {
             log.trace_id ||
             `${log.timestamp || ''}-${log.type || ''}-${log.token_name || ''}-${log.publicModelName || ''}`
           }
-          dataSource={sortedFilteredLogs
-            .slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE)
-            .filter((log) => !log.deleted)}
-          locale={{ emptyText: loading ? t('common.loading') : t('task.empty') }}
+          dataSource={logs.filter((log) => !log.deleted)}
+          locale={{
+            emptyText: loading ? (
+              t('common.loading')
+            ) : loadError ? (
+              <AppErrorState
+                message={t('common.load_failed')}
+                onRetry={refresh}
+                retryText={t('common.retry')}
+              />
+            ) : (
+              <AppEmpty
+                action={
+                  <AppButton
+                    color='blue'
+                    onClick={() => navigate('/workspace/models')}
+                  >
+                    {t('log.empty_cta_action')}
+                  </AppButton>
+                }
+              >
+                {t('log.empty_cta')}
+              </AppEmpty>
+            ),
+          }}
           onRow={(log) => ({
             className: 'router-row-clickable',
             onClick: () =>
@@ -1793,8 +1380,7 @@ const LogsTable = () => {
             width: LOG_LIST_COLUMN_WIDTHS.time,
             sorter: true,
             sortDirections: ['ascend', 'descend'],
-            sortOrder:
-              tableSorter.columnKey === 'created_at' ? tableSorter.order : null,
+            sortOrder: sortOrderForColumn(sort, 'created_at'),
             render: (value) => renderTimestamp(value),
           },
           ...(isAdminScope
@@ -1804,10 +1390,6 @@ const LogsTable = () => {
                   key: 'channel',
                   width: LOG_LIST_COLUMN_WIDTHS.channel,
                   ellipsis: true,
-                  sorter: true,
-                  sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'channel' ? tableSorter.order : null,
                   render: (_, log) =>
                     log.channel ? (
                       <Link
@@ -1828,10 +1410,6 @@ const LogsTable = () => {
                   key: 'group_id',
                   width: LOG_LIST_COLUMN_WIDTHS.group,
                   ellipsis: true,
-                  sorter: true,
-                  sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'group_id' ? tableSorter.order : null,
                   render: (_, log) =>
                     log.group_id ? (
                       <Link
@@ -1856,11 +1434,7 @@ const LogsTable = () => {
                   dataIndex: 'type',
                   key: 'type',
                   width: LOG_LIST_COLUMN_WIDTHS.type,
-                  sorter: true,
-                  sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'type' ? tableSorter.order : null,
-                  render: (value) => renderType(value),
+                  render: (value) => renderType(value, t),
                 },
               ]
             : [
@@ -1869,12 +1443,6 @@ const LogsTable = () => {
                   key: 'billingSource',
                   width: LOG_LIST_COLUMN_WIDTHS.billingSource,
                   ellipsis: true,
-                  sorter: true,
-                  sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'billingSource'
-                      ? tableSorter.order
-                      : null,
                   render: (_, log) => renderBillingSource(log, t),
                 },
               ]),
@@ -1883,10 +1451,6 @@ const LogsTable = () => {
             key: 'model_name',
             width: LOG_LIST_COLUMN_WIDTHS.model,
             ellipsis: true,
-            sorter: true,
-            sortDirections: ['ascend', 'descend'],
-            sortOrder:
-              tableSorter.columnKey === 'model_name' ? tableSorter.order : null,
             render: (_, log) =>
               log?.publicModelName ? renderColorLabel(log.publicModelName) : '',
           },
@@ -1899,12 +1463,6 @@ const LogsTable = () => {
                         key: 'username',
                         width: LOG_LIST_COLUMN_WIDTHS.username,
                         ellipsis: true,
-                        sorter: true,
-                        sortDirections: ['ascend', 'descend'],
-                        sortOrder:
-                          tableSorter.columnKey === 'username'
-                            ? tableSorter.order
-                            : null,
                         render: (_, log) =>
                           log.username ? (
                             <Link
@@ -1925,12 +1483,6 @@ const LogsTable = () => {
                   key: 'token_name',
                   width: LOG_LIST_COLUMN_WIDTHS.tokenName,
                   ellipsis: true,
-                  sorter: true,
-                  sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'token_name'
-                      ? tableSorter.order
-                      : null,
                   render: (value) => (value ? renderColorLabel(value) : ''),
                 },
                 {
@@ -1940,10 +1492,7 @@ const LogsTable = () => {
                   width: LOG_LIST_COLUMN_WIDTHS.promptTokens,
                   sorter: true,
                   sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'prompt_tokens'
-                      ? tableSorter.order
-                      : null,
+                  sortOrder: sortOrderForColumn(sort, 'prompt_tokens'),
                   render: (value) => value || '',
                 },
                 {
@@ -1953,22 +1502,13 @@ const LogsTable = () => {
                   width: LOG_LIST_COLUMN_WIDTHS.completionTokens,
                   sorter: true,
                   sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'completion_tokens'
-                      ? tableSorter.order
-                      : null,
+                  sortOrder: sortOrderForColumn(sort, 'completion_tokens'),
                   render: (value) => value || '',
                 },
                 {
                   title: t('log.table.cache_tokens'),
                   key: 'cacheQuantity',
                   width: LOG_LIST_COLUMN_WIDTHS.cacheTokens,
-                  sorter: true,
-                  sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'cacheQuantity'
-                      ? tableSorter.order
-                      : null,
                   render: (_, log) => {
                     const read = formatCompactNumber(log.cacheReadQuantity);
                     const write = formatCompactNumber(log.cacheWriteQuantity);
@@ -2003,10 +1543,7 @@ const LogsTable = () => {
                   width: LOG_LIST_COLUMN_WIDTHS.quota,
                   sorter: true,
                   sortDirections: ['ascend', 'descend'],
-                  sortOrder:
-                    tableSorter.columnKey === 'chargeAmount'
-                      ? tableSorter.order
-                      : null,
+                  sortOrder: sortOrderForColumn(sort, 'chargeAmount'),
                   render: (value) =>
                     isAdminScope
                       ? formatDisplayAmountFromChargeAmount(value, displayUnit, currencyIndex)
@@ -2028,7 +1565,8 @@ const LogsTable = () => {
                   activePage={activePage}
                   onPageChange={onPaginationChange}
                   siblingRange={1}
-                  totalPages={totalPages}
+                  total={totalCount}
+                  pageSize={pageSize}
                 />
               }
             />

@@ -776,11 +776,20 @@ func TestBuildUserModelStatusPayloadAggregatesGroupModels(t *testing.T) {
 	if gpt.HealthSource != "probe" {
 		t.Fatalf("gpt health source = %q, want probe", gpt.HealthSource)
 	}
+	if gpt.LastSignalAt != now {
+		t.Fatalf("gpt last signal at = %d, want %d", gpt.LastSignalAt, now)
+	}
 	if gpt.Provider != "openai" {
 		t.Fatalf("gpt provider = %q, want openai", gpt.Provider)
 	}
 	if gpt.SupportedCount != 1 || gpt.UnsupportedCount != 1 {
 		t.Fatalf("gpt supported/unsupported = %d/%d, want 1/1", gpt.SupportedCount, gpt.UnsupportedCount)
+	}
+	if gpt.ChannelCount != 2 {
+		t.Fatalf("gpt channel count = %d, want 2", gpt.ChannelCount)
+	}
+	if len(gpt.ChannelIDs) != 2 || gpt.ChannelIDs[0] != "channel-1" || gpt.ChannelIDs[1] != "channel-2" {
+		t.Fatalf("gpt channel ids = %#v, want [channel-1 channel-2]", gpt.ChannelIDs)
 	}
 	if len(gpt.HealthPoints) != healthtrend.BucketCount {
 		t.Fatalf("gpt health points = %d, want %d", len(gpt.HealthPoints), healthtrend.BucketCount)
@@ -816,6 +825,9 @@ func TestBuildUserModelStatusPayloadAggregatesGroupModels(t *testing.T) {
 	if len(claude.SupportedEndpoints) != 1 || claude.SupportedEndpoints[0] != model.ChannelModelEndpointMessages {
 		t.Fatalf("claude endpoints = %#v, want messages", claude.SupportedEndpoints)
 	}
+	if len(claude.ChannelIDs) != 1 || claude.ChannelIDs[0] != "channel-3" {
+		t.Fatalf("claude channel ids = %#v, want [channel-3]", claude.ChannelIDs)
+	}
 }
 
 func TestLoadUserModelStatusTrafficRowsFiltersClientAbort(t *testing.T) {
@@ -850,5 +862,21 @@ func TestLoadUserModelStatusTrafficRowsFiltersClientAbort(t *testing.T) {
 	}
 	if got[0].LatencyTotal != 1200 || got[0].LatencyCount != 1 {
 		t.Fatalf("bucket latency total/count=%d/%d, want 1200/1", got[0].LatencyTotal, got[0].LatencyCount)
+	}
+	if got[0].LastObservedAt != now {
+		t.Fatalf("bucket last observed at=%d, want %d", got[0].LastObservedAt, now)
+	}
+}
+
+func TestCalcUserModelStatusTreatsStaleProbeAsUnknown(t *testing.T) {
+	item := UserModelStatusItem{
+		HealthSource:   "probe",
+		LastSignalAt:   helper.GetTimestamp() - userModelStatusFreshnessSeconds - 1,
+		ChannelCount:   1,
+		SupportedCount: 1,
+	}
+	calcUserModelStatus(&item)
+	if item.HealthLevel != userModelHealthLevelUnknown || item.Status != userModelStatusUnknown || item.HealthScore != 0 {
+		t.Fatalf("stale probe health=%s status=%s score=%d, want unknown/unknown/0", item.HealthLevel, item.Status, item.HealthScore)
 	}
 }

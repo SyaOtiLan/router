@@ -1,18 +1,28 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { API } from '../../helpers/api';
+import { copy, showError, showSuccess } from '../../helpers';
+import { buildLogDrilldownPath } from '../../components/LogsTable.helpers';
+import { useIsAdmin } from '../../hooks/useAuth';
+import useUrlState from '../../hooks/useUrlState';
 import {
   AppButton,
   AppFilterHeader,
   AppIcon,
   AppInput,
+  AppPopover,
   AppSegmented,
   AppSection,
+  AppSkeleton,
+  AppSpin,
   AppTag,
   AppTooltip,
   AppToolbar,
 } from '../../router-ui';
 import './WorkspaceModels.css';
+import '../AdminDashboard/Dashboard.css';
+import '../AdminDashboard/AdminDashboard.css';
 
 const MODEL_HEALTH_HISTORY_SIZE = 60;
 
@@ -118,13 +128,18 @@ const normalizePayload = (payload) => {
         ? item.health_source
         : 'none',
       channel_count: toNumber(item?.channel_count),
+      channel_ids: Array.isArray(item?.channel_ids)
+        ? item.channel_ids
+            .map((id) => String(id || '').trim())
+            .filter(Boolean)
+        : [],
       tested_channel_count: toNumber(item?.tested_channel_count),
       tested_endpoint_count: toNumber(item?.tested_endpoint_count),
       supported_count: toNumber(item?.supported_count),
       unsupported_count: toNumber(item?.unsupported_count),
       pass_rate: toNumber(item?.pass_rate),
       avg_latency_ms: toNumber(item?.avg_latency_ms),
-      last_tested_at: toNumber(item?.last_tested_at),
+      last_signal_at: toNumber(item?.last_signal_at),
       supported_endpoints: Array.isArray(item?.supported_endpoints)
         ? item.supported_endpoints
         : [],
@@ -139,6 +154,7 @@ const normalizePayload = (payload) => {
             failure_count: toNumber(point?.failure_count),
             total_count: toNumber(point?.total_count),
             avg_latency_ms: toNumber(point?.avg_latency_ms),
+            last_observed_at: toNumber(point?.last_observed_at),
             pass_rate: toNumber(point?.pass_rate),
           }))
         : [],
@@ -217,11 +233,109 @@ const renderHealthPointTooltip = (point, stateLabel, t) => {
 
 const WorkspaceModels = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const hasAdminAccess = useIsAdmin();
   const [payload, setPayload] = useState(EMPTY_PAYLOAD);
   const [loading, setLoading] = useState(false);
-  const [keyword, setKeyword] = useState('');
-  const [healthFilter, setHealthFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('health');
+  // Keyword / health / sort all persist to the URL so a refresh or back-nav
+  // restores the operator's view, and cross-page CTAs (e.g. the admin dashboard
+  // "at-risk models" headline) can deep-link straight to a filtered view.
+  const [
+    { keyword, healthFilter, sortBy },
+    patchFilters,
+  ] = useUrlState({
+    keyword: { param: 'q', default: '' },
+    healthFilter: {
+      param: 'health',
+      default: 'all',
+      parse: (raw) => {
+        const normalized = String(raw || '').trim().toLowerCase();
+        return FILTER_OPTIONS.includes(normalized) ? normalized : 'all';
+      },
+    },
+    sortBy: {
+      param: 'sort',
+      default: 'health',
+      parse: (raw) => {
+        const normalized = String(raw || '').trim().toLowerCase();
+        return SORT_OPTIONS.includes(normalized) ? normalized : 'health';
+      },
+    },
+  });
+  // Admins can jump straight from a model to the publish tab of a channel that
+  // serves it (channel_ids comes from /api/v1/public/model/status). Single
+  // channel → direct deep link; multiple → a popover of per-channel links.
+  const goPublishChannel = useCallback(
+    (channelId) => {
+      const id = String(channelId || '').trim();
+      if (!id) return;
+      navigate(`/admin/channel/detail/${id}?tab=publish`);
+    },
+    [navigate],
+  );
+
+  const handleCopyModel = useCallback(
+    async (model) => {
+      const value = String(model || '').trim();
+      if (!value) return;
+      const ok = await copy(value);
+      if (ok) {
+        showSuccess(t('workspace_models.card.copied', { model: value }));
+      } else {
+        showError(t('workspace_models.card.copy_failed'));
+      }
+    },
+    [t],
+  );
+
+  const renderChannelCount = useCallback(
+    (item) => {
+      const value = `${formatCount(item.tested_channel_count)} / ${formatCount(item.channel_count)}`;
+      const ids = Array.isArray(item.channel_ids) ? item.channel_ids : [];
+      if (!hasAdminAccess || ids.length === 0) {
+        return <strong>{value}</strong>;
+      }
+      if (ids.length === 1) {
+        return (
+          <strong>
+            <AppButton
+              type='link'
+              className='workspace-model-channel-link'
+              title={t('channel.edit.detail_tabs.publish')}
+              onClick={() => goPublishChannel(ids[0])}
+            >
+              {value}
+            </AppButton>
+          </strong>
+        );
+      }
+      return (
+        <strong>
+          <AppPopover
+            trigger='click'
+            content={
+              <div className='workspace-model-channel-popover'>
+                {ids.map((id, index) => (
+                  <AppButton
+                    key={id}
+                    type='link'
+                    onClick={() => goPublishChannel(id)}
+                  >
+                    {`${t('header.channel')} ${index + 1}`}
+                  </AppButton>
+                ))}
+              </div>
+            }
+          >
+            <AppButton type='link' className='workspace-model-channel-link'>
+              {value}
+            </AppButton>
+          </AppPopover>
+        </strong>
+      );
+    },
+    [goPublishChannel, hasAdminAccess, t],
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -234,6 +348,7 @@ const WorkspaceModels = () => {
       }
     } catch (error) {
       console.error('Failed to load workspace model status:', error);
+      showError(error);
       setPayload(EMPTY_PAYLOAD);
     } finally {
       setLoading(false);
@@ -303,6 +418,8 @@ const WorkspaceModels = () => {
     return rows;
   }, [healthFilter, keyword, payload.models, sortBy]);
 
+  const isFiltered = healthFilter !== 'all' || keyword.trim().length > 0;
+
   const renderHealthTag = (level) => {
     const normalized = String(level || 'unknown').trim().toLowerCase();
     return (
@@ -334,38 +451,9 @@ const WorkspaceModels = () => {
         ]}
         title={t('workspace_models.title')}
       />
+      <AppSpin spinning={loading}>
       <AppSection className='workspace-models-section'>
         <div className='workspace-models-toolbar'>
-          <div className='workspace-models-summary-grid'>
-            <div className='workspace-models-summary-item'>
-              <span>{t('workspace_models.summary.total')}</span>
-              <strong>{formatCount(summary.model_count)}</strong>
-            </div>
-            <div className='workspace-models-summary-item workspace-models-summary-item-green'>
-              <span>{t('workspace_models.summary.healthy')}</span>
-              <strong>{formatCount(summary.healthy_model_count)}</strong>
-            </div>
-            <div className='workspace-models-summary-item workspace-models-summary-item-orange'>
-              <span>{t('workspace_models.summary.warning')}</span>
-              <strong>{formatCount(summary.warning_model_count)}</strong>
-            </div>
-            <div className='workspace-models-summary-item workspace-models-summary-item-red'>
-              <span>{t('workspace_models.summary.critical')}</span>
-              <strong>{formatCount(summary.critical_model_count)}</strong>
-            </div>
-            <div className='workspace-models-summary-item'>
-              <span>{t('workspace_models.summary.pass_rate')}</span>
-              <strong>{formatPercent(summary.avg_pass_rate)}</strong>
-            </div>
-            <div className='workspace-models-summary-item'>
-              <span>{t('workspace_models.summary.latency')}</span>
-              <strong>
-                {summary.avg_latency_ms > 0
-                  ? `${formatCount(summary.avg_latency_ms)} ms`
-                  : '-'}
-              </strong>
-            </div>
-          </div>
           <AppToolbar
             className='workspace-models-controls'
             start={
@@ -374,7 +462,7 @@ const WorkspaceModels = () => {
                   className='workspace-models-search'
                   value={keyword}
                   placeholder={t('workspace_models.search_placeholder')}
-                  onChange={(e, { value }) => setKeyword(value)}
+                  onChange={(e, { value }) => patchFilters({ keyword: value })}
                 />
                 <AppTooltip title={t('workspace_models.refresh')}>
                   <AppButton
@@ -386,6 +474,16 @@ const WorkspaceModels = () => {
                     icon={<AppIcon name='exchange' />}
                   />
                 </AppTooltip>
+                <span className='workspace-models-count'>
+                  {isFiltered
+                    ? t('workspace_models.summary.count_filtered', {
+                        shown: formatCount(filteredModels.length),
+                        total: formatCount(summary.model_count),
+                      })
+                    : t('workspace_models.summary.count', {
+                        total: formatCount(summary.model_count),
+                      })}
+                </span>
               </div>
             }
             end={
@@ -394,13 +492,13 @@ const WorkspaceModels = () => {
                   className='workspace-models-segmented'
                   options={healthFilterOptions}
                   value={healthFilter}
-                  onChange={(e, { value }) => setHealthFilter(value)}
+                  onChange={(e, { value }) => patchFilters({ healthFilter: value })}
                 />
                 <AppSegmented
                   className='workspace-models-segmented'
                   options={sortOptions}
                   value={sortBy}
-                  onChange={(e, { value }) => setSortBy(value)}
+                  onChange={(e, { value }) => patchFilters({ sortBy: value })}
                 />
               </div>
             }
@@ -423,9 +521,13 @@ const WorkspaceModels = () => {
           ))}
         </div>
         {filteredModels.length === 0 ? (
-          <div className='workspace-models-empty'>
-            {loading ? t('common.loading') : t('workspace_models.empty')}
-          </div>
+          loading ? (
+            <AppSkeleton variant='list' count={6} />
+          ) : (
+            <div className='workspace-models-empty'>
+              {t('workspace_models.empty')}
+            </div>
+          )
         ) : (
           <div className='workspace-models-list'>
             {filteredModels.map((item) => {
@@ -523,9 +625,7 @@ const WorkspaceModels = () => {
                       </div>
                       <div className='workspace-model-metric'>
                         <span>{t('workspace_models.card.channels')}</span>
-                        <strong>
-                          {formatCount(item.tested_channel_count)} / {formatCount(item.channel_count)}
-                        </strong>
+                        {renderChannelCount(item)}
                       </div>
                     </div>
                   </div>
@@ -544,9 +644,36 @@ const WorkspaceModels = () => {
                     </div>
                     <div className='workspace-model-last-tested'>
                       {t(`workspace_models.card.last_signal.${item.health_source}`, {
-                        time: formatUpdatedAt(item.last_tested_at),
+                        time: formatUpdatedAt(item.last_signal_at),
                       })}
                     </div>
+                  </div>
+                  <div className='workspace-model-actions'>
+                    <AppButton
+                      size='small'
+                      className='router-inline-button'
+                      icon={<AppIcon name='copy outline' />}
+                      onClick={() => handleCopyModel(item.model)}
+                      disabled={!item.model}
+                    >
+                      {t('workspace_models.card.copy_model')}
+                    </AppButton>
+                    <AppButton
+                      size='small'
+                      className='router-inline-button'
+                      icon={<AppIcon name='book' />}
+                      onClick={() =>
+                        navigate(
+                          buildLogDrilldownPath(
+                            hasAdminAccess ? 'admin' : 'workspace',
+                            { model_name: item.model },
+                          ),
+                        )
+                      }
+                      disabled={!item.model}
+                    >
+                      {t('log.drilldown.view')}
+                    </AppButton>
                   </div>
                 </div>
               );
@@ -554,6 +681,7 @@ const WorkspaceModels = () => {
           </div>
         )}
       </AppSection>
+      </AppSpin>
     </div>
   );
 };

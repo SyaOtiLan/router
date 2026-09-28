@@ -14,6 +14,7 @@ import (
 	group "github.com/yeying-community/router/internal/admin/controller/group"
 	log "github.com/yeying-community/router/internal/admin/controller/log"
 	option "github.com/yeying-community/router/internal/admin/controller/option"
+	personalprovider "github.com/yeying-community/router/internal/admin/controller/personalprovider"
 	plan "github.com/yeying-community/router/internal/admin/controller/plan"
 	task "github.com/yeying-community/router/internal/admin/controller/task"
 	token "github.com/yeying-community/router/internal/admin/controller/token"
@@ -86,6 +87,7 @@ func SetApiRouter(engine *gin.Engine) {
 				publicSelfRoute.GET("/quota/daily", user.GetCurrentUserDailyQuota)
 				publicSelfRoute.GET("/quota/summary", user.GetCurrentUserQuotaSummary)
 				publicSelfRoute.GET("/quota/overview", user.GetCurrentUserQuotaOverview)
+				publicSelfRoute.GET("/onboarding/progress", user.GetCurrentUserOnboardingProgress)
 				publicSelfRoute.GET("/quota/cards", user.GetCurrentUserQuotaCards)
 				publicSelfRoute.GET("/quota/cards/:kind/:id", user.GetCurrentUserQuotaCard)
 				publicSelfRoute.GET("/models/available", admin.GetUserAvailableModels)
@@ -94,6 +96,8 @@ func SetApiRouter(engine *gin.Engine) {
 				publicSelfRoute.GET("/tasks/:id", task.GetCurrentUserTask)
 				publicSelfRoute.PUT("/self", user.UpdateSelf)
 				publicSelfRoute.POST("/self/password", user.UpdateSelfPassword)
+				publicSelfRoute.GET("/self/notification", user.GetCurrentUserNotificationSettings)
+				publicSelfRoute.PUT("/self/notification", user.UpdateCurrentUserNotificationSettings)
 				publicSelfRoute.DELETE("/self", user.DeleteSelf)
 				publicSelfRoute.GET("/token", user.GenerateAccessToken)
 				publicSelfRoute.GET("/aff", user.GetAffCode)
@@ -127,6 +131,20 @@ func SetApiRouter(engine *gin.Engine) {
 			publicTokenRoute.POST("/", token.AddToken)
 			publicTokenRoute.PUT("/", token.UpdateToken)
 			publicTokenRoute.DELETE("/:id", token.DeleteToken)
+		}
+
+		personalProviderRoute := publicRouter.Group("/personal-provider")
+		personalProviderRoute.Use(middleware.UserAuth())
+		{
+			personalProviderRoute.GET("/connections", personalprovider.ListConnections)
+			personalProviderRoute.POST("/connections", personalprovider.CreateConnection)
+			personalProviderRoute.GET("/connections/:id", personalprovider.GetConnection)
+			personalProviderRoute.PUT("/connections/:id", personalprovider.UpdateConnection)
+			personalProviderRoute.DELETE("/connections/:id", personalprovider.DeleteConnection)
+			personalProviderRoute.GET("/model-routes", personalprovider.ListModelRoutes)
+			personalProviderRoute.PUT("/model-routes", personalprovider.UpsertModelRoute)
+			personalProviderRoute.DELETE("/model-routes/:model", personalprovider.DeleteModelRoute)
+			personalProviderRoute.GET("/routing-quota", personalprovider.RoutingQuota)
 		}
 
 		publicLogRoute := publicRouter.Group("/log")
@@ -379,6 +397,10 @@ func SetApiRouter(engine *gin.Engine) {
 		adminTokenRoute.Use(middleware.AdminAuth())
 		{
 			adminTokenRoute.GET("/search", token.SearchAdminTokens)
+			adminTokenRoute.GET("/", token.ListAdminTokens)
+			adminTokenRoute.GET("/:id", token.GetAdminToken)
+			adminTokenRoute.PUT("/", token.UpdateAdminToken)
+			adminTokenRoute.DELETE("/:id", token.DeleteAdminToken)
 		}
 
 		adminRedemptionRoute := adminRouter.Group("/redemption")

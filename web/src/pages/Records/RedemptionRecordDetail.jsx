@@ -2,11 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { API, showError, timestamp2string } from '../../helpers';
+import CopyButton from '../../components/CopyButton';
 import { formatAmountWithUnit } from '../../helpers/render';
 import {
   AppDetailSection,
+  AppErrorState,
   AppFilterHeader,
   AppIcon,
+  AppSkeleton,
 } from '../../router-ui';
 
 const readOnlyText = (value) => {
@@ -32,16 +35,16 @@ const formatChargeAmount = (value) => {
 
 const resolveListPath = (stateFrom) => {
   if (typeof stateFrom !== 'string') {
-    return '/admin/redemption/records';
+    return '/admin/redemption?tab=records';
   }
   const normalized = stateFrom.trim();
   if (!normalized.startsWith('/')) {
-    return '/admin/redemption/records';
+    return '/admin/redemption?tab=records';
   }
   if (normalized.startsWith('/admin/redemption/records/')) {
-    return '/admin/redemption/records';
+    return '/admin/redemption?tab=records';
   }
-  return normalized || '/admin/redemption/records';
+  return normalized || '/admin/redemption?tab=records';
 };
 
 const RedemptionRecordDetail = () => {
@@ -50,6 +53,7 @@ const RedemptionRecordDetail = () => {
   const location = useLocation();
   const { id } = useParams();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [record, setRecord] = useState(null);
 
   const listPath = useMemo(
@@ -65,11 +69,14 @@ const RedemptionRecordDetail = () => {
       );
       const { success, message, data } = res.data || {};
       if (!success) {
+        setLoadError(true);
         showError(message || t('flow.messages.load_failed'));
         return;
       }
+      setLoadError(false);
       setRecord(data || null);
     } catch (error) {
+      setLoadError(true);
       showError(error?.message || t('flow.messages.load_failed'));
     } finally {
       setLoading(false);
@@ -85,7 +92,6 @@ const RedemptionRecordDetail = () => {
       <AppFilterHeader
         breadcrumbs={[
           { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'business', label: t('header.operation') },
           {
             key: 'redemption-root',
             label: t('header.redemption'),
@@ -93,7 +99,7 @@ const RedemptionRecordDetail = () => {
           },
           {
             key: 'flow-redemption-list',
-            label: '兑换记录',
+            label: t('flow.records.redemption_title'),
             onClick: () => navigate(listPath),
           },
           {
@@ -102,7 +108,7 @@ const RedemptionRecordDetail = () => {
             active: true,
           },
         ]}
-        title='兑换记录'
+        title={t('redemption.record.title')}
       />
       <div className='router-entity-detail-page'>
         <AppDetailSection
@@ -110,24 +116,60 @@ const RedemptionRecordDetail = () => {
           titleTag='div'
         >
               {loading ? (
-                <div className='router-empty-cell'>{t('common.loading')}</div>
+                <AppSkeleton variant='text' />
+              ) : loadError && !record ? (
+                <AppErrorState
+                  message={t('flow.messages.load_failed')}
+                  onRetry={loadDetail}
+                  retryText={t('common.retry')}
+                />
               ) : (
                 <div className='router-detail-grid'>
                   <div className='router-detail-item'>
                     <div className='router-detail-label'>
                       {t('redemption.table.id')}
                     </div>
-                    <pre className='router-detail-value router-monospace-value'>
-                      {readOnlyText(record?.id || id)}
-                    </pre>
+                    <div className='router-action-group-tight'>
+                      <pre className='router-detail-value router-monospace-value'>
+                        {readOnlyText(record?.id || id)}
+                      </pre>
+                      {record?.id || id ? (
+                        <CopyButton value={record?.id || id} size='small' basic />
+                      ) : null}
+                    </div>
                   </div>
                   <div className='router-detail-item'>
                     <div className='router-detail-label'>
                       {t('user.table.username')}
                     </div>
                     <pre className='router-detail-value'>
-                      {readOnlyText(
-                        record?.redeemed_by_username || record?.redeemed_by_user_id,
+                      {record?.redeemed_by_user_id ? (
+                        <button
+                          type='button'
+                          className='router-link-button router-link-inline'
+                          onClick={() =>
+                            navigate(
+                              `/admin/user/detail/${encodeURIComponent(
+                                record.redeemed_by_user_id,
+                              )}`,
+                              {
+                                state: {
+                                  from: `${location.pathname}${location.search}`,
+                                },
+                              },
+                            )
+                          }
+                        >
+                          {readOnlyText(
+                            record?.redeemed_by_username ||
+                              record?.redeemed_by_user_id,
+                          )}
+                        </button>
+                      ) : (
+                        readOnlyText(
+                          record?.redeemed_by_username ||
+                            record?.redeemed_by_user_id,
+                        )
                       )}
                     </pre>
                   </div>
@@ -144,7 +186,28 @@ const RedemptionRecordDetail = () => {
                       {t('redemption.table.group')}
                     </div>
                     <pre className='router-detail-value'>
-                      {readOnlyText(record?.group_name || record?.group_id)}
+                      {record?.group_id ? (
+                        <button
+                          type='button'
+                          className='router-link-button router-link-inline'
+                          onClick={() =>
+                            navigate(
+                              `/admin/group/detail/${encodeURIComponent(
+                                record.group_id,
+                              )}`,
+                              {
+                                state: {
+                                  from: `${location.pathname}${location.search}`,
+                                },
+                              },
+                            )
+                          }
+                        >
+                          {readOnlyText(record?.group_name || record?.group_id)}
+                        </button>
+                      ) : (
+                        readOnlyText(record?.group_name || record?.group_id)
+                      )}
                     </pre>
                   </div>
                   <div className='router-detail-item'>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -8,7 +8,11 @@ import {
   timestamp2string,
 } from '../../helpers';
 import TopUpWorkspaceProvider from './provider.jsx';
+import CopyButton from '../../components/CopyButton';
+import { formatPaymentAmount } from '../../helpers/render';
 import {
+  buildTopUpOrderReturnURL,
+  buildTopUpReturnURL,
   formatTopupBusinessType,
   formatTopupOrderStatusHint,
   renderTopupOrderStatus,
@@ -19,6 +23,8 @@ import {
   AppDetailSection,
   AppDescriptions,
   AppFilterHeader,
+  AppModal,
+  AppSkeleton,
   AppTooltip,
 } from '../../router-ui';
 
@@ -37,17 +43,25 @@ const normalizeRecordKey = (value = '') => {
 };
 
 const SYNCABLE_TOPUP_ORDER_STATUSES = new Set(['created', 'pending', 'paid']);
+const TOPUP_ORDER_POLL_INTERVAL_MS = 5000;
+const TOPUP_ORDER_POLL_TIMEOUT_MS = 180000;
 
 const TopUpOrderDetailInner = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
-  const { renderDisplayAmount } = useTopUpWorkspace();
+  const { renderDisplayAmount, createTopupOrder } = useTopUpWorkspace();
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [canceling, setCanceling] = useState(false);
+  const [repayModalOpen, setRepayModalOpen] = useState(false);
+  const [repaying, setRepaying] = useState(false);
+  const pollTimerRef = useRef(null);
+  const pollDeadlineRef = useRef(0);
+  const orderRef = useRef(null);
+  const refreshOrderStatusRef = useRef(null);
 
   const loadDetail = useCallback(async () => {
     const normalizedOrderID = String(id || '').trim();
@@ -76,6 +90,49 @@ const TopUpOrderDetailInner = () => {
     loadDetail().then();
   }, [loadDetail]);
 
+  useEffect(() => {
+    orderRef.current = order;
+  }, [order]);
+
+  // Auto-poll payment status for syncable orders while the detail page is open.
+  // Stops on terminal status or when the timeout elapses; cleans up on unmount.
+  useEffect(() => {
+    const orderStatus = String(order?.status || '').trim();
+    if (!order?.id || !SYNCABLE_TOPUP_ORDER_STATUSES.has(orderStatus)) {
+      return undefined;
+    }
+    pollDeadlineRef.current = Date.now() + TOPUP_ORDER_POLL_TIMEOUT_MS;
+
+    const tick = () => {
+      const current = String(orderRef.current?.status || '').trim();
+      if (!SYNCABLE_TOPUP_ORDER_STATUSES.has(current)) {
+        return;
+      }
+      if (Date.now() > pollDeadlineRef.current) {
+        return;
+      }
+      refreshOrderStatusRef.current?.();
+    };
+
+    pollTimerRef.current = window.setInterval(tick, TOPUP_ORDER_POLL_INTERVAL_MS);
+
+    const onFocus = () => {
+      const current = String(orderRef.current?.status || '').trim();
+      if (SYNCABLE_TOPUP_ORDER_STATUSES.has(current)) {
+        refreshOrderStatusRef.current?.();
+      }
+    };
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      if (pollTimerRef.current) {
+        window.clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [order?.id, order?.status]);
+
   const recordKey = useMemo(() => {
     const stateRecordKey = normalizeRecordKey(location.state?.recordKey || '');
     if (location.state?.recordKey) {
@@ -89,7 +146,7 @@ const TopUpOrderDetailInner = () => {
     if (from.startsWith('/workspace/topup')) {
       return from;
     }
-    return '/workspace/service/pricing/history';
+    return '/workspace/service/pricing?tab=records';
   }, [location.state?.from]);
 
   const refreshOrderStatus = useCallback(async () => {
@@ -116,6 +173,10 @@ const TopUpOrderDetailInner = () => {
       setRefreshing(false);
     }
   }, [order?.id, t]);
+
+  useEffect(() => {
+    refreshOrderStatusRef.current = refreshOrderStatus;
+  }, [refreshOrderStatus]);
 
   const continuePay = useCallback(async () => {
     const refreshed = await refreshOrderStatus();
@@ -166,6 +227,65 @@ const TopUpOrderDetailInner = () => {
     () => formatTopupOrderStatusHint(order?.status, t),
     [order?.status, t],
   );
+
+  // 终态(失败/取消)订单不可复用,重试 = 用原参数新建订单并重新拉起支付。
+  const canRepay = ['failed', 'canceled'].includes(
+    String(order?.status || '').trim(),
+  );
+  const repayPayload = useMemo(() => {
+    const businessType = String(order?.business_type || '').trim();
+    if (businessType === 'package_purchase') {
+      const packageID = String(order?.package_id || '').trim();
+      if (!packageID) {
+        return null;
+      }
+      return {
+        business_type: 'package_purchase',
+        operation_type: String(order?.operation_type || '').trim(),
+        package_id: packageID,
+      };
+    }
+    const planID = String(order?.topup_plan_id || '').trim();
+    if (!planID) {
+      return null;
+    }
+    return {
+      business_type: 'balance_topup',
+      plan_id: planID,
+    };
+  }, [
+    order?.business_type,
+    order?.operation_type,
+    order?.package_id,
+    order?.topup_plan_id,
+  ]);
+
+  const handleRepay = useCallback(async () => {
+    // 老数据缺少 plan_id/package_id 时无法原样重下,降级引导回定价页。
+    if (!repayPayload) {
+      setRepayModalOpen(false);
+      navigate('/workspace/service/pricing');
+      return;
+    }
+    setRepaying(true);
+    try {
+      const created = await createTopupOrder({
+        ...repayPayload,
+        return_url: buildTopUpReturnURL(),
+      });
+      if (created && typeof created === 'object' && created.id) {
+        const status = String(created.status || '').trim();
+        // 未即时到账时,当前标签跳到新订单的承接页轮询(弹窗已在拉起支付)。
+        if (status !== 'paid' && status !== 'fulfilled') {
+          navigate(buildTopUpOrderReturnURL(created.id));
+        }
+      }
+    } finally {
+      setRepaying(false);
+      setRepayModalOpen(false);
+    }
+  }, [createTopupOrder, navigate, repayPayload]);
+
   const canSyncPaymentStatus = SYNCABLE_TOPUP_ORDER_STATUSES.has(
     String(order?.status || '').trim(),
   );
@@ -186,7 +306,14 @@ const TopUpOrderDetailInner = () => {
       {
         key: 'order_id',
         label: t('topup.external_topup_orders.columns.order_id'),
-        value: order?.id || '-',
+        value: order?.id ? (
+          <div className='router-action-group-tight'>
+            <span>{order.id}</span>
+            <CopyButton value={order.id} size='small' basic />
+          </div>
+        ) : (
+          '-'
+        ),
       },
       {
         key: 'business_type',
@@ -227,14 +354,36 @@ const TopUpOrderDetailInner = () => {
       },
       {
         key: 'amount',
-        label: t('topup.external_topup_orders.columns.amount'),
+        label:
+          Number(order?.amount || 0) > 0 && Number(order?.quota || 0) > 0
+            ? t('topup.external_topup_orders.fields.paid_amount')
+            : t('topup.external_topup_orders.columns.amount'),
         value:
           Number(order?.amount || 0) > 0
-            ? `${order?.currency || 'CNY'} ${Number(order?.amount || 0).toFixed(2)}`
+            ? formatPaymentAmount(order?.amount, order?.currency)
             : Number(order?.quota || 0) > 0
               ? renderDisplayAmount(order?.quota)
               : '-',
       },
+      ...(Number(order?.amount || 0) > 0 && Number(order?.quota || 0) > 0
+        ? [
+            {
+              key: 'credited_quota',
+              label: t('topup.external_topup_orders.fields.credited_quota'),
+              value: renderDisplayAmount(order?.quota),
+            },
+            {
+              key: 'amount_quota_note',
+              span: { xs: 1, sm: 1, md: 2, lg: 2, xl: 2 },
+              label: '',
+              value: (
+                <span className='router-text-muted'>
+                  {t('topup.external_topup_orders.fields.amount_quota_note')}
+                </span>
+              ),
+            },
+          ]
+        : []),
       {
         key: 'title',
         label: t('topup.external_topup_orders.fields.title'),
@@ -276,7 +425,12 @@ const TopUpOrderDetailInner = () => {
       <AppFilterHeader
         breadcrumbs={[
           { key: 'workspace', label: t('header.user_workspace') },
-          { key: 'records', label: t('header.records') },
+          { key: 'mine', label: t('header.mine') },
+          {
+            key: 'quota',
+            label: t('topup.mine.quota'),
+            onClick: () => navigate('/workspace/topup?tab=quota'),
+          },
           {
             key: 'topup-order-list',
             label: detailPathLabel,
@@ -312,18 +466,57 @@ const TopUpOrderDetailInner = () => {
               </AppButton>
             </>
           ) : null}
+          {canRepay ? (
+            <AppButton
+              color='blue'
+              className='router-section-button'
+              onClick={() => setRepayModalOpen(true)}
+              disabled={!order}
+            >
+              {t('topup.records.repay')}
+            </AppButton>
+          ) : null}
           </>
         }
       />
       <div className='router-entity-detail-page'>
         <AppDetailSection title={t('common.basic_info')}>
             {loading ? (
-              <div className='router-empty-cell'>{t('common.loading')}</div>
+              <AppSkeleton variant='text' rows={5} />
             ) : (
               <AppDescriptions items={detailRows} />
             )}
         </AppDetailSection>
       </div>
+      <AppModal
+        size='small'
+        open={repayModalOpen}
+        onClose={() => setRepayModalOpen(false)}
+        title={t('topup.records.repay_confirm_title')}
+        footer={[
+          <AppButton
+            key='cancel'
+            className='router-modal-button'
+            basic
+            onClick={() => setRepayModalOpen(false)}
+          >
+            {t('common.cancel')}
+          </AppButton>,
+          <AppButton
+            key='ok'
+            className='router-modal-button'
+            color='blue'
+            loading={repaying}
+            onClick={handleRepay}
+          >
+            {t('topup.records.repay')}
+          </AppButton>,
+        ]}
+      >
+        <div className='router-modal-text'>
+          {t('topup.records.repay_confirm_body')}
+        </div>
+      </AppModal>
     </div>
   );
 };

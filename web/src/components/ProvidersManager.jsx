@@ -7,831 +7,58 @@ import {
   showSuccess,
   timestamp2string,
 } from '../helpers';
-import { ITEMS_PER_PAGE } from '../constants';
+import { AppButton, AppDetailSection, AppEmpty, AppErrorState, AppField, AppFilterHeader, AppFormActions, AppFormRow, AppIcon, AppInput, AppInputNumber, AppModal, AppPagination, AppSelect, AppSpin, AppTable, AppTableActionButton, AppTabs, AppTag, AppTextarea, AppToolbar } from '../router-ui';
+import useUrlState from '../hooks/useUrlState';
 import {
-  PROVIDER_LIST_COLUMN_WIDTHS,
-  PROVIDER_LIST_TABLE_MIN_WIDTH,
-} from '../constants/tableWidthPresets';
-import {
-  AppButton,
-  AppDetailSection,
-  AppEmpty,
-  AppField,
-  AppFilterHeader,
-  AppFormActions,
-  AppFormRow,
-  AppIcon,
-  AppInput,
-  AppInputNumber,
-  AppModal,
-  AppPagination,
-  AppSelect,
-  AppTable,
-  AppTableActionButton,
-  AppTabs,
-  AppTag,
-  AppTextarea,
-  AppToolbar,
-} from '../router-ui';
-
-const PROVIDER_DETAIL_MODEL_PAGE_SIZE = 20;
-const PROVIDER_MODEL_STATUS_FILTER_ALL = 'all';
-const PROVIDER_ENDPOINT_SORT_ORDER = {
-  '/v1/chat/completions': 10,
-  '/v1/responses': 20,
-  '/v1/messages': 30,
-  '/v1/images/generations': 40,
-  '/v1/images/edits': 50,
-  '/v1/batches': 60,
-  '/v1/embeddings': 65,
-  '/v1/audio/speech': 70,
-  '/v1/realtime': 80,
-  '/v1/videos': 90,
-};
-
-const formatProviderModelUsageError = (message, t) => {
-  if (typeof message !== 'string') return '';
-  const marker = ' is still in use: ';
-  const markerIndex = message.indexOf(marker);
-  if (markerIndex < 0) return '';
-  const detailPart = message.slice(markerIndex + marker.length).trim();
-  if (!detailPart) return '';
-
-  const blocks = detailPart
-    .split(';')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (blocks.length === 0) return '';
-
-  const lines = [t('channel.providers.messages.model_in_use')];
-  blocks.forEach((block) => {
-    const [rawKey, rawValue] = block.split('=');
-    const key = (rawKey || '').trim();
-    const value = (rawValue || '').trim();
-    if (!key || !value) return;
-    const labelKey = `channel.providers.messages.model_usage_${key}`;
-    const label = t(labelKey, { defaultValue: key });
-    lines.push(`${label}: ${value}`);
-  });
-  return lines.join('\n');
-};
-
-const normalizeProvider = (provider) => {
-  if (typeof provider !== 'string') return '';
-  const trimmed = provider.trim();
-  if (!trimmed) return '';
-  const lower = trimmed.toLowerCase();
-  switch (lower) {
-    case 'gpt':
-    case 'openai':
-      return 'openai';
-    case 'gemini':
-    case 'google':
-      return 'google';
-    case 'claude':
-    case 'anthropic':
-      return 'anthropic';
-    case 'x-ai':
-    case 'xai':
-    case 'grok':
-      return 'xai';
-    case 'meta':
-    case 'meta-llama':
-    case 'meta_llama':
-    case 'metallama':
-      return 'meta';
-    case 'mistral':
-    case 'mistralai':
-      return 'mistral';
-    case 'cohere':
-    case 'command-r':
-    case 'commandr':
-      return 'cohere';
-    case 'deepseek':
-      return 'deepseek';
-    case 'qianwen':
-    case 'qwen':
-    case 'qwq':
-    case 'qvq':
-      return 'qwen';
-    case 'zhipu':
-    case 'zhipuai':
-    case 'zhipu-ai':
-    case 'zhipu_ai':
-    case 'glm':
-    case 'bigmodel':
-      return 'zhipu';
-    case 'hunyuan':
-    case 'tencent':
-      return 'hunyuan';
-    case 'volc':
-    case 'volcengine':
-    case 'doubao':
-    case 'ark':
-      return 'volcengine';
-    case 'minimax':
-    case 'abab':
-      return 'minimax';
-    default:
-      if (trimmed === '千问' || trimmed === '通义千问') return 'qwen';
-      if (trimmed === '智谱' || trimmed === '智谱AI') return 'zhipu';
-      if (trimmed === '腾讯' || trimmed === '混元') return 'hunyuan';
-      if (trimmed === '火山' || trimmed === '豆包' || trimmed === '字节')
-        return 'volcengine';
-      return lower;
-  }
-};
-
-const PROVIDER_DISPLAY_ID_MAP = {
-  qwen: 'qianwen',
-  hunyuan: 'hunyuan',
-  baidu: 'baidu',
-  zhipu: 'zhipu',
-};
-
-const PROVIDER_DISPLAY_NAME_MAP = {
-  qwen: 'QianWen',
-  hunyuan: 'Hunyuan',
-  baidu: 'BaiDu',
-  zhipu: 'ZhiPu',
-  volcengine: 'VolcEngine',
-};
-
-const formatProviderDisplayId = (provider) => {
-  const normalized = normalizeProvider(provider);
-  if (!normalized) return '';
-  return PROVIDER_DISPLAY_ID_MAP[normalized] || normalized;
-};
-
-const formatProviderDisplayName = (provider, name) => {
-  const normalized = normalizeProvider(provider);
-  const trimmedName = typeof name === 'string' ? name.trim() : '';
-  if (trimmedName) {
-    if (normalized && PROVIDER_DISPLAY_NAME_MAP[normalized]) {
-      return PROVIDER_DISPLAY_NAME_MAP[normalized];
-    }
-    return trimmedName;
-  }
-  if (!normalized) return '';
-  return PROVIDER_DISPLAY_NAME_MAP[normalized] || normalized;
-};
-
-const buildPriceComponentRowKey = (scope, component) =>
-  [
-    scope || 'model',
-    component?.id || '',
-    component?.component || 'component',
-    component?.condition || 'condition',
-    component?.currency || '',
-    component?.price || component?.value || '',
-  ].join('-');
-
-const inferModelType = (model) => {
-  if (typeof model !== 'string') return 'text';
-  const lower = model.trim().toLowerCase();
-  if (!lower) return 'text';
-  if (
-    lower.includes('embedding') ||
-    lower.startsWith('text-embedding')
-  ) {
-    return 'embedding';
-  }
-  if (
-    lower.startsWith('veo') ||
-    lower.includes('text-to-video') ||
-    lower.includes('video-generation') ||
-    lower.includes('video_generation') ||
-    lower.includes('video')
-  ) {
-    return 'video';
-  }
-  if (
-    lower.includes('whisper') ||
-    lower.startsWith('tts-') ||
-    lower.includes('audio')
-  ) {
-    return 'audio';
-  }
-  if (
-    lower.startsWith('dall-e') ||
-    lower.startsWith('cogview') ||
-    lower.includes('stable-diffusion') ||
-    lower.startsWith('wanx') ||
-    lower.startsWith('step-1x') ||
-    lower.includes('flux')
-  ) {
-    return 'image';
-  }
-  return 'text';
-};
-
-const defaultPriceUnitByType = (type, modelName) => {
-  if (type === 'image') return 'per_image';
-  if (type === 'video') return 'per_video';
-  if (type === 'audio') {
-    if (
-      typeof modelName === 'string' &&
-      modelName.trim().toLowerCase().startsWith('tts-')
-    ) {
-      return 'per_1k_chars';
-    }
-    return 'per_1k_tokens';
-  }
-  return 'per_1k_tokens';
-};
-
-const defaultPriceUnitByComponent = (component) => {
-  const normalized = (component || '').toString().trim().toLowerCase();
-  switch (normalized) {
-    case 'image_generation':
-      return 'per_image';
-    case 'video_generation':
-      return 'per_video';
-    case 'audio_output':
-      return 'per_1k_chars';
-    case 'audio_input':
-    case 'realtime_audio':
-      return 'per_minute';
-    case 'text_cache_read':
-    case 'text_cache_write':
-    case 'realtime_text':
-    case 'text':
-    default:
-      return 'per_1k_tokens';
-  }
-};
-
-function normalizeProviderModelType(value, model) {
-  const normalized = (value || '').toString().trim().toLowerCase();
-  if (
-    normalized === 'text' ||
-    normalized === 'audio' ||
-    normalized === 'image' ||
-    normalized === 'video' ||
-    normalized === 'embedding'
-  ) {
-    return normalized;
-  }
-  return inferModelType(model);
-}
-
-const BASE_MODEL_TAGS = ['text', 'image', 'audio', 'video', 'embedding'];
-const PROVIDER_MODEL_TAG_ORDER = [
-  'text',
-  'image',
-  'audio',
-  'video',
-  'embedding',
-  'tool_calling',
-  'reasoning',
-  'vision',
-  'realtime',
-  'structured_output',
-];
-
-const normalizeProviderModelTags = (tags, model) => {
-  const values = Array.isArray(tags)
-    ? tags
-    : typeof tags === 'string'
-      ? tags.split(',')
-      : [];
-  const seen = new Set();
-  values.forEach((item) => {
-    const tag = (item || '').toString().trim().toLowerCase();
-    if (!PROVIDER_MODEL_TAG_ORDER.includes(tag)) return;
-    seen.add(tag);
-  });
-  return PROVIDER_MODEL_TAG_ORDER.filter((tag) => seen.has(tag));
-};
-
-const providerModelTypeFromTags = (tags, model) => {
-  const normalizedTags = normalizeProviderModelTags(tags, model);
-  return normalizedTags.find((tag) => BASE_MODEL_TAGS.includes(tag)) || '';
-};
-
-const normalizeProviderEndpoint = (endpoint) => {
-  const normalized = (endpoint || '').toString().trim().toLowerCase();
-  if (normalized.startsWith('/v1/chat/completions')) {
-    return '/v1/chat/completions';
-  }
-  if (normalized.startsWith('/v1/responses')) {
-    return '/v1/responses';
-  }
-  if (normalized.startsWith('/v1/messages')) {
-    return '/v1/messages';
-  }
-  if (normalized.startsWith('/v1/images/generations')) {
-    return '/v1/images/generations';
-  }
-  if (normalized.startsWith('/v1/images/edits')) {
-    return '/v1/images/edits';
-  }
-  if (normalized.startsWith('/v1/batches')) {
-    return '/v1/batches';
-  }
-  if (normalized.startsWith('/v1/embeddings')) {
-    return '/v1/embeddings';
-  }
-  if (normalized.startsWith('/v1/audio/')) {
-    return '/v1/audio/speech';
-  }
-  if (normalized.startsWith('/v1/realtime')) {
-    return '/v1/realtime';
-  }
-  if (normalized.startsWith('/v1/videos')) {
-    return '/v1/videos';
-  }
-  return '';
-};
-
-const isProviderEndpointAllowedForType = (type, endpoint) => {
-  const normalizedType = normalizeProviderModelType(type, '');
-  switch (normalizedType) {
-    case 'image':
-      return [
-        '/v1/responses',
-        '/v1/images/generations',
-        '/v1/images/edits',
-        '/v1/batches',
-      ].includes(endpoint);
-    case 'audio':
-      return endpoint === '/v1/audio/speech' || endpoint === '/v1/realtime';
-    case 'video':
-      return endpoint === '/v1/videos';
-    case 'embedding':
-      return endpoint === '/v1/embeddings';
-    case 'text':
-    default:
-      return ['/v1/chat/completions', '/v1/responses', '/v1/messages'].includes(
-        endpoint,
-      );
-  }
-};
-
-const normalizeSupportedEndpoints = (endpoints, type) => {
-  const values = Array.isArray(endpoints)
-    ? endpoints
-    : typeof endpoints === 'string'
-      ? endpoints.split(',')
-      : [];
-  const seen = new Set();
-  const result = [];
-  values.forEach((item) => {
-    const endpoint = normalizeProviderEndpoint(item);
-    if (!endpoint || !isProviderEndpointAllowedForType(type, endpoint)) {
-      return;
-    }
-    if (seen.has(endpoint)) {
-      return;
-    }
-    seen.add(endpoint);
-    result.push(endpoint);
-  });
-  return result.sort(
-    (a, b) =>
-      (PROVIDER_ENDPOINT_SORT_ORDER[a] || 1000) -
-        (PROVIDER_ENDPOINT_SORT_ORDER[b] || 1000) || a.localeCompare(b),
-  );
-};
-
-const createEmptyPriceComponent = (component = '') => ({
-  component,
-  condition: '',
-  input_price: 0,
-  output_price: 0,
-  price_unit: defaultPriceUnitByComponent(component),
-  currency: 'USD',
-  source: 'manual',
-  source_url: '',
-  updated_at: 0,
-});
-
-const normalizePriceComponents = (components) => {
-  if (!Array.isArray(components)) return [];
-  const unique = new Map();
-  components.forEach((item, index) => {
-    if (!item) return;
-    const component = (item.component || '').toString().trim().toLowerCase();
-    if (!component) return;
-    const condition = (item.condition || '').toString().trim();
-    const inputPrice = Number(item.input_price || 0);
-    const outputPrice = Number(item.output_price || 0);
-    const priceUnit =
-      typeof item.price_unit === 'string' && item.price_unit.trim() !== ''
-        ? item.price_unit.trim().toLowerCase()
-        : defaultPriceUnitByComponent(component);
-    const currency =
-      typeof item.currency === 'string' && item.currency.trim() !== ''
-        ? item.currency.trim().toUpperCase()
-        : 'USD';
-    const source =
-      typeof item.source === 'string' && item.source.trim() !== ''
-        ? item.source.trim().toLowerCase()
-        : 'manual';
-    const sourceUrl =
-      typeof item.source_url === 'string' && item.source_url.trim() !== ''
-        ? item.source_url.trim()
-        : '';
-    const updatedAt = Number(item.updated_at || 0);
-    const sortOrder = Number(item.sort_order || 0);
-    unique.set(`${component}\u0000${condition}\u0000${index}`, {
-      component,
-      condition,
-      input_price:
-        Number.isFinite(inputPrice) && inputPrice > 0 ? inputPrice : 0,
-      output_price:
-        Number.isFinite(outputPrice) && outputPrice > 0 ? outputPrice : 0,
-      price_unit: priceUnit,
-      currency,
-      source,
-      source_url: sourceUrl,
-      sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
-      updated_at: Number.isInteger(updatedAt) && updatedAt > 0 ? updatedAt : 0,
-    });
-  });
-  return Array.from(unique.values()).sort((a, b) => {
-    const bySort = Number(a.sort_order || 0) - Number(b.sort_order || 0);
-    if (bySort !== 0) return bySort;
-    const byComponent = (a.component || '').localeCompare(b.component || '');
-    if (byComponent !== 0) return byComponent;
-    return (a.condition || '').localeCompare(b.condition || '');
-  });
-};
-
-const createEmptyModelDetail = (model = '') => {
-  const t = inferModelType(model);
-  return {
-    model,
-    tags: [t],
-    status: 'active',
-    description: '',
-    is_deleted: false,
-    supported_endpoints: [],
-    input_price: 0,
-    output_price: 0,
-    price_unit: defaultPriceUnitByType(t, model),
-    currency: 'USD',
-    source: 'manual',
-    updated_at: 0,
-    price_components: [],
-  };
-};
-
-const normalizeModelDetails = (details) => {
-  if (!Array.isArray(details)) return [];
-  const unique = new Map();
-  details.forEach((item) => {
-    if (!item) return;
-    const model =
-      typeof item.model === 'string'
-        ? item.model.trim()
-        : typeof item.id === 'string'
-          ? item.id.trim()
-          : '';
-    if (!model) return;
-    const tags = normalizeProviderModelTags(item.tags, model);
-    const type = providerModelTypeFromTags(tags, model);
-    const inputPrice = Number(item.input_price || 0);
-    const outputPrice = Number(item.output_price || 0);
-    const currency =
-      typeof item.currency === 'string' && item.currency.trim() !== ''
-        ? item.currency.trim().toUpperCase()
-        : 'USD';
-    const priceUnit =
-      typeof item.price_unit === 'string' && item.price_unit.trim() !== ''
-        ? item.price_unit.trim().toLowerCase()
-        : defaultPriceUnitByType(type, model);
-    const source =
-      typeof item.source === 'string' && item.source.trim() !== ''
-        ? item.source.trim().toLowerCase()
-        : 'manual';
-    const status =
-      typeof item.status === 'string' && item.status.trim() !== ''
-        ? item.status.trim().toLowerCase()
-        : 'active';
-    const description =
-      typeof item.description === 'string' ? item.description.trim() : '';
-    const isDeleted = item.is_deleted === true;
-    const updatedAt = Number(item.updated_at || 0);
-    unique.set(model, {
-      model,
-      tags,
-      status,
-      description,
-      is_deleted: isDeleted,
-      supported_endpoints: normalizeSupportedEndpoints(
-        item.supported_endpoints,
-        type,
-      ),
-      specification:
-        item.specification && typeof item.specification === 'object'
-          ? item.specification
-          : null,
-      input_price:
-        Number.isFinite(inputPrice) && inputPrice > 0 ? inputPrice : 0,
-      output_price:
-        Number.isFinite(outputPrice) && outputPrice > 0 ? outputPrice : 0,
-      price_unit: priceUnit,
-      currency,
-      source,
-      updated_at: Number.isInteger(updatedAt) && updatedAt > 0 ? updatedAt : 0,
-      price_components: normalizePriceComponents(item.price_components),
-    });
-  });
-  return Array.from(unique.values())
-    .filter((item) => item.is_deleted !== true)
-    .sort((a, b) => a.model.localeCompare(b.model));
-};
-
-const detailsFromCatalogItem = (item) => {
-  if (Array.isArray(item?.model_details) && item.model_details.length > 0) {
-    return normalizeModelDetails(item.model_details);
-  }
-  if (Array.isArray(item?.models) && item.models.length > 0) {
-    return normalizeModelDetails(item.models.map((model) => ({ model })));
-  }
-  return [];
-};
-
-const createEmptyRow = () => ({
-  id: '',
-  name: '',
-  base_url: '',
-  official_url: '',
-  model_details: [],
-  source: 'manual',
-  created_at: 0,
-  updated_at: 0,
-});
-
-const toEditableRows = (items) => {
-  if (!Array.isArray(items)) return [];
-  return items.map((item) => ({
-    ...createEmptyRow(),
-    id: normalizeProvider(item?.id || item?.provider || item?.name || ''),
-    name: item?.name || '',
-    base_url: item?.base_url || '',
-    official_url: item?.official_url || '',
-    model_details: detailsFromCatalogItem(item),
-    source: item?.source || 'manual',
-    created_at: item?.created_at || 0,
-    updated_at: item?.updated_at || 0,
-  }));
-};
-
-const OFFICIAL_PROVIDER_BASE_URLS = {
-  openai: 'https://api.openai.com',
-  google: 'https://generativelanguage.googleapis.com/v1beta/openai',
-  anthropic: 'https://api.anthropic.com',
-  xai: 'https://api.x.ai',
-  mistral: 'https://api.mistral.ai',
-  cohere: 'https://api.cohere.com/compatibility/v1',
-  deepseek: 'https://api.deepseek.com',
-  baidu: 'https://qianfan.baidubce.com/v2',
-  qwen: 'https://dashscope.aliyuncs.com',
-  zhipu: 'https://open.bigmodel.cn',
-  hunyuan: 'https://api.hunyuan.cloud.tencent.com/v1',
-  minimax: 'https://api.minimax.io/v1',
-  stepfun: 'https://api.stepfun.com/v1',
-  volcengine: 'https://ark.cn-beijing.volces.com',
-};
-
-const cloneEditableRow = (row) => toEditableRows([row])[0] || createEmptyRow();
-const cloneModelDetail = (detail) =>
-  normalizeModelDetails([detail])[0] || createEmptyModelDetail('');
-
-const MODEL_TAG_OPTIONS = PROVIDER_MODEL_TAG_ORDER.map((tag) => ({
-  key: tag,
-  value: tag,
-  text: tag,
-}));
-
-const PROVIDER_MODEL_STATUS_OPTIONS = [
-  { key: 'active', value: 'active', text: 'active' },
-  { key: 'deprecated', value: 'deprecated', text: 'deprecated' },
-];
-
-const PROVIDER_ENDPOINT_OPTIONS = [
-  {
-    key: '/v1/chat/completions',
-    value: '/v1/chat/completions',
-    text: '/v1/chat/completions',
-  },
-  { key: '/v1/responses', value: '/v1/responses', text: '/v1/responses' },
-  { key: '/v1/messages', value: '/v1/messages', text: '/v1/messages' },
-  {
-    key: '/v1/images/generations',
-    value: '/v1/images/generations',
-    text: '/v1/images/generations',
-  },
-  {
-    key: '/v1/images/edits',
-    value: '/v1/images/edits',
-    text: '/v1/images/edits',
-  },
-  { key: '/v1/batches', value: '/v1/batches', text: '/v1/batches' },
-  {
-    key: '/v1/embeddings',
-    value: '/v1/embeddings',
-    text: '/v1/embeddings',
-  },
-  {
-    key: '/v1/audio/speech',
-    value: '/v1/audio/speech',
-    text: '/v1/audio/speech',
-  },
-  { key: '/v1/videos', value: '/v1/videos', text: '/v1/videos' },
-];
-
-const providerEndpointOptionsForType = (type) =>
-  type
-    ? PROVIDER_ENDPOINT_OPTIONS.filter((option) =>
-        isProviderEndpointAllowedForType(type, option.value),
-      )
-    : [];
-
-const PRICE_UNIT_OPTIONS = [
-  { key: 'per_1k_tokens', value: 'per_1k_tokens', text: 'per_1k_tokens' },
-  { key: 'per_1k_chars', value: 'per_1k_chars', text: 'per_1k_chars' },
-  { key: 'per_image', value: 'per_image', text: 'per_image' },
-  { key: 'per_video', value: 'per_video', text: 'per_video' },
-  { key: 'per_minute', value: 'per_minute', text: 'per_minute' },
-  { key: 'per_second', value: 'per_second', text: 'per_second' },
-  { key: 'per_request', value: 'per_request', text: 'per_request' },
-  { key: 'per_task', value: 'per_task', text: 'per_task' },
-];
-
-const PRICE_COMPONENT_OPTIONS = [
-  { key: 'text', value: 'text', text: 'text' },
-  {
-    key: 'text_cache_read',
-    value: 'text_cache_read',
-    text: 'text_cache_read',
-  },
-  {
-    key: 'text_cache_write',
-    value: 'text_cache_write',
-    text: 'text_cache_write',
-  },
-  {
-    key: 'image_generation',
-    value: 'image_generation',
-    text: 'image_generation',
-  },
-  { key: 'audio_input', value: 'audio_input', text: 'audio_input' },
-  { key: 'audio_output', value: 'audio_output', text: 'audio_output' },
-  {
-    key: 'video_generation',
-    value: 'video_generation',
-    text: 'video_generation',
-  },
-  { key: 'realtime_text', value: 'realtime_text', text: 'realtime_text' },
-  { key: 'realtime_audio', value: 'realtime_audio', text: 'realtime_audio' },
-];
-
-const SOURCE_OPTIONS = [
-  { key: 'manual', value: 'manual', text: 'manual' },
-  { key: 'default', value: 'default', text: 'default' },
-  { key: 'official', value: 'official', text: 'official' },
-  { key: 'imported', value: 'imported', text: 'imported' },
-];
-
-const TEXT_ENDPOINT_OPTIONS = [
-  { key: '/v1/responses', value: '/v1/responses', text: '/v1/responses' },
-  {
-    key: '/v1/chat/completions',
-    value: '/v1/chat/completions',
-    text: '/v1/chat/completions',
-  },
-];
-
-const IMAGE_QUALITY_OPTIONS = [
-  { key: 'standard', value: 'standard', text: 'standard' },
-  { key: 'hd', value: 'hd', text: 'hd' },
-];
-
-const IMAGE_SIZE_OPTIONS = [
-  { key: '1024x1024', value: '1024x1024', text: '1024x1024' },
-  { key: '1024x1792', value: '1024x1792', text: '1024x1792' },
-  { key: '1792x1024', value: '1792x1024', text: '1792x1024' },
-];
-
-const parseConditionString = (condition) => {
-  const result = {};
-  const normalized = (condition || '').toString().trim();
-  if (!normalized) return result;
-  normalized.split(';').forEach((part) => {
-    const pair = part.trim();
-    if (!pair) return;
-    const index = pair.indexOf('=');
-    if (index <= 0) return;
-    const key = pair.slice(0, index).trim().toLowerCase();
-    const value = pair
-      .slice(index + 1)
-      .trim()
-      .toLowerCase();
-    if (!key) return;
-    result[key] = value;
-  });
-  return result;
-};
-
-const buildConditionString = (attrs, orderedKeys) => {
-  if (!attrs || typeof attrs !== 'object') return '';
-  return orderedKeys
-    .map((key) => {
-      const normalizedKey = (key || '').toString().trim().toLowerCase();
-      const value = (attrs[normalizedKey] || '')
-        .toString()
-        .trim()
-        .toLowerCase();
-      if (!normalizedKey || !value) return '';
-      return `${normalizedKey}=${value}`;
-    })
-    .filter(Boolean)
-    .join(';');
-};
-
-const formatProviderPriceCellValue = (value) => {
-  const normalized = Number(value || 0);
-  return Number.isFinite(normalized) && normalized > 0 ? normalized : '-';
-};
-
-const formatProviderPriceMeta = (detail, t) => {
-  if (isComponentBasedPricing(detail)) {
-    return '';
-  }
-  const parts = [];
-  const currency = (detail?.currency || '').toString().trim().toUpperCase();
-  const priceUnit = (detail?.price_unit || '').toString().trim();
-  if (currency) {
-    parts.push(currency);
-  }
-  if (priceUnit) {
-    parts.push(summarizeModelPriceUnit(detail, t));
-  }
-  return parts.join(' / ');
-};
-
-const renderProviderPriceCell = (detail, field, t, openPricingDetail) => {
-  const hasDetail =
-    field === 'input_price'
-      ? hasComplexInputPricing(detail)
-      : hasComplexOutputPricing(detail);
-  if (hasDetail) {
-    return (
-      <AppButton
-        type='button'
-        basic
-        className='router-inline-button'
-        onClick={() => openPricingDetail(detail)}
-      >
-        {t('channel.providers.model_detail_table.detail')}
-      </AppButton>
-    );
-  }
-  const priceText = formatProviderPriceCellValue(detail?.[field]);
-  const metaText = formatProviderPriceMeta(detail, t);
-  return (
-    <div className='router-provider-model-price-cell'>
-      <span className='router-monospace-value'>{priceText}</span>
-      {metaText ? <span className='router-muted'>{metaText}</span> : null}
-    </div>
-  );
-};
-
-const isComponentBasedPricing = (detail) =>
-  Array.isArray(detail?.price_components) && detail.price_components.length > 0;
-
-const summarizeModelPriceUnit = (detail, t) => {
-  if (isComponentBasedPricing(detail)) {
-    return '-';
-  }
-  return detail?.price_unit || '-';
-};
-
-const hasComplexInputPricing = (detail) =>
-  Array.isArray(detail?.price_components) &&
-  detail.price_components.some(
-    (component) => Number(component?.input_price || 0) > 0,
-  );
-
-const hasComplexOutputPricing = (detail) =>
-  Array.isArray(detail?.price_components) &&
-  detail.price_components.some(
-    (component) => Number(component?.output_price || 0) > 0,
-  );
+  PROVIDER_DETAIL_MODEL_PAGE_SIZE,
+  PROVIDER_CATALOG_REQUEST_PAGE_SIZE,
+  PROVIDER_MODEL_STATUS_FILTER_ALL,
+  OFFICIAL_PROVIDER_BASE_URLS,
+  MODEL_TAG_OPTIONS,
+  PROVIDER_MODEL_STATUS_OPTIONS,
+  PRICE_UNIT_OPTIONS,
+  PRICE_COMPONENT_OPTIONS,
+  SOURCE_OPTIONS,
+  TEXT_ENDPOINT_OPTIONS,
+  IMAGE_QUALITY_OPTIONS,
+  IMAGE_SIZE_OPTIONS,
+  formatProviderModelUsageError,
+  normalizeProvider,
+  formatProviderDisplayId,
+  formatProviderDisplayName,
+  ProviderBrandMark,
+  buildPriceComponentRowKey,
+  defaultPriceUnitByType,
+  defaultPriceUnitByComponent,
+  normalizeProviderModelTags,
+  providerModelTypeFromTags,
+  normalizeSupportedEndpoints,
+  createEmptyPriceComponent,
+  createEmptyModelDetail,
+  normalizeModelDetails,
+  createEmptyRow,
+  toEditableRows,
+  cloneEditableRow,
+  cloneModelDetail,
+  providerEndpointOptionsForType,
+  parseConditionString,
+  buildConditionString,
+  formatProviderPriceCellValue,
+  renderProviderPriceCell,
+  isComponentBasedPricing,
+  summarizeModelPriceUnit,
+} from './ProvidersManager.helpers';
 
 const ProvidersManager = () => {
   const { t } = useTranslation();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [searchKeyword, setSearchKeyword] = useState('');
-  const [activePage, setActivePage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [deletingRow, setDeletingRow] = useState(null);
+  const [{ keyword: searchKeyword }, patchQuery] = useUrlState({
+    keyword: { param: 'q', default: '' },
+  });
   const [creating, setCreating] = useState(false);
   const [createRow, setCreateRow] = useState(createEmptyRow());
   const [viewingProvider, setViewingProvider] = useState('');
@@ -842,6 +69,9 @@ const ProvidersManager = () => {
     PROVIDER_MODEL_STATUS_FILTER_ALL,
   );
   const [viewModelPage, setViewModelPage] = useState(1);
+  const [viewModelPageSize, setViewModelPageSize] = useState(
+    PROVIDER_DETAIL_MODEL_PAGE_SIZE,
+  );
   const [viewModelBatchDeleteMode, setViewModelBatchDeleteMode] = useState(false);
   const [viewModelBatchDeleteKeys, setViewModelBatchDeleteKeys] = useState([]);
   const [detailEditingSection, setDetailEditingSection] = useState('');
@@ -852,41 +82,57 @@ const ProvidersManager = () => {
   const [modelDetailEditorMode, setModelDetailEditorMode] = useState('edit');
   const [pricingDetailOpen, setPricingDetailOpen] = useState(false);
   const [pricingDetailModel, setPricingDetailModel] = useState(null);
+  const [modelDeleteConfirmOpen, setModelDeleteConfirmOpen] = useState(false);
+  const [pendingModelDeleteIndex, setPendingModelDeleteIndex] = useState(-1);
+  const [modelBatchDeleteConfirmOpen, setModelBatchDeleteConfirmOpen] = useState(false);
+  const [pendingModelBatchDeleteIndexes, setPendingModelBatchDeleteIndexes] = useState([]);
 
   const normalizedSearchKeyword = useMemo(
     () => (typeof searchKeyword === 'string' ? searchKeyword.trim() : ''),
     [searchKeyword],
   );
 
-  const totalPages = useMemo(() => {
-    if (totalCount <= 0) return 1;
-    return Math.ceil(totalCount / ITEMS_PER_PAGE);
-  }, [totalCount]);
-
   const loadCatalog = useCallback(
-    async (page, keyword, options = {}) => {
+    async (keyword, options = {}) => {
       const withRefreshIndicator = options.withRefreshIndicator === true;
+      setLoadError(false);
       setLoading(true);
       if (withRefreshIndicator) {
         setRefreshing(true);
       }
       try {
-        const res = await API.get('/api/v1/admin/providers', {
-          params: {
-            page: Math.max(page || 1, 1),
-            page_size: ITEMS_PER_PAGE,
-            keyword: keyword || undefined,
-          },
-        });
-        const { success, message, data } = res.data || {};
-        if (!success) {
-          showError(message || t('channel.providers.messages.load_failed'));
-          return;
-        }
-        const items = Array.isArray(data?.items) ? data.items : [];
-        setRows(toEditableRows(items));
-        setTotalCount(Number(data?.total || 0));
+        const items = [];
+        let page = 1;
+        let total = 0;
+
+        do {
+          const res = await API.get('/api/v1/admin/providers', {
+            params: {
+              page,
+              page_size: PROVIDER_CATALOG_REQUEST_PAGE_SIZE,
+              keyword: keyword || undefined,
+            },
+          });
+          const { success, message, data } = res.data || {};
+          if (!success) {
+            showError(message || t('channel.providers.messages.load_failed'));
+            return;
+          }
+          const pageItems = Array.isArray(data?.items) ? data.items : [];
+          items.push(...pageItems);
+          total = Number(data?.total || items.length);
+          page += 1;
+          if (pageItems.length === 0) break;
+        } while (items.length < total);
+
+        setRows(
+          toEditableRows(items).sort(
+            (left, right) =>
+              Number(right.created_at || 0) - Number(left.created_at || 0),
+          ),
+        );
       } catch (error) {
+        setLoadError(true);
         showError(error);
       } finally {
         setLoading(false);
@@ -899,14 +145,8 @@ const ProvidersManager = () => {
   );
 
   useEffect(() => {
-    loadCatalog(activePage, normalizedSearchKeyword).then();
-  }, [activePage, normalizedSearchKeyword, loadCatalog]);
-
-  useEffect(() => {
-    if (activePage > totalPages) {
-      setActivePage(totalPages);
-    }
-  }, [activePage, totalPages]);
+    loadCatalog(normalizedSearchKeyword).then();
+  }, [normalizedSearchKeyword, loadCatalog]);
 
   const setCreateValue = (key, value) => {
     setCreateRow((prev) => ({
@@ -1277,8 +517,8 @@ const ProvidersManager = () => {
     });
   };
 
-  const reloadCurrentPage = async () => {
-    await loadCatalog(activePage, normalizedSearchKeyword, {
+  const reloadCatalog = async () => {
+    await loadCatalog(normalizedSearchKeyword, {
       withRefreshIndicator: true,
     });
   };
@@ -1386,65 +626,107 @@ const ProvidersManager = () => {
     t,
   ]);
 
-  const deleteDetailModel = useCallback(
-    async (index) => {
-      const sourceRow = cloneEditableRow(viewRow);
-      const details = Array.isArray(sourceRow.model_details)
-        ? [...sourceRow.model_details]
-        : [];
-      if (saving || creating || index < 0 || index >= details.length) {
+  const requestDeleteDetailModel = useCallback(
+    (index) => {
+      if (saving || creating || index < 0) {
         return;
       }
-      if (
-        typeof window !== 'undefined' &&
-        !window.confirm(
-          t('channel.providers.model_detail_table.delete_confirm'),
-        )
-      ) {
-        return;
-      }
-      details.splice(index, 1);
-      await persistViewerModelDetails(details);
+      setPendingModelDeleteIndex(index);
+      setModelDeleteConfirmOpen(true);
     },
-    [creating, persistViewerModelDetails, saving, t, viewRow],
+    [creating, saving],
   );
 
-  const deleteDetailModels = useCallback(
-    async (indexes) => {
-      const sourceRow = cloneEditableRow(viewRow);
-      const details = Array.isArray(sourceRow.model_details)
-        ? [...sourceRow.model_details]
-        : [];
+  const performDeleteDetailModel = useCallback(async () => {
+    const index = pendingModelDeleteIndex;
+    if (saving || creating || index < 0) {
+      setModelDeleteConfirmOpen(false);
+      setPendingModelDeleteIndex(-1);
+      return;
+    }
+    const sourceRow = cloneEditableRow(viewRow);
+    const details = Array.isArray(sourceRow.model_details)
+      ? [...sourceRow.model_details]
+      : [];
+    if (index >= details.length) {
+      setModelDeleteConfirmOpen(false);
+      setPendingModelDeleteIndex(-1);
+      return;
+    }
+    details.splice(index, 1);
+    try {
+      await persistViewerModelDetails(details);
+    } finally {
+      setModelDeleteConfirmOpen(false);
+      setPendingModelDeleteIndex(-1);
+    }
+  }, [
+    creating,
+    pendingModelDeleteIndex,
+    persistViewerModelDetails,
+    saving,
+    viewRow,
+  ]);
+
+  const requestDeleteDetailModels = useCallback(
+    (indexes) => {
+      if (saving || creating) {
+        return;
+      }
       const normalizedIndexes = Array.from(
         new Set(
           (Array.isArray(indexes) ? indexes : [])
             .map((item) => Number(item))
-            .filter((item) => Number.isInteger(item) && item >= 0 && item < details.length),
+            .filter((item) => Number.isInteger(item) && item >= 0),
         ),
-      ).sort((a, b) => b - a);
-      if (saving || creating || normalizedIndexes.length === 0) {
-        return false;
+      );
+      if (normalizedIndexes.length === 0) {
+        return;
       }
-      if (
-        typeof window !== 'undefined' &&
-        !window.confirm(
-          t('channel.providers.model_detail_table.batch_delete_confirm', {
-            count: normalizedIndexes.length,
-          }),
-        )
-      ) {
-        return false;
-      }
-      normalizedIndexes.forEach((index) => {
-        details.splice(index, 1);
-      });
+      setPendingModelBatchDeleteIndexes(normalizedIndexes);
+      setModelBatchDeleteConfirmOpen(true);
+    },
+    [creating, saving],
+  );
+
+  const performDeleteDetailModels = useCallback(async () => {
+    const sourceRow = cloneEditableRow(viewRow);
+    const details = Array.isArray(sourceRow.model_details)
+      ? [...sourceRow.model_details]
+      : [];
+    const normalizedIndexes = Array.from(
+      new Set(
+        pendingModelBatchDeleteIndexes
+          .map((item) => Number(item))
+          .filter(
+            (item) => Number.isInteger(item) && item >= 0 && item < details.length,
+          ),
+      ),
+    ).sort((a, b) => b - a);
+    if (normalizedIndexes.length === 0) {
+      setModelBatchDeleteConfirmOpen(false);
+      setPendingModelBatchDeleteIndexes([]);
+      return false;
+    }
+    normalizedIndexes.forEach((index) => {
+      details.splice(index, 1);
+    });
+    try {
       await persistViewerModelDetails(details);
       setViewModelBatchDeleteKeys([]);
       setViewModelBatchDeleteMode(false);
       return true;
-    },
-    [creating, persistViewerModelDetails, saving, t, viewRow],
-  );
+    } finally {
+      setModelBatchDeleteConfirmOpen(false);
+      setPendingModelBatchDeleteIndexes([]);
+    }
+  }, [
+    creating,
+    pendingModelBatchDeleteIndexes,
+    persistViewerModelDetails,
+    saving,
+    viewRow,
+  ]);
 
   async function saveProvider(method, url, row, options = {}) {
     const provider = normalizeProvider(row.id);
@@ -1481,7 +763,7 @@ const ProvidersManager = () => {
       showSuccess(
         options.successMessage || t('channel.providers.messages.save_success'),
       );
-      await reloadCurrentPage();
+      await reloadCatalog();
       return savedRow;
     } catch (error) {
       const message =
@@ -1496,46 +778,16 @@ const ProvidersManager = () => {
     }
   }
 
-  const openDeleteModal = (row) => {
+  const closeModelDeleteModal = () => {
     if (saving || creating) return;
-    if (!row) return;
-    setDeletingRow(row);
+    setModelDeleteConfirmOpen(false);
+    setPendingModelDeleteIndex(-1);
   };
 
-  const closeDeleteModal = () => {
-    if (saving) return;
-    setDeletingRow(null);
-  };
-
-  const confirmDeleteRow = async () => {
-    const provider = normalizeProvider(deletingRow?.id || '');
-    if (!provider) {
-      setDeletingRow(null);
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await API.delete(`/api/v1/admin/providers/${provider}`);
-      const { success, message } = res.data || {};
-      if (!success) {
-        showError(message || t('channel.providers.dialog.delete_confirm'));
-        return;
-      }
-      showSuccess(t('channel.providers.dialog.delete_confirm'));
-      if (viewingProvider === provider) {
-        closeViewer();
-      }
-      if (rows.length === 1 && activePage > 1) {
-        setActivePage((prev) => Math.max(prev - 1, 1));
-      } else {
-        await reloadCurrentPage();
-      }
-      setDeletingRow(null);
-    } catch (error) {
-      showError(error);
-    } finally {
-      setSaving(false);
-    }
+  const closeModelBatchDeleteModal = () => {
+    if (saving || creating) return;
+    setModelBatchDeleteConfirmOpen(false);
+    setPendingModelBatchDeleteIndexes([]);
   };
 
   const saveViewerSection = async (section) => {
@@ -2476,13 +1728,23 @@ const ProvidersManager = () => {
             },
           ]}
         />
-        {totalPages > 1 ? (
+        {totalPages > 1 || pageSize !== PROVIDER_DETAIL_MODEL_PAGE_SIZE ? (
           <div className='router-pagination-wrap'>
             <AppPagination
               className='router-section-pagination'
               current={safeCurrentPage}
-              totalPages={totalPages}
-              onPageChange={(e, { activePage: nextActivePage }) => {
+              total={visibleDetailRows.length}
+              pageSize={pageSize}
+              onPageChange={(e, { activePage: nextActivePage, pageSize: nextPageSize }) => {
+                const size =
+                  Number(nextPageSize) > 0 ? Number(nextPageSize) : pageSize;
+                if (
+                  size !== pageSize &&
+                  typeof options.onPageSizeChange === 'function'
+                ) {
+                  options.onPageSizeChange(size);
+                  return;
+                }
                 if (typeof options.onPageChange === 'function') {
                   options.onPageChange(Number(nextActivePage) || 1);
                 }
@@ -3052,7 +2314,6 @@ const ProvidersManager = () => {
       <AppFilterHeader
         breadcrumbs={[
           { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'resource', label: t('header.model') },
           { key: 'providers', label: t('header.providers'), active: true },
         ]}
         title={t('header.providers')}
@@ -3072,130 +2333,104 @@ const ProvidersManager = () => {
             className='router-page-button'
             disabled={saving || refreshing}
             loading={refreshing}
-            onClick={reloadCurrentPage}
+            onClick={reloadCatalog}
           >
             {t('channel.providers.buttons.refresh')}
           </AppButton>
           </div>
         }
         query={
-          <AppInput
-            className='router-section-input router-search-form-sm'
-            placeholder={t('channel.providers.search')}
-            value={searchKeyword}
-            onChange={(e, { value }) => {
-              setSearchKeyword(value || '');
-              setActivePage(1);
-            }}
-          />
+          <div className='router-list-toolbar-query'>
+            <AppInput
+              className='router-section-input router-search-form-sm'
+              placeholder={t('channel.providers.search')}
+              value={searchKeyword}
+              onChange={(e, { value }) => {
+                patchQuery({ keyword: value || '' });
+              }}
+            />
+            <AppButton
+              className='router-section-button'
+              disabled={searchKeyword === ''}
+              onClick={() => patchQuery({ keyword: '' })}
+            >
+              {t('common.clear_filters')}
+            </AppButton>
+          </div>
         }
       />
-      <div className='router-table-scroll-x'>
-        <AppTable
-          className='router-hover-table router-list-table router-table-fit-page'
-          size='small'
-          pagination={false}
-          scroll={{ x: PROVIDER_LIST_TABLE_MIN_WIDTH }}
-          rowKey={(row) =>
-            row?.id ||
-            `${row?.name || 'provider'}-${row?.created_at || 0}-${row?.updated_at || 0}`
-          }
-          dataSource={rows}
-          locale={{
-            emptyText: (
-              <AppEmpty>
-                {loading ? t('common.loading') : t('channel.providers.table.empty')}
-              </AppEmpty>
-            ),
-          }}
-          onRow={(row) =>
-            creating || saving
-              ? {}
-              : {
-                  onClick: () => {
-                    openViewer(row);
-                  },
-                }
-          }
-          rowClassName={() =>
-            creating || saving ? '' : 'router-row-clickable'
-          }
-          columns={[
-          {
-            title: t('channel.providers.table.provider'),
-            dataIndex: 'id',
-            key: 'id',
-            width: PROVIDER_LIST_COLUMN_WIDTHS.id,
-            render: (value) =>
-              value ? (
-                <span className='router-monospace-value router-monospace-truncate' title={value}>
-                  {formatProviderDisplayId(value)}
-                </span>
-              ) : (
-                '-'
-              ),
-          },
-          {
-            title: t('channel.providers.table.name'),
-            key: 'name',
-            width: PROVIDER_LIST_COLUMN_WIDTHS.name,
-            render: (_, row) => formatProviderDisplayName(row.id, row.name) || '-',
-          },
-          {
-            title: t('channel.providers.table.created_at'),
-            dataIndex: 'created_at',
-            key: 'created_at',
-            className: 'router-table-col-datetime',
-            width: PROVIDER_LIST_COLUMN_WIDTHS.createdAt,
-            sorter: (a, b) => Number(a.created_at || 0) - Number(b.created_at || 0),
-            defaultSortOrder: 'descend',
-            render: (value) => (value ? timestamp2string(value) : '-'),
-          },
-          {
-            title: t('channel.providers.table.updated_at'),
-            dataIndex: 'updated_at',
-            key: 'updated_at',
-            className: 'router-table-col-datetime',
-            width: PROVIDER_LIST_COLUMN_WIDTHS.updatedAt,
-            sorter: (a, b) => Number(a.updated_at || 0) - Number(b.updated_at || 0),
-            render: (value) => (value ? timestamp2string(value) : '-'),
-          },
-          {
-            title: t('channel.providers.table.actions'),
-            key: 'actions',
-            className: 'router-table-col-actions-icon',
-            width: PROVIDER_LIST_COLUMN_WIDTHS.actions,
-            render: (_, row) => (
-              <div className='router-action-group-tight router-table-actions-icon-compact'>
-                <AppTableActionButton
-                  icon='edit'
-                  title={t('common.edit')}
-                  color='blue'
-                  disabled={creating || saving}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openViewer(row);
-                    startDetailSectionEdit('basic', row);
-                  }}
-                />
-              </div>
-            ),
-          },
-          ]}
-        />
-      </div>
-      {totalPages > 1 ? (
-        <div className='router-pagination-wrap-md'>
-          <AppPagination
-            className='router-section-pagination'
-            activePage={activePage}
-            totalPages={totalPages}
-            onPageChange={(e, { activePage: nextActivePage }) => {
-              setActivePage(Number(nextActivePage) || 1);
-            }}
+      <AppSpin spinning={loading}>
+        {loadError ? (
+          <AppErrorState
+            message={t('common.load_failed')}
+            onRetry={() => loadCatalog(normalizedSearchKeyword)}
+            retryText={t('common.retry')}
           />
+        ) : rows.length > 0 ? (
+          <div className='router-provider-card-grid'>
+            {rows.map((row) => {
+            const displayName =
+              formatProviderDisplayName(row.id, row.name) ||
+              formatProviderDisplayId(row.id) ||
+              '-';
+            const modelDetails = Array.isArray(row.model_details)
+              ? row.model_details
+              : [];
+            const modelTypes = Array.from(
+              new Set(
+                modelDetails
+                  .map((detail) =>
+                    providerModelTypeFromTags(detail?.tags, detail?.model),
+                  )
+                  .filter(Boolean),
+              ),
+            ).slice(0, 3);
+
+            return (
+              <button
+                type='button'
+                className='router-provider-card'
+                key={
+                  row?.id ||
+                  `${row?.name || 'provider'}-${row?.created_at || 0}-${row?.updated_at || 0}`
+                }
+                disabled={creating || saving}
+                onClick={() => openViewer(row)}
+              >
+                <span className='router-provider-card-header'>
+                  <ProviderBrandMark provider={row.id} name={row.name} />
+                  <AppIcon
+                    name='right chevron'
+                    className='router-provider-card-arrow'
+                    aria-hidden='true'
+                  />
+                </span>
+                <span className='router-provider-card-name'>{displayName}</span>
+                <span className='router-provider-card-id'>
+                  {formatProviderDisplayId(row.id)}
+                </span>
+                <span className='router-provider-card-footer'>
+                  <span>
+                    {t('channel.providers.table.model_count', {
+                      count: modelDetails.length,
+                    })}
+                  </span>
+                  {modelTypes.length > 0 ? (
+                    <span className='router-provider-card-types'>
+                      {modelTypes.join(' / ')}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      ) : null}
+      ) : (
+        <AppEmpty>
+          {t('channel.providers.table.empty')}
+        </AppEmpty>
+        )}
+      </AppSpin>
     </div>
   );
 
@@ -3221,7 +2456,6 @@ const ProvidersManager = () => {
         <AppFilterHeader
           breadcrumbs={[
             { key: 'admin', label: t('header.admin_workspace') },
-            { key: 'resource', label: t('header.model') },
             {
               key: 'provider-list',
               label: t('header.providers'),
@@ -3514,7 +2748,7 @@ const ProvidersManager = () => {
                             index,
                           ]),
                         );
-                        deleteDetailModels(
+                        requestDeleteDetailModels(
                           viewModelBatchDeleteKeys
                             .map((key) => selectedIndexByKey.get(key))
                             .filter((index) => Number.isInteger(index)),
@@ -3569,11 +2803,15 @@ const ProvidersManager = () => {
               searchKeyword: viewModelSearchKeyword,
               statusFilter: viewModelStatusFilter,
               currentPage: viewModelPage,
-              pageSize: PROVIDER_DETAIL_MODEL_PAGE_SIZE,
+              pageSize: viewModelPageSize,
               onPageChange: setViewModelPage,
+              onPageSizeChange: (size) => {
+                setViewModelPageSize(size);
+                setViewModelPage(1);
+              },
               actions: {
                 onStartEdit: startDetailModelEdit,
-                onDelete: deleteDetailModel,
+                onDelete: requestDeleteDetailModel,
               },
               actionsDisabled: basicEditing || modelsEditing,
             })}
@@ -3660,25 +2898,31 @@ const ProvidersManager = () => {
     </div>
   );
 
-  const renderDeleteModal = () => {
-    const providerName =
-      formatProviderDisplayName(deletingRow?.id, deletingRow?.name) ||
-      formatProviderDisplayId(deletingRow?.id) ||
-      '-';
+  const renderModelDeleteModal = () => {
+    const sourceRow = cloneEditableRow(viewRow);
+    const details = Array.isArray(sourceRow?.model_details)
+      ? sourceRow.model_details
+      : [];
+    const target =
+      pendingModelDeleteIndex >= 0 && pendingModelDeleteIndex < details.length
+        ? details[pendingModelDeleteIndex]
+        : null;
+    const label =
+      target?.model || target?.upstream_model || `model #${pendingModelDeleteIndex + 1}`;
     return (
       <AppModal
-        open={!!deletingRow}
-        onClose={closeDeleteModal}
+        open={modelDeleteConfirmOpen}
+        onClose={closeModelDeleteModal}
         size='tiny'
-        closeOnDimmerClick={!saving}
-        title={t('channel.providers.dialog.delete_title')}
+        closeOnDimmerClick={!(saving || creating)}
+        title={t('channel.providers.dialog.delete_model_title')}
         footer={[
           <AppButton
             key='cancel'
             type='button'
             className='router-modal-button'
-            onClick={closeDeleteModal}
-            disabled={saving}
+            onClick={closeModelDeleteModal}
+            disabled={saving || creating}
           >
             {t('channel.providers.dialog.cancel_create')}
           </AppButton>,
@@ -3688,17 +2932,54 @@ const ProvidersManager = () => {
             className='router-modal-button'
             color='red'
             loading={saving}
-            disabled={saving}
-            onClick={confirmDeleteRow}
+            disabled={saving || creating}
+            onClick={performDeleteDetailModel}
           >
             {t('channel.providers.dialog.delete_confirm')}
           </AppButton>,
         ]}
       >
         <div>
-          {t('channel.providers.dialog.delete_content', {
-            provider: providerName,
-          })}
+          {t('channel.providers.dialog.delete_model_content', { model: label })}
+        </div>
+      </AppModal>
+    );
+  };
+
+  const renderModelBatchDeleteModal = () => {
+    const count = pendingModelBatchDeleteIndexes.length;
+    return (
+      <AppModal
+        open={modelBatchDeleteConfirmOpen}
+        onClose={closeModelBatchDeleteModal}
+        size='tiny'
+        closeOnDimmerClick={!(saving || creating)}
+        title={t('channel.providers.dialog.delete_model_batch_title')}
+        footer={[
+          <AppButton
+            key='cancel'
+            type='button'
+            className='router-modal-button'
+            onClick={closeModelBatchDeleteModal}
+            disabled={saving || creating}
+          >
+            {t('channel.providers.dialog.cancel_create')}
+          </AppButton>,
+          <AppButton
+            key='confirm'
+            type='button'
+            className='router-modal-button'
+            color='red'
+            loading={saving}
+            disabled={saving || creating || count === 0}
+            onClick={performDeleteDetailModels}
+          >
+            {t('channel.providers.dialog.delete_confirm')}
+          </AppButton>,
+        ]}
+      >
+        <div>
+          {t('channel.providers.dialog.delete_model_batch_content', { count })}
         </div>
       </AppModal>
     );
@@ -3844,8 +3125,9 @@ const ProvidersManager = () => {
 
   return (
     <div>
-      {renderDeleteModal()}
       {renderModelDetailEditorModal()}
+      {renderModelDeleteModal()}
+      {renderModelBatchDeleteModal()}
       {renderPricingDetailModal()}
       {creating
         ? renderCreatePanel()

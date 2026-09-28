@@ -20,70 +20,44 @@ export const isUserRouteActive = (location, to) => {
 };
 
 export const buildUserWorkspaceMenuItems = () => {
+  // Normal-user workspace: a flat list of the day-to-day functional entries.
+  // Secondary personal entries (account / logs / guides) live in the header
+  // avatar dropdown, mirroring the admin console.
   const items = [
     {
-      key: 'overview',
-      type: 'group',
-      name: 'header.system_overview',
-      icon: 'chart bar',
-      items: [
-        {
-          name: 'workspace_models.title',
-          to: '/workspace/service/models',
-          icon: 'cube',
-        },
-      ],
+      name: 'workspace_models.title',
+      to: '/workspace/service/models',
+      icon: 'cube',
+    },
+    {
+      name: 'header.token',
+      to: '/workspace/token',
+      icon: 'key',
+    },
+    {
+      name: 'personal_routing.title',
+      to: '/workspace/personal-routing',
+      icon: 'share alternate',
+    },
+    {
+      name: 'topup.mine.quota',
+      to: '/workspace/topup?tab=quota',
+      icon: 'credit card',
     },
   ];
-
-  items.push(
-    {
-      key: 'mine',
-      type: 'group',
-      name: 'header.mine',
-      icon: 'user circle',
-      items: [
-        {
-          name: 'topup.mine.quota',
-          to: '/workspace/topup?tab=quota',
-          icon: 'credit card',
-        },
-        {
-          name: 'header.token',
-          to: '/workspace/token',
-          icon: 'key',
-        },
-        {
-          name: 'header.account',
-          to: '/workspace/setting',
-          icon: 'setting',
-        },
-        {
-          name: 'header.log',
-          to: '/workspace/log',
-          icon: 'book',
-        },
-      ],
-    },
-    {
-      key: 'help',
-      type: 'group',
-      name: 'header.help',
-      icon: 'book',
-      items: [
-        {
-          name: 'header.router_guide',
-          to: '/workspace/service/router-guide',
-          icon: 'sitemap',
-        },
-        {
-          name: 'header.cli_guide',
-          to: '/workspace/service/cli-guide',
-          icon: 'file alternate outline',
-        },
-      ],
-    }
-  );
-
+  // Chat is an embedded iframe that only works once an operator configures a
+  // workspace/chat URL (persisted to localStorage from site status). Surface it
+  // only when that link exists so we never route users to a blank iframe.
+  const chatLink =
+    typeof localStorage !== 'undefined'
+      ? String(localStorage.getItem('chat_link') || '').trim()
+      : '';
+  if (chatLink) {
+    items.push({
+      name: 'header.chat',
+      to: '/workspace/chat',
+      icon: 'comments',
+    });
+  }
   return items;
 };

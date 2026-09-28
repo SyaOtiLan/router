@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   API,
-  copy,
   downloadTextAsFile,
   isRoot,
   showError,
@@ -11,9 +10,13 @@ import {
   timestamp2string,
   hasLoadedPagedRows,
   writePagedRows,
+  withCardLabels,
 } from '../helpers';
 import { useTranslation } from 'react-i18next';
+import useUrlState, { parsePageParam, parseListPageSize } from '../hooks/useUrlState';
 import UnitDropdown from './UnitDropdown';
+import UserSectionTabs from './UserSectionTabs';
+import { buildLogDrilldownPath } from './LogsTable.helpers';
 
 import { ITEMS_PER_PAGE } from '../constants';
 import {
@@ -22,6 +25,7 @@ import {
 } from '../constants/tableWidthPresets';
 import {
   formatCompactNumber,
+  formatIdentifierPreview,
   renderText,
 } from '../helpers/render';
 import {
@@ -31,16 +35,20 @@ import {
   resolvePreferredDisplayCurrency,
   chargeAmountToBillingInputValue,
 } from '../helpers/billing';
+import useBatchRowActions from '../hooks/useBatchRowActions';
 import {
   AppButton,
+  AppEmpty,
+  AppErrorState,
   AppField,
   AppFilterHeader,
   AppFormActions,
-  AppIcon,
   AppInput,
   AppModal,
   AppPagination,
+  AppPopconfirm,
   AppSelect,
+  AppSpin,
   AppTable,
   AppTableActionButton,
   AppTag,
@@ -69,13 +77,6 @@ function renderRole(role, t) {
       );
   }
 }
-
-const maskWalletAddress = (walletAddress) => {
-  if (typeof walletAddress !== 'string') return '';
-  const trimmedWallet = walletAddress.trim();
-  if (trimmedWallet.length < 7) return trimmedWallet;
-  return `${trimmedWallet.slice(0, 3)}...${trimmedWallet.slice(-3)}`;
-};
 
 const formatFullNumber = (value) => {
   const numericValue = Number(value);
@@ -141,7 +142,7 @@ const loadAllEntitlementProducts = async (kind) => {
     });
     const { success, message, data } = res.data || {};
     if (!success) {
-      throw new Error(message || '权益商品加载失败');
+      throw new Error(message || '');
     }
     const pageItems = Array.isArray(data?.items) ? data.items : [];
     items.push(...pageItems);
@@ -160,17 +161,50 @@ const compareTextValue = (left, right) =>
 const compareNumberValue = (left, right) =>
   Number(left || 0) - Number(right || 0);
 
-const UsersTable = () => {
+const UsersTable = ({ embedded = false }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const isAdminScope = location.pathname.startsWith('/admin/');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activePage, setActivePage] = useState(1);
+  const [loadError, setLoadError] = useState(false);
+  // page/pageSize 也入 URL:列表↔详情往返(from=pathname+search)后回到原页原尺寸,
+  // 而非退回第 1 页。仅挂载时读一次 URL 播种,之后以组件内 state 为准,URL 由
+  // 翻页/改尺寸/换筛选主动镜像回写(见 onPaginationChange 与筛选 handler)。
+  const initialListQuery = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      page: parsePageParam(params.get('page')),
+      pageSize: parseListPageSize(params.get('page_size')),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const didInitListRef = useRef(false);
+  const [activePage, setActivePage] = useState(initialListQuery.page);
+  const [pageSize, setPageSize] = useState(initialListQuery.pageSize);
+  const pageSizeRef = useRef(initialListQuery.pageSize);
+  pageSizeRef.current = pageSize;
   const [totalCount, setTotalCount] = useState(0);
   const [isSearchMode, setIsSearchMode] = useState(false);
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const [
+    { status: statusFilter, role: roleFilter, keyword: searchKeyword },
+    patchQuery,
+  ] = useUrlState({
+    status: { param: 'status', default: 'all' },
+    role: { param: 'role', default: 'all' },
+    keyword: { param: 'q', default: '' },
+    page: { param: 'page', default: 1, parse: parsePageParam },
+    pageSize: {
+      param: 'page_size',
+      default: ITEMS_PER_PAGE,
+      parse: parseListPageSize,
+    },
+  });
+  const setSearchKeyword = useCallback(
+    (value) => patchQuery({ keyword: (value || '').toString() }),
+    [patchQuery],
+  );
   const [searching, setSearching] = useState(false);
   const [focusLabel, setFocusLabel] = useState('');
   const [focusTotal, setFocusTotal] = useState(0);
@@ -186,8 +220,12 @@ const UsersTable = () => {
   const [balanceUnit, setBalanceUnit] = useState(() =>
     resolvePreferredDisplayCurrency(buildPublicDisplayCurrencyIndex([]), 'USD'),
   );
-  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-  const [batchSelectionMode, setBatchSelectionMode] = useState(false);
+  const batchActions = useBatchRowActions();
+  const {
+    isSelecting: batchSelectionMode,
+    selectedRowKeys,
+    setSelectedRowKeys,
+  } = batchActions;
   const [topupPlanOptions, setTopupPlanOptions] = useState([]);
   const [topupPlanOptionsLoading, setTopupPlanOptionsLoading] = useState(false);
   const [batchTopupOpen, setBatchTopupOpen] = useState(false);
@@ -196,24 +234,41 @@ const UsersTable = () => {
   });
   const [batchTopupSubmitting, setBatchTopupSubmitting] = useState(false);
   const [batchTopupResult, setBatchTopupResult] = useState(null);
+  const [batchManageSubmitting, setBatchManageSubmitting] = useState(false);
 
   const loadUsers = useCallback(
-    async (page) => {
+    async (page, { status = 'all', role = 'all' } = {}) => {
       const normalizedPage = Number(page) > 0 ? Number(page) : 1;
-      const res = await API.get(`/api/v1/admin/user/?page=${normalizedPage}`);
-      const { success, message, data, meta } = res.data;
-      if (success) {
-        setIsSearchMode(false);
-        setTotalCount(Number(meta?.total || data?.length || 0));
-        if (normalizedPage === 1) {
-          setUsers(data);
+      try {
+        const params = new URLSearchParams();
+        params.set('page', String(normalizedPage));
+        const size = pageSizeRef.current;
+        params.set('page_size', String(size));
+        const normalizedStatus = (status || 'all').toString();
+        const normalizedRole = (role || 'all').toString();
+        if (normalizedStatus !== 'all') params.set('status', normalizedStatus);
+        if (normalizedRole !== 'all') params.set('role', normalizedRole);
+        const res = await API.get(`/api/v1/admin/user/?${params.toString()}`);
+        const { success, message, data, meta } = res.data;
+        if (success) {
+          setLoadError(false);
+          setIsSearchMode(false);
+          setTotalCount(Number(meta?.total || data?.length || 0));
+          if (normalizedPage === 1) {
+            setUsers(data);
+          } else {
+            setUsers((prev) => writePagedRows(prev, normalizedPage, size, data));
+          }
         } else {
-          setUsers((prev) => writePagedRows(prev, normalizedPage, ITEMS_PER_PAGE, data));
+          if (normalizedPage === 1) setLoadError(true);
+          showError(message);
         }
-      } else {
-        showError(message);
+      } catch (error) {
+        if (normalizedPage === 1) setLoadError(true);
+        showError(error?.message || error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     },
     [],
   );
@@ -257,22 +312,29 @@ const UsersTable = () => {
     setLoading(false);
   }, []);
 
+  const locationSearch = location.search || '';
+  const focusParams = useMemo(() => {
+    const params = new URLSearchParams(locationSearch);
+    return {
+      ids: (params.get('focus_ids') || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+      name: (params.get('focus_name') || '').trim(),
+      total: Number(params.get('focus_total') || 0),
+    };
+  }, [locationSearch]);
+  const focusKey = focusParams.ids.join(',');
+
   const refresh = async () => {
     setLoading(true);
-    const params = new URLSearchParams(location.search || '');
-    const focusIDs = (params.get('focus_ids') || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const focusName = (params.get('focus_name') || '').trim();
-    const focusTotalHint = Number(params.get('focus_total') || 0);
-    if (focusIDs.length > 0) {
-      await loadUsersByIDs(focusIDs, focusName, focusTotalHint);
+    if (focusParams.ids.length > 0) {
+      await loadUsersByIDs(focusParams.ids, focusParams.name, focusParams.total);
       return;
     }
     setIsFocusMode(false);
     setFocusTotal(0);
-    await loadUsers(activePage);
+    await loadUsers(activePage, { status: statusFilter, role: roleFilter });
   };
 
   const loadTopupPlanOptions = useCallback(async () => {
@@ -284,7 +346,10 @@ const UsersTable = () => {
       const items = await loadAllEntitlementProducts('balance');
       setTopupPlanOptions(toTopupPlanOptions(items, t));
     } catch (error) {
-      showError(error?.message || error);
+      showError(
+        error?.message ||
+          t('user.messages.load_entitlement_products_failed'),
+      );
     } finally {
       setTopupPlanOptionsLoading(false);
     }
@@ -297,43 +362,68 @@ const UsersTable = () => {
     loadTopupPlanOptions().then();
   }, [batchTopupOpen, loadTopupPlanOptions]);
 
-  const onPaginationChange = (e, { activePage }) => {
+  const onPaginationChange = (e, { activePage, pageSize: nextPageSize }) => {
     (async () => {
+      const size = Number(nextPageSize) > 0 ? Number(nextPageSize) : pageSize;
+      if (size !== pageSize) {
+        pageSizeRef.current = size;
+        setPageSize(size);
+        setActivePage(1);
+        patchQuery({ pageSize: size, page: 1 });
+        if (!isSearchMode) {
+          // 每页条数变了,按旧尺寸建立的行缓存已失效,重建
+          setUsers([]);
+          await loadUsers(1, { status: statusFilter, role: roleFilter });
+        }
+        return;
+      }
       const nextPage = Number(activePage) > 0 ? Number(activePage) : 1;
-      const hasLoadedPageRows = hasLoadedPagedRows(users, nextPage, ITEMS_PER_PAGE);
+      const hasLoadedPageRows = hasLoadedPagedRows(users, nextPage, size);
       if (!isSearchMode && !hasLoadedPageRows) {
-        await loadUsers(nextPage);
+        await loadUsers(nextPage, { status: statusFilter, role: roleFilter });
       }
       setActivePage(nextPage);
+      patchQuery({ page: nextPage });
     })();
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search || '');
-    const focusIDs = (params.get('focus_ids') || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const focusName = (params.get('focus_name') || '').trim();
-    const focusTotalHint = Number(params.get('focus_total') || 0);
     setLoading(true);
-    if (focusIDs.length > 0) {
-      loadUsersByIDs(focusIDs, focusName, focusTotalHint).catch((reason) => {
-        showError(reason?.message || reason);
-        setLoading(false);
-      });
+    if (focusParams.ids.length > 0) {
+      loadUsersByIDs(focusParams.ids, focusParams.name, focusParams.total).catch(
+        (reason) => {
+          setLoadError(true);
+          showError(reason?.message || reason);
+          setLoading(false);
+        },
+      );
       return;
     }
     setFocusLabel('');
     setFocusTotal(0);
     setIsFocusMode(false);
-    loadUsers(1)
+    // 首次挂载按 URL 复原页码;后续筛选变化(status/role)才回到第 1 页。
+    const firstRun = !didInitListRef.current;
+    didInitListRef.current = true;
+    const startPage = firstRun ? initialListQuery.page : 1;
+    setActivePage(startPage);
+    loadUsers(startPage, { status: statusFilter, role: roleFilter })
       .then()
       .catch((reason) => {
+        setLoadError(true);
         showError(reason);
         setLoading(false);
       });
-  }, [loadUsers, loadUsersByIDs, location.search]);
+  }, [
+    loadUsers,
+    loadUsersByIDs,
+    focusKey,
+    focusParams.name,
+    focusParams.total,
+    statusFilter,
+    roleFilter,
+    initialListQuery,
+  ]);
 
   useEffect(() => {
     let disposed = false;
@@ -414,15 +504,6 @@ const UsersTable = () => {
     }
   };
 
-  const copyWalletAddress = async (walletAddress) => {
-    if (!walletAddress) return;
-    if (await copy(walletAddress)) {
-      showSuccess(t('user.messages.wallet_copy_success'));
-      return;
-    }
-    showError(t('user.messages.wallet_copy_failed'));
-  };
-
   const openBatchTopupModal = useCallback(() => {
     if (selectedRowKeys.length === 0) {
       showInfo(t('user.batch.topup_select_required'));
@@ -433,17 +514,16 @@ const UsersTable = () => {
   }, [selectedRowKeys.length, t]);
 
   const enterBatchSelectionMode = useCallback(() => {
-    setBatchSelectionMode(true);
-  }, []);
+    batchActions.enter();
+  }, [batchActions]);
 
   const cancelBatchSelectionMode = useCallback(() => {
-    if (batchTopupSubmitting) {
+    if (batchTopupSubmitting || batchManageSubmitting) {
       return;
     }
-    setBatchSelectionMode(false);
-    setSelectedRowKeys([]);
+    batchActions.exit();
     setBatchTopupResult(null);
-  }, [batchTopupSubmitting]);
+  }, [batchActions, batchTopupSubmitting, batchManageSubmitting]);
 
   const closeBatchTopupModal = useCallback(() => {
     if (batchTopupSubmitting) {
@@ -498,7 +578,7 @@ const UsersTable = () => {
       if (result.failed === 0) {
         setBatchTopupForm({ plan_id: '' });
         setBatchTopupOpen(false);
-        setBatchSelectionMode(false);
+        batchActions.exit();
       }
       await refresh();
     } catch (error) {
@@ -508,14 +588,83 @@ const UsersTable = () => {
     }
   }, [batchTopupForm.plan_id, refresh, selectedRowKeys, t]);
 
+  const runBatchManage = useCallback(
+    async (action) => {
+      const idSet = new Set(
+        selectedRowKeys
+          .map((item) => (item || '').toString().trim())
+          .filter(Boolean),
+      );
+      if (idSet.size === 0) {
+        showInfo(t('user.batch.topup_select_required'));
+        return;
+      }
+      // selectedRowKeys 保存的是用户 id，manage 接口需要 username，先按 id 解析出实时用户对象。
+      const targets = users.filter(
+        (user) => idSet.has((user?.id || '').toString()) && !user?.deleted,
+      );
+      // 跳过状态已符合的行（启用时跳过已启用、停用时跳过已停用）。
+      const actionable = targets.filter((user) => {
+        if (action === 'enable') return user.status !== 1;
+        if (action === 'disable') return user.status === 1;
+        return true;
+      });
+      if (actionable.length === 0) {
+        showInfo(
+          action === 'delete'
+            ? t('user.batch.manage_no_deletable')
+            : t('user.batch.manage_no_active_change'),
+        );
+        return;
+      }
+      setBatchManageSubmitting(true);
+      let succeeded = 0;
+      let failed = 0;
+      const failedIDs = [];
+      for (const user of actionable) {
+        const username = (user?.username || '').toString();
+        try {
+          const res = await API.post('/api/v1/admin/user/manage', {
+            username,
+            action,
+          });
+          if (res?.data?.success) {
+            succeeded += 1;
+          } else {
+            failed += 1;
+            failedIDs.push((user?.id || '').toString());
+          }
+        } catch (error) {
+          failed += 1;
+          failedIDs.push((user?.id || '').toString());
+        }
+      }
+      const skipped = targets.length - actionable.length;
+      showSuccess(
+        t('user.batch.manage_done', { success: succeeded, failed }),
+      );
+      if (skipped > 0) {
+        showInfo(t('user.batch.manage_skipped', { skipped }));
+      }
+      setSelectedRowKeys(failedIDs);
+      if (failed === 0) {
+        batchActions.exit();
+      }
+      await refresh();
+      setBatchManageSubmitting(false);
+    },
+    [batchActions, refresh, selectedRowKeys, t, users],
+  );
+
   const searchUsers = async () => {
     setFocusLabel('');
     setFocusTotal(0);
     setIsFocusMode(false);
     if (searchKeyword === '') {
       // if keyword is blank, load files instead.
-      await loadUsers(1);
+      await loadUsers(1, { status: statusFilter, role: roleFilter });
       setActivePage(1);
+      patchQuery({ page: 1 });
       return;
     }
     setSearching(true);
@@ -528,6 +677,7 @@ const UsersTable = () => {
       setTotalCount(Array.isArray(data) ? data.length : 0);
       setUsers(data);
       setActivePage(1);
+      patchQuery({ page: 1 });
     } else {
       showError(message);
     }
@@ -550,8 +700,11 @@ const UsersTable = () => {
   }, [navigate]);
 
   useEffect(() => {
-    if (!initializedSearchRef.current) {
-      initializedSearchRef.current = true;
+    const firstRun = !initializedSearchRef.current;
+    initializedSearchRef.current = true;
+    if (firstRun && searchKeyword === '') {
+      // Initial list load is owned by the filter effect; only auto-run search
+      // on mount when a keyword was restored from the URL.
       return undefined;
     }
     if (isFocusMode && searchKeyword === '') {
@@ -575,10 +728,7 @@ const UsersTable = () => {
   const focusMatchedCount = isFocusMode
     ? Math.max(Number(focusTotal || 0), visibleUserCount)
     : 0;
-  const totalPages = Math.max(
-    Math.ceil((isSearchMode ? visibleUserCount : totalCount) / ITEMS_PER_PAGE),
-    1,
-  );
+  const paginationTotal = isSearchMode ? visibleUserCount : totalCount;
 
   const handleTableChange = (_, __, sorter) => {
     if (!sorter || Array.isArray(sorter) || !sorter.columnKey || !sorter.order) {
@@ -597,11 +747,9 @@ const UsersTable = () => {
     </AppTooltip>
   );
 
-  const exportCurrentUsers = useCallback(() => {
-    const exportRows = (Array.isArray(users) ? users : []).filter((user) => !user?.deleted);
-    if (exportRows.length === 0) {
-      return;
-    }
+  const [exporting, setExporting] = useState(false);
+
+  const buildExportCsvText = useCallback((exportRows) => {
     const escapeCSV = (value) => {
       const normalized = String(value ?? '');
       if (/[",\n]/.test(normalized)) {
@@ -648,10 +796,53 @@ const UsersTable = () => {
           .join(','),
       ),
     ];
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const focusSuffix = focusLabel ? `-${focusLabel}` : '';
-    downloadTextAsFile(lines.join('\n'), `users${focusSuffix}-${timestamp}.csv`);
-  }, [focusLabel, users]);
+    return lines.join('\n');
+  }, []);
+
+  const handleExportUsers = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      // 覆盖式分页下当前可见用户不等于筛选后全量;后端无专门的"导出"端点,
+      // 故拉一次 page_size=10000 的全集,参数与列表一致(包括 status / role)。
+      const params = new URLSearchParams();
+      params.set('page', '1');
+      params.set('page_size', '10000');
+      const normalizedStatus = (statusFilter || 'all').toString();
+      const normalizedRole = (roleFilter || 'all').toString();
+      if (normalizedStatus !== 'all') params.set('status', normalizedStatus);
+      if (normalizedRole !== 'all') params.set('role', normalizedRole);
+      const res = await API.get(`/api/v1/admin/user/?${params.toString()}`);
+      const { success, message, data } = res?.data || {};
+      if (!success) {
+        showError(message || t('common.load_failed'));
+        return;
+      }
+      const exportRows = (Array.isArray(data) ? data : []).filter(
+        (user) => !user?.deleted,
+      );
+      if (exportRows.length === 0) {
+        showError(t('user.export.empty'));
+        return;
+      }
+      const csvText = buildExportCsvText(exportRows);
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const focusSuffix = focusLabel ? `-${focusLabel}` : '';
+      downloadTextAsFile(csvText, `users${focusSuffix}-${stamp}.csv`);
+      showSuccess(t('user.export.success', { count: exportRows.length }));
+    } catch (error) {
+      showError(error?.message || t('common.load_failed'));
+    } finally {
+      setExporting(false);
+    }
+  }, [
+    buildExportCsvText,
+    exporting,
+    focusLabel,
+    roleFilter,
+    statusFilter,
+    t,
+  ]);
 
   const balanceUnitOptions = useMemo(
     () => buildDisplayUnitOptions(currencyIndex),
@@ -684,17 +875,20 @@ const UsersTable = () => {
   return (
     <>
       <AppFilterHeader
-        breadcrumbs={[
-          {
-            key: 'workspace',
-            label: isAdminScope
-              ? t('header.admin_workspace')
-              : t('header.user_workspace'),
-          },
-          { key: 'business', label: t('header.operation') },
-          { key: 'user', label: t('header.user'), active: true },
-        ]}
-        title={t('header.user')}
+        breadcrumbs={
+          embedded
+            ? undefined
+            : [
+                {
+                  key: 'workspace',
+                  label: isAdminScope
+                    ? t('header.admin_workspace')
+                    : t('header.user_workspace'),
+                },
+                { key: 'user', label: t('header.user'), active: true },
+              ]
+        }
+        title={embedded ? undefined : t('header.user')}
         actions={
           <div className='router-list-toolbar-actions'>
             <AppButton
@@ -704,27 +898,91 @@ const UsersTable = () => {
             >
               {t('user.buttons.add')}
             </AppButton>
-            <AppButton
-              className='router-page-button'
-              onClick={
-                batchSelectionMode ? openBatchTopupModal : enterBatchSelectionMode
-              }
-            >
-              {batchSelectionMode
-                ? t('user.batch.grant_topup_selected', {
-                    count: selectedUserCount,
-                  })
-                : t('user.batch.grant_topup')}
-            </AppButton>
             {batchSelectionMode ? (
+              <>
+                <AppButton
+                  className='router-page-button'
+                  onClick={openBatchTopupModal}
+                  disabled={batchManageSubmitting}
+                >
+                  {t('user.batch.grant_topup_selected', {
+                    count: selectedUserCount,
+                  })}
+                </AppButton>
+                <AppPopconfirm
+                  title={t('user.batch.manage_confirm_enable', {
+                    count: selectedUserCount,
+                  })}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  disabled={selectedUserCount === 0 || batchManageSubmitting}
+                  onConfirm={() => runBatchManage('enable')}
+                >
+                  <AppButton
+                    className='router-page-button'
+                    disabled={selectedUserCount === 0 || batchManageSubmitting}
+                    loading={batchManageSubmitting}
+                  >
+                    {t('user.batch.enable_selected', {
+                      count: selectedUserCount,
+                    })}
+                  </AppButton>
+                </AppPopconfirm>
+                <AppPopconfirm
+                  title={t('user.batch.manage_confirm_disable', {
+                    count: selectedUserCount,
+                  })}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  disabled={selectedUserCount === 0 || batchManageSubmitting}
+                  onConfirm={() => runBatchManage('disable')}
+                >
+                  <AppButton
+                    className='router-page-button'
+                    disabled={selectedUserCount === 0 || batchManageSubmitting}
+                    loading={batchManageSubmitting}
+                  >
+                    {t('user.batch.disable_selected', {
+                      count: selectedUserCount,
+                    })}
+                  </AppButton>
+                </AppPopconfirm>
+                <AppPopconfirm
+                  title={t('user.batch.manage_confirm_delete', {
+                    count: selectedUserCount,
+                  })}
+                  okText={t('common.confirm')}
+                  cancelText={t('common.cancel')}
+                  disabled={selectedUserCount === 0 || batchManageSubmitting}
+                  onConfirm={() => runBatchManage('delete')}
+                >
+                  <AppButton
+                    className='router-page-button'
+                    color='red'
+                    disabled={selectedUserCount === 0 || batchManageSubmitting}
+                    loading={batchManageSubmitting}
+                  >
+                    {t('user.batch.delete_selected', {
+                      count: selectedUserCount,
+                    })}
+                  </AppButton>
+                </AppPopconfirm>
+                <AppButton
+                  className='router-page-button'
+                  onClick={cancelBatchSelectionMode}
+                  disabled={batchTopupSubmitting || batchManageSubmitting}
+                >
+                  {t('user.batch.cancel_selection')}
+                </AppButton>
+              </>
+            ) : (
               <AppButton
                 className='router-page-button'
-                onClick={cancelBatchSelectionMode}
-                disabled={batchTopupSubmitting}
+                onClick={enterBatchSelectionMode}
               >
-                {t('user.batch.cancel_selection')}
+                {t('user.batch.enter_selection')}
               </AppButton>
-            ) : null}
+            )}
             <AppButton
               className='router-page-button'
               loading={loading}
@@ -735,8 +993,9 @@ const UsersTable = () => {
             </AppButton>
             <AppButton
               className='router-page-button'
-              disabled={users.filter((user) => !user?.deleted).length === 0}
-              onClick={exportCurrentUsers}
+              disabled={exporting}
+              loading={exporting}
+              onClick={handleExportUsers}
             >
               {t('common.download')}
             </AppButton>
@@ -756,12 +1015,47 @@ const UsersTable = () => {
                 onChange={handleKeywordChange}
               />
             </div>
+            <AppSelect
+              className='router-section-select'
+              value={statusFilter}
+              onChange={(_, { value }) => patchQuery({ status: value, page: 1 })}
+              options={[
+                { value: 'all', label: t('user.filter.status_all') },
+                { value: '1', label: t('user.table.status_types.activated') },
+                { value: '2', label: t('user.table.status_types.banned') },
+              ]}
+            />
+            <AppSelect
+              className='router-section-select'
+              value={roleFilter}
+              onChange={(_, { value }) => patchQuery({ role: value, page: 1 })}
+              options={[
+                { value: 'all', label: t('user.filter.role_all') },
+                { value: '1', label: t('user.table.role_types.normal') },
+                { value: '10', label: t('user.table.role_types.admin') },
+              ]}
+            />
+            <AppButton
+              className='router-section-button'
+              disabled={
+                statusFilter === 'all' &&
+                roleFilter === 'all' &&
+                searchKeyword === ''
+              }
+              onClick={() =>
+                patchQuery({ status: 'all', role: 'all', keyword: '', page: 1 })
+              }
+            >
+              {t('common.clear_filters')}
+            </AppButton>
             {focusLabel ? (
               <AppTag className='router-tag'>{focusLabel}</AppTag>
             ) : null}
           </div>
         }
       />
+
+      {isAdminScope && !embedded ? <UserSectionTabs active='list' /> : null}
 
       {isFocusMode ? (
         <div className='router-user-focus-summary'>
@@ -787,17 +1081,48 @@ const UsersTable = () => {
       ) : null}
 
       <div className='router-table-scroll-x'>
-        <AppTable
-          className='router-hover-table router-list-table router-table-fit-page router-user-list-table'
-          pagination={false}
-          scroll={{ x: USER_LIST_TABLE_MIN_WIDTH }}
-          rowKey={(user) => user.id}
-          rowSelection={userRowSelection}
-          onChange={handleTableChange}
-          dataSource={users
-            .slice(
-              (activePage - 1) * ITEMS_PER_PAGE,
-              activePage * ITEMS_PER_PAGE,
+        <AppSpin spinning={loading}>
+          <AppTable
+            className='router-hover-table router-list-table router-table-fit-page router-user-list-table router-table-cardify'
+            pagination={false}
+            scroll={{ x: USER_LIST_TABLE_MIN_WIDTH }}
+            locale={{
+              emptyText: loading ? (
+                t('common.loading')
+              ) : loadError ? (
+                <AppErrorState
+                  message={t('common.load_failed')}
+                  onRetry={refresh}
+                  retryText={t('common.retry')}
+                />
+              ) : (
+                <AppEmpty
+                  action={
+                    <AppButton
+                      color='blue'
+                      onClick={() =>
+                        navigate('/admin/user/add', {
+                          state: {
+                            from: `${location.pathname}${location.search}`,
+                          },
+                        })
+                      }
+                    >
+                      {t('user.buttons.add')}
+                    </AppButton>
+                  }
+                >
+                  {t('user.table.empty_cta')}
+                </AppEmpty>
+              ),
+            }}
+            rowKey={(user) => user.id}
+            rowSelection={userRowSelection}
+            onChange={handleTableChange}
+            dataSource={users
+              .slice(
+              (activePage - 1) * pageSize,
+              activePage * pageSize,
             )
             .filter((user) => !user?.deleted)}
           onRow={(user, idx) => ({
@@ -815,10 +1140,12 @@ const UsersTable = () => {
                 );
                 return;
               }
-              navigate(`/admin/user/detail/${user.id}`);
+              navigate(`/admin/user/detail/${user.id}`, {
+                state: { from: `${location.pathname}${location.search}` },
+              });
             },
           })}
-          columns={[
+          columns={withCardLabels([
           {
             title: t('user.table.username'),
             dataIndex: 'username',
@@ -834,7 +1161,7 @@ const UsersTable = () => {
                 title={
                   <div>
                     <div>{user.username}</div>
-                    <div>{user.email ? user.email : '未绑定邮箱地址'}</div>
+                    <div>{user.email ? user.email : t('user.no_email')}</div>
                   </div>
                 }
               >
@@ -851,52 +1178,13 @@ const UsersTable = () => {
             render: (value) =>
               value ? (
                 <AppTooltip title={value}>
-                  <span>{renderText(value, 28)}</span>
+                  <span className='router-monospace-value'>
+                    {formatIdentifierPreview(value, 18, 8)}
+                  </span>
                 </AppTooltip>
               ) : (
                 '-'
               ),
-          },
-          {
-            title: t('user.table.wallet'),
-            dataIndex: 'wallet_address',
-            key: 'wallet_address',
-            width: USER_LIST_COLUMN_WIDTHS.wallet,
-            render: (value) =>
-              value ? (
-                <span className='router-action-group'>
-                  <AppTooltip title={value}>
-                    <span>{maskWalletAddress(value)}</span>
-                  </AppTooltip>
-                  <button
-                    type='button'
-                    className='router-icon-button'
-                    onClick={(event) => {
-                      stopRowClick(event);
-                      copyWalletAddress(value);
-                    }}
-                  >
-                    <AppIcon name='copy outline' />
-                  </button>
-                </span>
-              ) : (
-                '-'
-              ),
-          },
-          {
-            title: t('user.table.package'),
-            dataIndex: 'active_package_name',
-            key: 'active_package_name',
-            width: USER_LIST_COLUMN_WIDTHS.package,
-            ellipsis: true,
-            sorter: (a, b) =>
-              compareTextValue(a.active_package_name, b.active_package_name),
-            sortDirections: ['ascend', 'descend'],
-            sortOrder:
-              tableSorter.columnKey === 'active_package_name'
-                ? tableSorter.order
-                : null,
-            render: (value) => (value ? renderText(value, 18) : '-'),
           },
           {
             title: (
@@ -957,20 +1245,6 @@ const UsersTable = () => {
             render: (value) => (value ? timestamp2string(value) : '-'),
           },
           {
-            title: t('user.table.updated_at'),
-            dataIndex: 'updated_at',
-            key: 'updated_at',
-            className: 'router-table-col-datetime',
-            width: USER_LIST_COLUMN_WIDTHS.updatedAt,
-            sorter: (a, b) => compareNumberValue(a.updated_at, b.updated_at),
-            sortDirections: ['ascend', 'descend'],
-            sortOrder:
-              tableSorter.columnKey === 'updated_at'
-                ? tableSorter.order
-                : null,
-            render: (value) => (value ? timestamp2string(value) : '-'),
-          },
-          {
             title: t('user.table.role_text'),
             dataIndex: 'role',
             key: 'role',
@@ -998,7 +1272,7 @@ const UsersTable = () => {
             title: t('user.table.actions'),
             key: 'actions',
             className: 'router-table-col-actions-icon',
-            width: 84,
+            width: 112,
             render: (_, user) => {
               const isAdminUser = Number(user.role) >= 10;
               const canManageAdminUser = !isAdminUser || isRoot();
@@ -1008,36 +1282,62 @@ const UsersTable = () => {
                   onClick={stopRowClick}
                 >
                   <AppTableActionButton
-                    icon={user.status === 1 ? 'close' : 'check'}
-                    title={
-                      user.status === 1
-                        ? t('user.buttons.disable')
-                        : t('user.buttons.enable')
-                    }
-                    color={user.status === 1 ? undefined : 'blue'}
+                    icon='book'
+                    title={t('log.drilldown.view')}
                     onClick={() => {
+                      navigate(
+                        buildLogDrilldownPath('admin', {
+                          username: user.username,
+                        }),
+                      );
+                    }}
+                  />
+                  <AppPopconfirm
+                    title={t('user.buttons.confirm_change_status')}
+                    onConfirm={() => {
                       manageUser(
                         user,
                         user.status === 1 ? 'disable' : 'enable',
                       );
                     }}
                     disabled={!canManageAdminUser}
-                  />
-                  <AppTableActionButton
-                    icon='trash'
-                    title={t('user.buttons.delete')}
-                    color='red'
-                    disabled={!canManageAdminUser}
-                    onClick={() => {
+                  >
+                    <span>
+                      <AppTableActionButton
+                        icon={user.status === 1 ? 'close' : 'check'}
+                        title={
+                          user.status === 1
+                            ? t('user.buttons.disable')
+                            : t('user.buttons.enable')
+                        }
+                        color={user.status === 1 ? undefined : 'blue'}
+                        disabled={!canManageAdminUser}
+                      />
+                    </span>
+                  </AppPopconfirm>
+                  <AppPopconfirm
+                    title={t('user.buttons.confirm_delete')}
+                    onConfirm={() => {
                       manageUser(user, 'delete');
                     }}
-                  />
+                    disabled={!canManageAdminUser}
+                  >
+                    <span>
+                      <AppTableActionButton
+                        icon='trash'
+                        title={t('user.buttons.delete')}
+                        color='red'
+                        disabled={!canManageAdminUser}
+                      />
+                    </span>
+                  </AppPopconfirm>
                 </div>
               );
             },
           },
-          ]}
-        />
+          ])}
+          />
+        </AppSpin>
       </div>
       <div className='router-pagination-wrap'>
         <AppPagination
@@ -1045,7 +1345,8 @@ const UsersTable = () => {
           activePage={activePage}
           onPageChange={onPaginationChange}
           siblingRange={1}
-          totalPages={totalPages}
+          total={paginationTotal}
+          pageSize={pageSize}
         />
       </div>
       <AppModal

@@ -222,7 +222,9 @@ func getToolCalls(candidate *ChatCandidate) []model.Tool {
 	}
 	argsBytes, err := json.Marshal(item.FunctionCall.Arguments)
 	if err != nil {
-		logger.FatalLog("getToolCalls failed: " + err.Error())
+		// 序列化失败只跳过这次工具调用并记录错误,绝不能 FatalLog 把整个进程退掉——
+		// 这是请求处理路径,单个 Gemini 响应不该有能力杀死服务。
+		logger.SysError("getToolCalls failed to marshal function call arguments: " + err.Error())
 		return toolCalls
 	}
 	toolCall := model.Tool{

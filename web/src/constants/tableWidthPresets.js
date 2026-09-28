@@ -85,11 +85,11 @@ export const PACKAGE_LIST_TABLE_MIN_WIDTH =
 export const CHANNEL_LIST_COLUMN_WIDTHS = {
   selection: 48,
   name: 180,
-  type: 88,
+  type: 104,
   status: 92,
   createdAt: 148,
-  updatedAt: 148,
   capabilities: 160,
+  billing: 180,
   priority: 92,
   actions: 72,
 };
@@ -100,8 +100,8 @@ export const CHANNEL_LIST_TABLE_MIN_WIDTH =
   CHANNEL_LIST_COLUMN_WIDTHS.type +
   CHANNEL_LIST_COLUMN_WIDTHS.status +
   CHANNEL_LIST_COLUMN_WIDTHS.createdAt +
-  CHANNEL_LIST_COLUMN_WIDTHS.updatedAt +
   CHANNEL_LIST_COLUMN_WIDTHS.capabilities +
+  CHANNEL_LIST_COLUMN_WIDTHS.billing +
   CHANNEL_LIST_COLUMN_WIDTHS.priority +
   CHANNEL_LIST_COLUMN_WIDTHS.actions;
 
@@ -135,7 +135,7 @@ export const TOKEN_LIST_COLUMN_WIDTHS = {
   createdTime: 148,
   updatedTime: 148,
   expiredTime: 148,
-  actions: 92,
+  actions: 120,
 };
 
 export const TOKEN_LIST_TABLE_MIN_WIDTH =
@@ -154,12 +154,9 @@ export const TOKEN_LIST_TABLE_MIN_WIDTH =
 export const USER_LIST_COLUMN_WIDTHS = {
   username: 160,
   identity: 220,
-  wallet: 150,
-  package: 140,
   balance: 120,
   requestCount: 100,
   createdAt: 148,
-  updatedAt: 148,
   role: 92,
   status: 92,
   actions: 176,
@@ -168,12 +165,9 @@ export const USER_LIST_COLUMN_WIDTHS = {
 export const USER_LIST_TABLE_MIN_WIDTH =
   USER_LIST_COLUMN_WIDTHS.username +
   USER_LIST_COLUMN_WIDTHS.identity +
-  USER_LIST_COLUMN_WIDTHS.wallet +
-  USER_LIST_COLUMN_WIDTHS.package +
   USER_LIST_COLUMN_WIDTHS.balance +
   USER_LIST_COLUMN_WIDTHS.requestCount +
   USER_LIST_COLUMN_WIDTHS.createdAt +
-  USER_LIST_COLUMN_WIDTHS.updatedAt +
   USER_LIST_COLUMN_WIDTHS.role +
   USER_LIST_COLUMN_WIDTHS.status +
   USER_LIST_COLUMN_WIDTHS.actions;

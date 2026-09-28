@@ -1,19 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { API, showError, timestamp2string } from '../helpers';
+import { API, showError, showInfo, showSuccess, timestamp2string, withCardLabels } from '../helpers';
 import { ITEMS_PER_PAGE } from '../constants';
+import useUrlState, { parsePageParam, parseListPageSize } from '../hooks/useUrlState';
+import useBatchRowActions from '../hooks/useBatchRowActions';
 import {
   BUSINESS_FLOW_COLUMN_WIDTHS,
 } from '../constants/tableWidthPresets';
 import UnitDropdown from './UnitDropdown';
 import { buildBillingCurrencyIndex, buildDisplayUnitOptions, formatDisplayAmountFromChargeAmount } from '../helpers/billing';
-import { formatAmountWithUnit, renderText } from '../helpers/render';
+import { formatAmountWithUnit, formatPaymentAmount, renderText } from '../helpers/render';
 import {
   AppButton,
   AppFilterHeader,
   AppInput,
   AppPagination,
+  AppPopconfirm,
   AppSelect,
   AppTable,
   AppTag,
@@ -131,18 +134,55 @@ const BusinessRecordsTable = ({
   searchPlaceholder = '',
   emptyText = '',
   hiddenColumnKeys = EMPTY_ARRAY,
+  sectionTabs = null,
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
+  // 已应用的筛选(keyword/status/page)持久化到 URL,刷新/分享链接可复原;
+  // 排序为客户端行为且随 kind/config 重置,不入 URL。
+  const [, patchQuery] = useUrlState({
+    q: { param: 'q', default: '' },
+    status: { param: 'status', default: '' },
+    page: { param: 'page', default: 1, parse: parsePageParam },
+    pageSize: {
+      param: 'page_size',
+      default: ITEMS_PER_PAGE,
+      parse: parseListPageSize,
+    },
+  });
+  const initialListQuery = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return {
+      keyword: (params.get('q') || '').trim(),
+      status: (params.get('status') || '').trim(),
+      page: parsePageParam(params.get('page')),
+      pageSize: parseListPageSize(params.get('page_size')),
+    };
+    // 仅在挂载时读取一次;后续以组件内 state 为准。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const kindMountedRef = useRef(false);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [activePage, setActivePage] = useState(1);
+  const [activePage, setActivePage] = useState(initialListQuery.page);
   const [totalCount, setTotalCount] = useState(0);
-  const [keyword, setKeyword] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [pageSize, setPageSize] = useState(initialListQuery.pageSize);
+  // loadItems 读取最新 pageSize 而不进它的依赖数组,避免把「改每页条数」
+  // 误触发成 kind 切换那条 effect(会清空筛选)。
+  const pageSizeRef = useRef(initialListQuery.pageSize);
+  const [keyword, setKeyword] = useState(initialListQuery.keyword);
+  const [statusFilter, setStatusFilter] = useState(initialListQuery.status);
   const [refreshingRowID, setRefreshingRowID] = useState('');
   const [fulfillingRowID, setFulfillingRowID] = useState('');
+  const isReconcile = kind === 'topup-reconcile';
+  const batchActions = useBatchRowActions();
+  const {
+    isSelecting: batchSelectionMode,
+    selectedRowKeys,
+    setSelectedRowKeys,
+  } = batchActions;
+  const [batchRunning, setBatchRunning] = useState(false);
   const [tableSorter, setTableSorter] = useState({
     columnKey: null,
     order: null,
@@ -345,14 +385,6 @@ const BusinessRecordsTable = ({
             sortValue: (row) => Number(row?.created_at || 0),
             render: (row) => formatDateTime(row.created_at),
           },
-          {
-            key: 'updated_at',
-            label: t('user.table.updated_at'),
-            width: BUSINESS_FLOW_COLUMN_WIDTHS.datetime,
-            cellClassName: 'router-table-col-datetime',
-            sortValue: (row) => Number(row?.updated_at || 0),
-            render: (row) => formatDateTime(row.updated_at),
-          },
         ],
         defaultSorter: {
           columnKey: 'created_at',
@@ -364,8 +396,8 @@ const BusinessRecordsTable = ({
     if (kind === 'purchase') {
       return {
         endpoint: '/api/v1/admin/entitlement/payments',
-        searchPlaceholder: searchPlaceholder || '搜索用户、商品或记录 ID',
-        emptyText: emptyText || '暂无支付记录',
+        searchPlaceholder: searchPlaceholder || t('flow.purchase.search_placeholder'),
+        emptyText: emptyText || t('flow.purchase.empty'),
         onRowClick: (row) => {
           const rowID = readOnlyText(row?.id);
           if (rowID === '-') return;
@@ -376,19 +408,21 @@ const BusinessRecordsTable = ({
           compactUserColumn,
           {
             key: 'product_kind',
-            label: '类型',
+            label: t('flow.purchase.columns.type'),
             width: BUSINESS_FLOW_COLUMN_WIDTHS.type,
-            render: (row) => row?.product_kind === 'subscription' ? '订阅' : '充值',
+            render: (row) => row?.product_kind === 'subscription'
+              ? t('flow.purchase.kind.subscription')
+              : t('flow.purchase.kind.topup'),
           },
           {
             key: 'product_name',
-            label: '权益',
+            label: t('flow.purchase.columns.entitlement'),
             width: BUSINESS_FLOW_COLUMN_WIDTHS.packageName,
             render: (row) => renderText(readOnlyText(row?.product_name), 28),
           },
           {
             key: 'status',
-            label: '状态',
+            label: t('flow.purchase.columns.status'),
             width: BUSINESS_FLOW_COLUMN_WIDTHS.status,
             render: (row) => row?.product_kind === 'subscription'
               ? renderPackageStatus(row?.status, t)
@@ -396,10 +430,10 @@ const BusinessRecordsTable = ({
           },
           {
             key: 'amount',
-            label: '金额',
+            label: t('flow.purchase.columns.amount'),
             width: BUSINESS_FLOW_COLUMN_WIDTHS.amount,
             render: (row) => Number(row?.amount || 0) > 0
-              ? `${row.currency || 'CNY'} ${Number(row.amount).toFixed(2)}`
+              ? formatPaymentAmount(row.amount, row.currency)
               : '-',
           },
           {
@@ -466,7 +500,7 @@ const BusinessRecordsTable = ({
             width: BUSINESS_FLOW_COLUMN_WIDTHS.amount,
             render: (row) =>
               Number(row.amount || 0) > 0
-                ? `${row.currency || 'CNY'} ${Number(row.amount || 0).toFixed(2)}`
+                ? formatPaymentAmount(row.amount, row.currency)
                 : '-',
           },
           {
@@ -587,7 +621,28 @@ const BusinessRecordsTable = ({
           key: 'group',
           label: t('redemption.table.group'),
           width: BUSINESS_FLOW_COLUMN_WIDTHS.group,
-          render: (row) => readOnlyText(row.group_name || row.group_id),
+          render: (row) => {
+            const groupId = readOnlyText(row.group_id);
+            const label = readOnlyText(row.group_name || row.group_id);
+            if (groupId === '-') {
+              return label;
+            }
+            return (
+              <AppButton
+                type='button'
+                basic
+                className='router-inline-button'
+                onClick={(event) => {
+                  event.stopPropagation();
+                  navigate(`/admin/group/detail/${encodeURIComponent(groupId)}`, {
+                    state: { from: currentPagePath },
+                  });
+                }}
+              >
+                {label}
+              </AppButton>
+            );
+          },
         },
         {
           key: 'face_value',
@@ -738,19 +793,15 @@ const BusinessRecordsTable = ({
     }
   }, [displayUnit]);
 
-  const totalPages = useMemo(
-    () => Math.max(Math.ceil(totalCount / ITEMS_PER_PAGE), 1),
-    [totalCount],
-  );
-
   const loadItems = useCallback(
     async (page = 1, nextKeyword = '', nextStatus = '') => {
       setLoading(true);
+      const size = pageSizeRef.current;
       try {
         const res = await API.get(config.endpoint, {
           params: {
             page,
-            page_size: ITEMS_PER_PAGE,
+            page_size: size,
             keyword: (nextKeyword || '').toString().trim(),
             status: (nextStatus || '').toString().trim(),
             ...requestParams,
@@ -763,14 +814,21 @@ const BusinessRecordsTable = ({
         }
         setItems(Array.isArray(data?.items) ? data.items : []);
         setTotalCount(Number(data?.total || 0));
-        setActivePage(Number(data?.page || page || 1));
+        const resolvedPage = Number(data?.page || page || 1);
+        setActivePage(resolvedPage);
+        patchQuery({
+          q: (nextKeyword || '').toString().trim(),
+          status: (nextStatus || '').toString().trim(),
+          page: resolvedPage,
+          pageSize: size,
+        });
       } catch (error) {
         showError(error?.message || error);
       } finally {
         setLoading(false);
       }
     },
-    [config.endpoint, requestParams, t],
+    [config.endpoint, patchQuery, requestParams, t],
   );
 
   useEffect(() => {
@@ -778,24 +836,49 @@ const BusinessRecordsTable = ({
   }, [loadCurrencyCatalog]);
 
   useEffect(() => {
+    if (!kindMountedRef.current) {
+      // 首次挂载:按 URL 复原已应用的筛选并加载,而非清空。
+      kindMountedRef.current = true;
+      loadItems(
+        initialListQuery.page,
+        initialListQuery.keyword,
+        initialListQuery.status,
+      ).then();
+      return;
+    }
+    // 真正切换 kind:重置筛选并回到第一页(loadItems 内部会同步清空 URL)。
     setKeyword('');
     setStatusFilter('');
     setItems([]);
     setTotalCount(0);
     setActivePage(1);
     loadItems(1, '', '').then();
-  }, [kind, loadItems]);
+  }, [initialListQuery, kind, loadItems]);
 
   const onSearchSubmit = useCallback(() => {
     loadItems(1, keyword, statusFilter).then();
   }, [keyword, statusFilter, loadItems]);
+
+  const clearFilters = useCallback(() => {
+    setKeyword('');
+    setStatusFilter('');
+    loadItems(1, '', '').then();
+  }, [loadItems]);
 
   const onRefresh = useCallback(() => {
     loadItems(activePage, keyword, statusFilter).then();
   }, [activePage, keyword, statusFilter, loadItems]);
 
   const onPageChange = useCallback(
-    (e, { activePage: nextPage }) => {
+    (e, { activePage: nextPage, pageSize: nextSize }) => {
+      const size = Number(nextSize) > 0 ? Number(nextSize) : pageSizeRef.current;
+      if (size !== pageSizeRef.current) {
+        // 改每页条数:回到第 1 页并按新尺寸重新拉取。
+        pageSizeRef.current = size;
+        setPageSize(size);
+        loadItems(1, keyword, statusFilter).then();
+        return;
+      }
       loadItems(Number(nextPage) || 1, keyword, statusFilter).then();
     },
     [keyword, statusFilter, loadItems],
@@ -847,12 +930,89 @@ const BusinessRecordsTable = ({
     }
   }
 
+  // 批量刷新/履约:后端无批量接口,串行循环单条 POST 并聚合成单条汇总提示。
+  // 履约仅对 status=paid 的记录有效,自动跳过其余记录。
+  const runBatchReconcile = useCallback(
+    async (action) => {
+      if (batchRunning) return;
+      if (action !== 'refresh' && action !== 'fulfill') return;
+      const idSet = new Set(
+        selectedRowKeys
+          .map((item) => (item || '').toString().trim())
+          .filter(Boolean),
+      );
+      if (idSet.size === 0) {
+        showInfo(t('flow.topup_reconcile.batch.select_required'));
+        return;
+      }
+      const targets = items.filter((row) =>
+        idSet.has((row?.id || '').toString()),
+      );
+      const actionable =
+        action === 'fulfill'
+          ? targets.filter(
+              (row) => (row?.status || '').toString().trim() === 'paid',
+            )
+          : targets;
+      if (actionable.length === 0) {
+        showInfo(
+          action === 'fulfill'
+            ? t('flow.topup_reconcile.batch.no_fulfillable')
+            : t('flow.topup_reconcile.batch.select_required'),
+        );
+        return;
+      }
+      setBatchRunning(true);
+      let succeeded = 0;
+      let failed = 0;
+      const failedIDs = [];
+      for (const row of actionable) {
+        const id = (row?.id || '').toString();
+        try {
+          const res = await API.post(
+            `/api/v1/admin/flow/topup-reconcile-records/${encodeURIComponent(id)}/${action}`,
+          );
+          if (res?.data?.success) succeeded += 1;
+          else {
+            failed += 1;
+            failedIDs.push(id);
+          }
+        } catch (error) {
+          failed += 1;
+          failedIDs.push(id);
+        }
+      }
+      setBatchRunning(false);
+      const skipped = targets.length - actionable.length;
+      showSuccess(
+        t('flow.topup_reconcile.batch.done', { success: succeeded, failed }),
+      );
+      if (skipped > 0) {
+        showInfo(t('flow.topup_reconcile.batch.skipped', { skipped }));
+      }
+      setSelectedRowKeys(failedIDs);
+      if (failed === 0) batchActions.exit();
+      loadItems(activePage, keyword, statusFilter).then();
+    },
+    [
+      activePage,
+      batchActions,
+      batchRunning,
+      items,
+      keyword,
+      loadItems,
+      selectedRowKeys,
+      setSelectedRowKeys,
+      statusFilter,
+      t,
+    ],
+  );
+
   return (
     <>
       <AppFilterHeader
         breadcrumbs={breadcrumbs || [
           { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'business', label: t('header.operation') },
           {
             key: kind,
             label: t(DEFAULT_BREADCRUMB_KEY[kind] || BUSINESS_FLOW_HEADER_KEY[kind] || 'common.records'),
@@ -862,6 +1022,65 @@ const BusinessRecordsTable = ({
         title={embedded ? title : (title || t(BUSINESS_FLOW_HEADER_KEY[kind] || 'common.records'))}
         actions={
           <div className='router-list-toolbar-actions'>
+            {isReconcile ? (
+              batchSelectionMode ? (
+                <>
+                  <AppPopconfirm
+                    title={t('flow.topup_reconcile.batch.confirm_refresh', {
+                      count: selectedRowKeys.length,
+                    })}
+                    okText={t('common.confirm')}
+                    cancelText={t('common.cancel')}
+                    disabled={selectedRowKeys.length === 0 || batchRunning}
+                    onConfirm={() => runBatchReconcile('refresh')}
+                  >
+                    <AppButton
+                      className='router-page-button'
+                      disabled={selectedRowKeys.length === 0 || batchRunning}
+                      loading={batchRunning}
+                    >
+                      {t('flow.topup_reconcile.batch.refresh_selected', {
+                        count: selectedRowKeys.length,
+                      })}
+                    </AppButton>
+                  </AppPopconfirm>
+                  <AppPopconfirm
+                    title={t('flow.topup_reconcile.batch.confirm_fulfill', {
+                      count: selectedRowKeys.length,
+                    })}
+                    okText={t('common.confirm')}
+                    cancelText={t('common.cancel')}
+                    disabled={selectedRowKeys.length === 0 || batchRunning}
+                    onConfirm={() => runBatchReconcile('fulfill')}
+                  >
+                    <AppButton
+                      className='router-page-button'
+                      color='blue'
+                      disabled={selectedRowKeys.length === 0 || batchRunning}
+                      loading={batchRunning}
+                    >
+                      {t('flow.topup_reconcile.batch.fulfill_selected', {
+                        count: selectedRowKeys.length,
+                      })}
+                    </AppButton>
+                  </AppPopconfirm>
+                  <AppButton
+                    className='router-page-button'
+                    disabled={batchRunning}
+                    onClick={batchActions.exit}
+                  >
+                    {t('flow.topup_reconcile.batch.cancel_selection')}
+                  </AppButton>
+                </>
+              ) : (
+                <AppButton
+                  className='router-page-button'
+                  onClick={batchActions.enter}
+                >
+                  {t('flow.topup_reconcile.batch.enter_selection')}
+                </AppButton>
+              )
+            ) : null}
             <AppButton
               className='router-page-button'
               loading={loading}
@@ -905,16 +1124,37 @@ const BusinessRecordsTable = ({
             >
               {t('task.buttons.query')}
             </AppButton>
+            <AppButton
+              className='router-section-button'
+              disabled={loading || (statusFilter === '' && keyword === '')}
+              onClick={clearFilters}
+            >
+              {t('common.clear_filters')}
+            </AppButton>
           </div>
         }
       />
 
+      {sectionTabs}
+
       <div className={`router-table-scroll-x ${config.tableWrapperClassName || ''}`.trim()}>
         <AppTable
-          className='router-hover-table router-list-table router-table-fit-page'
+          className='router-hover-table router-list-table router-table-fit-page router-table-cardify'
           pagination={false}
           scroll={{ x: tableMinWidth }}
           rowKey={(row) => row.id || row.transaction_id || row.package_id}
+          rowSelection={
+            isReconcile && batchSelectionMode
+              ? {
+                  ...batchActions.tableSelection,
+                  renderCell: (_, __, ___, originNode) => (
+                    <span onClick={(event) => event.stopPropagation()}>
+                      {originNode}
+                    </span>
+                  ),
+                }
+              : undefined
+          }
           onChange={(_, __, sorter) => {
             if (!sorter || Array.isArray(sorter) || !sorter.columnKey || !sorter.order) {
               setTableSorter(config.defaultSorter || { columnKey: null, order: null });
@@ -937,7 +1177,7 @@ const BusinessRecordsTable = ({
                 ? { cursor: 'pointer' }
                 : undefined,
           })}
-          columns={visibleColumns.map((column) => ({
+          columns={withCardLabels(visibleColumns.map((column) => ({
             title: column.label,
             key: column.key,
             className: column.cellClassName || '',
@@ -950,14 +1190,15 @@ const BusinessRecordsTable = ({
               className: column.headerClassName || '',
             }),
             render: (_, row) => column.render(row),
-          }))}
+          })))}
         />
       </div>
 
       <div className={embedded ? 'router-pagination-wrap-md' : 'router-pagination-wrap'}>
         <AppPagination
           activePage={activePage}
-          totalPages={totalPages}
+          total={totalCount}
+          pageSize={pageSize}
           onPageChange={onPageChange}
         />
       </div>

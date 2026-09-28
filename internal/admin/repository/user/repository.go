@@ -70,7 +70,19 @@ func GetMaxUserId() string {
 }
 
 func GetAll(startIdx int, num int, order string) ([]*model.User, error) {
+	return GetAllFiltered(startIdx, num, order, 0, 0)
+}
+
+// GetAllFiltered 列出非删除用户,可选按状态 / 角色过滤。
+// statusFilter / roleFilter 传 0 表示该维度不过滤。
+func GetAllFiltered(startIdx int, num int, order string, statusFilter int, roleFilter int) ([]*model.User, error) {
 	query := model.DB.Limit(num).Offset(startIdx).Omit("password").Where("status != ?", model.UserStatusDeleted)
+	if statusFilter != 0 {
+		query = query.Where("status = ?", statusFilter)
+	}
+	if roleFilter != 0 {
+		query = query.Where("role = ?", roleFilter)
+	}
 
 	switch order {
 	case "quota":
@@ -86,6 +98,20 @@ func GetAll(startIdx int, num int, order string) ([]*model.User, error) {
 	var users []*model.User
 	err := query.Find(&users).Error
 	return users, err
+}
+
+// CountAllFiltered 统计非删除用户总数,过滤条件与 GetAllFiltered 保持一致。
+func CountAllFiltered(statusFilter int, roleFilter int) (int64, error) {
+	query := model.DB.Model(&model.User{}).Where("status != ?", model.UserStatusDeleted)
+	if statusFilter != 0 {
+		query = query.Where("status = ?", statusFilter)
+	}
+	if roleFilter != 0 {
+		query = query.Where("role = ?", roleFilter)
+	}
+	var total int64
+	err := query.Count(&total).Error
+	return total, err
 }
 
 func Search(keyword string) ([]*model.User, error) {
@@ -605,6 +631,37 @@ func GetUsernameById(id string) string {
 	var username string
 	model.DB.Model(&model.User{}).Where("id = ?", id).Select("username").Find(&username)
 	return username
+}
+
+// GetUsernamesByIds 批量取用户名,返回 id -> username 映射,供列表页富化属主信息、
+// 避免逐行查询的 N+1。空入参或去重后为空时返回空 map。
+func GetUsernamesByIds(ids []string) map[string]string {
+	result := make(map[string]string)
+	unique := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		trimmed := strings.TrimSpace(id)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		unique = append(unique, trimmed)
+	}
+	if len(unique) == 0 {
+		return result
+	}
+	rows := make([]struct {
+		Id       string
+		Username string
+	}, 0, len(unique))
+	model.DB.Model(&model.User{}).Where("id IN ?", unique).Select("id", "username").Find(&rows)
+	for _, row := range rows {
+		result[row.Id] = row.Username
+	}
+	return result
 }
 
 func AccessTokenExists(token string) (bool, error) {

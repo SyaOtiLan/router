@@ -194,28 +194,29 @@ func recordRouteDecision(c *gin.Context, source string, groupID string, requestM
 	})
 }
 
-func selectPinnedResponsesChannel(c *gin.Context, userGroup string, requestModel string, requestPath string) (*model.Channel, bool) {
-	previousResponseID := strings.TrimSpace(c.GetString(ctxkey.ResponsesPreviousResponseID))
-	itemIDs := responseItemIDsFromContext(c)
-	if previousResponseID == "" && len(itemIDs) == 0 {
-		return nil, false
-	}
-	lookupIDs := append([]string{}, itemIDs...)
-	if previousResponseID != "" {
-		lookupIDs = append(lookupIDs, previousResponseID)
-	}
-	channelID, ok, conflict := responsestate.LookupRoutes(lookupIDs)
+func selectPinnedResponsesChannel(c *gin.Context, userID string, userGroup string, requestModel string, requestPath string) (*model.Channel, bool) {
+	channelID, ok, conflict := lookupPinnedResponsesChannelID(c)
 	if conflict {
+		previousResponseID := strings.TrimSpace(c.GetString(ctxkey.ResponsesPreviousResponseID))
+		itemIDs := responseItemIDsFromContext(c)
 		logger.RelayWarnf(c.Request.Context(), "DISTRIBUTE decision=state_conflict reason=responses_route_multiple_channels user_id=%s group=%s response_id=%s item_ids=%s endpoint=%s", c.GetString(ctxkey.Id), userGroup, previousResponseID, strings.Join(itemIDs, ","), requestPath)
 		// The pinned state is no longer trustworthy. Let automatic routing pick
 		// a currently healthy channel and replay the request without old IDs.
 		return nil, false
 	}
 	if !ok {
+		previousResponseID := strings.TrimSpace(c.GetString(ctxkey.ResponsesPreviousResponseID))
 		logger.RelayInfof(c.Request.Context(), "DISTRIBUTE decision=miss reason=responses_route_missing user_id=%s group=%s response_id=%s endpoint=%s", c.GetString(ctxkey.Id), userGroup, previousResponseID, requestPath)
 		return nil, false
 	}
-	channel, err := model.GetChannelById(channelID)
+	previousResponseID := strings.TrimSpace(c.GetString(ctxkey.ResponsesPreviousResponseID))
+	var channel *model.Channel
+	var err error
+	if model.IsPersonalProviderChannelID(channelID) {
+		channel, err = model.ResolvePersonalProviderChannel(userID, channelID)
+	} else {
+		channel, err = model.GetChannelById(channelID)
+	}
 	if err != nil {
 		logger.RelayWarnf(c.Request.Context(), "DISTRIBUTE decision=miss reason=responses_route_channel_lookup_failed user_id=%s group=%s response_id=%s channel_id=%s endpoint=%s error=%q", c.GetString(ctxkey.Id), userGroup, previousResponseID, channelID, requestPath, err.Error())
 		return nil, false
@@ -224,7 +225,7 @@ func selectPinnedResponsesChannel(c *gin.Context, userGroup string, requestModel
 		logger.RelayWarnf(c.Request.Context(), "DISTRIBUTE decision=miss reason=responses_route_channel_disabled user_id=%s group=%s response_id=%s channel_id=%s endpoint=%s", c.GetString(ctxkey.Id), userGroup, previousResponseID, channelID, requestPath)
 		return nil, false
 	}
-	if strings.TrimSpace(requestModel) != "" {
+	if strings.TrimSpace(requestModel) != "" && !model.IsPersonalProviderChannelID(channelID) {
 		channels, err := model.CacheListSatisfiedChannelsForRequest(userGroup, requestModel, requestPath)
 		if err != nil {
 			logger.RelayWarnf(c.Request.Context(), "DISTRIBUTE decision=miss reason=responses_route_validation_failed user_id=%s group=%s response_id=%s channel_id=%s model=%s endpoint=%s error=%q", c.GetString(ctxkey.Id), userGroup, previousResponseID, channelID, requestModel, requestPath, err.Error())
@@ -240,6 +241,22 @@ func selectPinnedResponsesChannel(c *gin.Context, userGroup string, requestModel
 	return channel, true
 }
 
+func lookupPinnedResponsesChannelID(c *gin.Context) (string, bool, bool) {
+	if c == nil {
+		return "", false, false
+	}
+	previousResponseID := strings.TrimSpace(c.GetString(ctxkey.ResponsesPreviousResponseID))
+	itemIDs := responseItemIDsFromContext(c)
+	if previousResponseID == "" && len(itemIDs) == 0 {
+		return "", false, false
+	}
+	lookupIDs := append([]string{}, itemIDs...)
+	if previousResponseID != "" {
+		lookupIDs = append(lookupIDs, previousResponseID)
+	}
+	return responsestate.LookupRoutes(lookupIDs)
+}
+
 func responseItemIDsFromContext(c *gin.Context) []string {
 	value, exists := c.Get(ctxkey.ResponsesItemIDs)
 	if !exists {
@@ -252,7 +269,10 @@ func responseItemIDsFromContext(c *gin.Context) []string {
 	return ids
 }
 
-func selectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, userID string, initialGroup string, initialSource *model.UserEntitlementSource, requestModel string) (*model.Channel, string, *model.UserEntitlementSource, error) {
+// SelectEntitlementChannelForRequest selects a community channel from the
+// user's package and balance entitlements. It is also used by relay retry when
+// a personal-first request needs to fall back after its private upstream fails.
+func SelectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, userID string, initialGroup string, initialSource *model.UserEntitlementSource, requestModel string) (*model.Channel, string, *model.UserEntitlementSource, error) {
 	requestPath := c.Request.URL.Path
 	if responseStateConflict(c) {
 		logger.RelayWarnf(ctx, "DISTRIBUTE decision=state_recovery reason=responses_route_multiple_channels user_id=%s group=%s model=%s endpoint=%s", userID, initialGroup, requestModel, requestPath)
@@ -260,7 +280,7 @@ func selectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, use
 			return nil, initialGroup, initialSource, fmt.Errorf("responses state recovery failed: %w", err)
 		}
 	}
-	if pinnedChannel, ok := selectPinnedResponsesChannel(c, initialGroup, requestModel, requestPath); ok {
+	if pinnedChannel, ok := selectPinnedResponsesChannel(c, userID, initialGroup, requestModel, requestPath); ok {
 		return pinnedChannel, initialGroup, initialSource, nil
 	}
 	type candidateSource struct {
@@ -292,7 +312,7 @@ func selectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, use
 		if groupID == "" {
 			continue
 		}
-		if pinnedChannel, ok := selectPinnedResponsesChannel(c, groupID, requestModel, requestPath); ok {
+		if pinnedChannel, ok := selectPinnedResponsesChannel(c, userID, groupID, requestModel, requestPath); ok {
 			return pinnedChannel, groupID, candidate.source, nil
 		}
 		candidates, stats, err := model.CacheListSatisfiedChannelsForRequestWithStats(groupID, requestModel, requestPath)
@@ -400,8 +420,24 @@ func Distribute() func(c *gin.Context) {
 		}
 		userId := c.GetString(ctxkey.Id)
 		requestModel := c.GetString(ctxkey.RequestModel)
-		userGroup, entitlementSource, groupErr := model.ResolveUserEntitlementGroupForModel(ctx, userId, requestModel)
-		if groupErr != nil {
+		userGroup := ""
+		var entitlementSource *model.UserEntitlementSource
+		resolveEntitlement := func() error {
+			group, source, err := model.ResolveUserEntitlementGroupForModel(ctx, userId, requestModel)
+			if err != nil {
+				return err
+			}
+			userGroup = group
+			entitlementSource = source
+			c.Set(ctxkey.Group, userGroup)
+			if entitlementSource != nil {
+				c.Set(ctxkey.EntitlementSourceType, entitlementSource.SourceType)
+				c.Set(ctxkey.EntitlementSourceId, entitlementSource.SourceID)
+				c.Set(ctxkey.EntitlementSourceName, entitlementSource.SourceName)
+			}
+			return nil
+		}
+		abortEntitlementResolution := func(groupErr error) {
 			statusCode := http.StatusServiceUnavailable
 			errorCode := "request_aborted"
 			reason := "entitlement_resolution_failed"
@@ -413,18 +449,15 @@ func Distribute() func(c *gin.Context) {
 			c.Set(ctxkey.RelayErrorCode, errorCode)
 			logger.RelayWarnf(ctx, "DISTRIBUTE decision=abort reason=%s user_id=%s model=%s endpoint=%s status=%d error=%q", reason, userId, requestModel, c.Request.URL.Path, statusCode, groupErr.Error())
 			abortWithMessage(c, statusCode, groupErr.Error())
-			return
-		}
-		c.Set(ctxkey.Group, userGroup)
-		if entitlementSource != nil {
-			c.Set(ctxkey.EntitlementSourceType, entitlementSource.SourceType)
-			c.Set(ctxkey.EntitlementSourceId, entitlementSource.SourceID)
-			c.Set(ctxkey.EntitlementSourceName, entitlementSource.SourceName)
 		}
 		var channel *model.Channel
 		var err error
 		channelId, ok := c.Get(ctxkey.SpecificChannelId)
 		if ok {
+			if groupErr := resolveEntitlement(); groupErr != nil {
+				abortEntitlementResolution(groupErr)
+				return
+			}
 			id := fmt.Sprintf("%v", channelId)
 			channel, err = model.GetChannelById(id)
 			if err != nil {
@@ -439,17 +472,80 @@ func Distribute() func(c *gin.Context) {
 			}
 			recordRouteDecision(c, "specific_channel", userGroup, requestModel, c.Request.URL.Path, []*model.Channel{channel}, nil, channel, "explicit")
 		} else {
-			if channel, userGroup, entitlementSource, err = selectEntitlementChannelForRequest(ctx, c, userId, userGroup, entitlementSource, requestModel); err != nil {
-				statusCode := http.StatusServiceUnavailable
-				message := err.Error()
-				if strings.HasPrefix(message, "state_incompatible: ") {
-					statusCode = http.StatusBadRequest
-					message = strings.TrimPrefix(message, "state_incompatible: ")
-					c.Set(ctxkey.RelayErrorType, "state_incompatible_error")
-					c.Set(ctxkey.RelayErrorCode, "state_incompatible")
+			personalPolicy := model.ResolvePersonalRoutePolicy(userId, &model.Token{RoutePolicy: c.GetString(ctxkey.PersonalRoutePolicy)}, requestModel)
+			c.Set(ctxkey.PersonalRoutePolicy, personalPolicy)
+			personalSupported := supportsPersonalProviderRoute(c.Request.URL.Path)
+			// A stateful Responses request must retain the exact upstream account
+			// that issued its response or tool item. It takes precedence over every
+			// source policy, including personal_first and personal_only.
+			if responseStateConflict(c) {
+				if resetErr := resetConflictingResponsesState(c); resetErr != nil {
+					abortWithMessage(c, http.StatusBadRequest, "Responses 会话状态恢复失败")
+					return
 				}
-				abortWithMessage(c, statusCode, message)
-				return
+			}
+			if pinnedChannelID, pinned, _ := lookupPinnedResponsesChannelID(c); pinned {
+				if !model.IsPersonalProviderChannelID(pinnedChannelID) {
+					if groupErr := resolveEntitlement(); groupErr != nil {
+						abortEntitlementResolution(groupErr)
+						return
+					}
+				}
+				channel, _ = selectPinnedResponsesChannel(c, userId, userGroup, requestModel, c.Request.URL.Path)
+				if channel == nil {
+					abortWithMessage(c, http.StatusConflict, "已绑定的 Responses 会话上游不可用，请重新开始会话")
+					return
+				}
+			}
+			selectPersonalChannel := func(decision string, reason string) (*model.Channel, error) {
+				personalChannels, personalErr := model.ListPersonalProviderChannelsForModel(userId, requestModel)
+				if personalErr != nil {
+					logger.RelayWarnf(ctx, "DISTRIBUTE decision=personal_provider_unavailable user_id=%s model=%s endpoint=%s error=%q", userId, requestModel, c.Request.URL.Path, personalErr.Error())
+					return nil, personalErr
+				}
+				selected := pickChannelByPriority(personalChannels, false)
+				if selected != nil {
+					recordRouteDecision(c, decision, userGroup, requestModel, c.Request.URL.Path, personalChannels, nil, selected, reason)
+				}
+				return selected, nil
+			}
+			if channel == nil && personalSupported && (personalPolicy == model.PersonalRoutePolicyPersonalFirst || personalPolicy == model.PersonalRoutePolicyPersonalOnly) {
+				channel, err = selectPersonalChannel("personal_provider", "personal_priority")
+				if err != nil && personalPolicy == model.PersonalRoutePolicyPersonalOnly {
+					abortWithMessage(c, http.StatusServiceUnavailable, "个人供应商凭据不可用，请在我的供应商中轮换凭据")
+					return
+				}
+				if channel == nil && personalPolicy == model.PersonalRoutePolicyPersonalOnly {
+					abortWithMessage(c, http.StatusServiceUnavailable, "该模型没有可用的个人供应商连接")
+					return
+				}
+			}
+			if channel == nil {
+				if groupErr := resolveEntitlement(); groupErr != nil {
+					if personalSupported && personalPolicy == model.PersonalRoutePolicyCommunityFirst {
+						channel, err = selectPersonalChannel("personal_provider_fallback", "community_entitlement_unavailable")
+					}
+					if channel == nil {
+						abortEntitlementResolution(groupErr)
+						return
+					}
+				} else if channel, userGroup, entitlementSource, err = SelectEntitlementChannelForRequest(ctx, c, userId, userGroup, entitlementSource, requestModel); err != nil {
+					if personalPolicy == model.PersonalRoutePolicyCommunityFirst && personalSupported {
+						channel, err = selectPersonalChannel("personal_provider_fallback", "community_first_fallback")
+					}
+					if err != nil {
+						statusCode := http.StatusServiceUnavailable
+						message := err.Error()
+						if strings.HasPrefix(message, "state_incompatible: ") {
+							statusCode = http.StatusBadRequest
+							message = strings.TrimPrefix(message, "state_incompatible: ")
+							c.Set(ctxkey.RelayErrorType, "state_incompatible_error")
+							c.Set(ctxkey.RelayErrorCode, "state_incompatible")
+						}
+						abortWithMessage(c, statusCode, message)
+						return
+					}
+				}
 			}
 			c.Set(ctxkey.Group, userGroup)
 			if entitlementSource != nil {
@@ -458,10 +554,30 @@ func Distribute() func(c *gin.Context) {
 				c.Set(ctxkey.EntitlementSourceName, entitlementSource.SourceName)
 			}
 		}
+		if !model.IsPersonalProviderChannelID(channel.Id) && tokenMonetaryQuotaExhausted(c) {
+			c.Set(ctxkey.RelayErrorCode, "token_quota_exhausted")
+			abortWithMessage(c, http.StatusForbidden, "该令牌额度已用尽")
+			return
+		}
 		logger.Debugf(ctx, "user id %s, user group: %s, request model: %s, using channel #%s", userId, userGroup, requestModel, channel.Id)
 		SetupContextForSelectedChannel(c, channel, requestModel)
 		c.Next()
 	}
+}
+
+// TokenAuth stores this snapshot before distribution. Enforce the monetary
+// limit only after a community channel has been selected, because private
+// provider requests intentionally do not spend Router monetary quota.
+func tokenMonetaryQuotaExhausted(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	remaining, exists := c.Get(ctxkey.TokenRemainQuota)
+	if !exists || c.GetBool(ctxkey.TokenUnlimitedQuota) {
+		return false
+	}
+	value, ok := remaining.(int64)
+	return ok && value <= 0
 }
 
 func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) {
@@ -469,6 +585,13 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	c.Set(ctxkey.Channel, channelProtocol)
 	c.Set(ctxkey.ChannelId, channel.Id)
 	c.Set(ctxkey.ChannelName, channel.DisplayName())
+	if model.IsPersonalProviderChannelID(channel.Id) {
+		c.Set(ctxkey.PersonalProviderID, model.PersonalProviderIDFromChannelID(channel.Id))
+		c.Set(ctxkey.PersonalProviderName, channel.PersonalProviderName)
+	} else {
+		c.Set(ctxkey.PersonalProviderID, "")
+		c.Set(ctxkey.PersonalProviderName, "")
+	}
 	c.Set(ctxkey.ChannelModelConfigs, channel.GetSelectedChannelModels())
 	mapping := channel.GetModelMapping()
 	if groupID := c.GetString(ctxkey.Group); groupID != "" {
@@ -512,4 +635,16 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 		}
 	}
 	c.Set(ctxkey.Config, cfg)
+}
+
+// Personal connections currently expose text-capable upstream protocols only.
+// Keeping media, realtime, and async APIs on community channels prevents an
+// in-flight resource from being transferred between unrelated provider accounts.
+func supportsPersonalProviderRoute(requestPath string) bool {
+	path := strings.TrimSpace(requestPath)
+	return strings.HasSuffix(path, "/completions") ||
+		strings.HasSuffix(path, "/messages") ||
+		strings.HasSuffix(path, "/responses") ||
+		strings.HasSuffix(path, "/embeddings") ||
+		strings.HasSuffix(path, "/moderations")
 }

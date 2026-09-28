@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { API, showError, showSuccess, timestamp2string } from '../../helpers';
 import { formatDecimalNumber } from '../../helpers/render';
+import useUrlState, { parseListPageSize } from '../../hooks/useUrlState';
 import {
   SERVICE_PACKAGE_PERIOD_DAILY,
   SERVICE_PACKAGE_PERIOD_MONTHLY,
@@ -14,50 +15,58 @@ import {
 } from '../../helpers/package';
 import {
   AppButton,
+  AppEmpty,
+  AppErrorState,
   AppField,
   AppFilterHeader,
   AppFormActions,
   AppFormRow,
+  AppIcon,
   AppInput,
   AppInputNumber,
+  AppMenuDropdown,
   AppModal,
   AppPagination,
   AppSelect,
+  AppSkeleton,
   AppSwitch,
-  AppTable,
-  AppTableActionButton,
   AppTag,
   AppTextarea,
 } from '../../router-ui';
 import { normalizeSupportedModels } from '../TopUp/shared.jsx';
+import EntitlementSectionTabs from '../../components/EntitlementSectionTabs';
+import './Entitlement.css';
 
 const PRODUCT_KIND_BALANCE = 'balance';
 const PRODUCT_KIND_SUBSCRIPTION = 'subscription';
 const PRODUCT_KIND_ALL = '__all_kinds__';
 
 const PRODUCT_KIND_OPTIONS = [
-  { key: 'all', value: PRODUCT_KIND_ALL, text: '全部类型' },
-  { key: PRODUCT_KIND_BALANCE, value: PRODUCT_KIND_BALANCE, text: '充值' },
-  { key: PRODUCT_KIND_SUBSCRIPTION, value: PRODUCT_KIND_SUBSCRIPTION, text: '订阅' },
+  { key: 'all', value: PRODUCT_KIND_ALL, textKey: 'entitlement.kind.all' },
+  { key: PRODUCT_KIND_BALANCE, value: PRODUCT_KIND_BALANCE, textKey: 'entitlement.kind.balance' },
+  { key: PRODUCT_KIND_SUBSCRIPTION, value: PRODUCT_KIND_SUBSCRIPTION, textKey: 'entitlement.kind.subscription' },
 ];
 
-const PRODUCT_LIST_TABLE_MIN_WIDTH = 1000;
 const PRODUCT_FORM_KIND_OPTIONS = PRODUCT_KIND_OPTIONS.filter(
   (item) => item.value !== PRODUCT_KIND_ALL,
 );
+const QUOTA_METRIC_LABEL_KEYS = {
+  [SERVICE_PACKAGE_QUOTA_METRIC_YYC]: 'entitlement.metrics.yyc',
+  [SERVICE_PACKAGE_QUOTA_METRIC_REQUEST_COUNT]: 'entitlement.request_count',
+};
 const QUOTA_METRIC_OPTIONS = [
-  { key: SERVICE_PACKAGE_QUOTA_METRIC_YYC, value: SERVICE_PACKAGE_QUOTA_METRIC_YYC, text: 'YYC 额度' },
-  { key: SERVICE_PACKAGE_QUOTA_METRIC_REQUEST_COUNT, value: SERVICE_PACKAGE_QUOTA_METRIC_REQUEST_COUNT, text: '请求次数' },
+  { key: SERVICE_PACKAGE_QUOTA_METRIC_YYC, value: SERVICE_PACKAGE_QUOTA_METRIC_YYC, textKey: QUOTA_METRIC_LABEL_KEYS[SERVICE_PACKAGE_QUOTA_METRIC_YYC] },
+  { key: SERVICE_PACKAGE_QUOTA_METRIC_REQUEST_COUNT, value: SERVICE_PACKAGE_QUOTA_METRIC_REQUEST_COUNT, textKey: QUOTA_METRIC_LABEL_KEYS[SERVICE_PACKAGE_QUOTA_METRIC_REQUEST_COUNT] },
 ];
 const PERIOD_TYPE_OPTIONS = [
-  { key: SERVICE_PACKAGE_PERIOD_MONTHLY, value: SERVICE_PACKAGE_PERIOD_MONTHLY, text: '每月' },
-  { key: SERVICE_PACKAGE_PERIOD_WEEKLY, value: SERVICE_PACKAGE_PERIOD_WEEKLY, text: '每周' },
-  { key: SERVICE_PACKAGE_PERIOD_DAILY, value: SERVICE_PACKAGE_PERIOD_DAILY, text: '每天' },
-  { key: SERVICE_PACKAGE_PERIOD_PACKAGE_TOTAL, value: SERVICE_PACKAGE_PERIOD_PACKAGE_TOTAL, text: '套餐总量' },
+  { key: SERVICE_PACKAGE_PERIOD_MONTHLY, value: SERVICE_PACKAGE_PERIOD_MONTHLY, textKey: 'entitlement.period.monthly' },
+  { key: SERVICE_PACKAGE_PERIOD_WEEKLY, value: SERVICE_PACKAGE_PERIOD_WEEKLY, textKey: 'entitlement.period.weekly' },
+  { key: SERVICE_PACKAGE_PERIOD_DAILY, value: SERVICE_PACKAGE_PERIOD_DAILY, textKey: 'entitlement.period.daily' },
+  { key: SERVICE_PACKAGE_PERIOD_PACKAGE_TOTAL, value: SERVICE_PACKAGE_PERIOD_PACKAGE_TOTAL, textKey: 'entitlement.period.package_total' },
 ];
 const VISIBILITY_OPTIONS = [
-  { key: 'all', value: 'all', text: '全部用户' },
-  { key: 'partial_users', value: 'partial_users', text: '部分用户' },
+  { key: 'all', value: 'all', textKey: 'entitlement.visibility_option.all' },
+  { key: 'partial_users', value: 'partial_users', textKey: 'entitlement.visibility_option.partial' },
 ];
 
 const createEmptyForm = () => ({
@@ -85,8 +94,10 @@ const createEmptyForm = () => ({
   source: 'manual',
 });
 
-const getProductKindLabel = (kind) =>
-  kind === PRODUCT_KIND_SUBSCRIPTION ? '订阅' : '充值';
+const getProductKindLabel = (kind, t) =>
+  kind === PRODUCT_KIND_SUBSCRIPTION
+    ? t('entitlement.kind.subscription')
+    : t('entitlement.kind.balance');
 
 const formatAmount = (amount, currency) => {
   const normalizedCurrency = (currency || '').toString().trim().toUpperCase();
@@ -102,8 +113,10 @@ const formatDuration = (row, t) => {
   return `${days} ${t('common.day')}`;
 };
 
-const formatVisibility = (row) =>
-  row?.visibility_scope === 'partial_users' ? '部分用户' : '全部用户';
+const formatVisibility = (row, t) =>
+  row?.visibility_scope === 'partial_users'
+    ? t('entitlement.visibility_option.partial')
+    : t('entitlement.visibility_option.all');
 
 const SupportedModelsCount = ({ models, onOpen }) => {
   const normalizedModels = useMemo(
@@ -213,15 +226,27 @@ const buildProductPayload = (form) => {
   };
 };
 
-const Entitlement = () => {
+const Entitlement = ({ embedded = false }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [activePage, setActivePage] = useState(1);
+  const [loadError, setLoadError] = useState(false);
   const [total, setTotal] = useState(0);
-  const [kind, setKind] = useState(PRODUCT_KIND_ALL);
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const [
+    { kind, keyword: searchKeyword, page: activePage, pageSize },
+    patchQuery,
+  ] = useUrlState({
+    kind: { param: 'ent_kind', default: PRODUCT_KIND_ALL },
+    keyword: { param: 'ent_q', default: '' },
+    page: { param: 'ent_page', default: 1, parse: (raw) => Number(raw) || 1 },
+    pageSize: {
+      param: 'ent_page_size',
+      default: ITEMS_PER_PAGE,
+      parse: parseListPageSize,
+    },
+  });
   const [groupOptions, setGroupOptions] = useState([]);
   const [groupLoading, setGroupLoading] = useState(false);
   const [userOptions, setUserOptions] = useState([]);
@@ -238,10 +263,6 @@ const Entitlement = () => {
   });
 
   const normalizedKeyword = searchKeyword.trim();
-  const totalPages = Math.max(
-    1,
-    Math.ceil((Number(total || 0) || 0) / ITEMS_PER_PAGE),
-  );
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -249,25 +270,32 @@ const Entitlement = () => {
       const response = await API.get('/api/v1/admin/entitlement/products', {
         params: {
           page: activePage,
-          page_size: ITEMS_PER_PAGE,
+          page_size: pageSize,
           kind: kind === PRODUCT_KIND_ALL ? '' : kind,
           keyword: normalizedKeyword,
         },
       });
       const payload = response.data || {};
       if (!payload.success) {
+        setLoadError(true);
+        setRows([]);
+        setTotal(0);
         showError(payload.message || t('common.failed'));
         return;
       }
       const data = payload.data || {};
       setRows(Array.isArray(data.items) ? data.items : []);
       setTotal(Number(data.total || 0) || 0);
+      setLoadError(false);
     } catch (error) {
+      setLoadError(true);
+      setRows([]);
+      setTotal(0);
       showError(error.message || t('common.failed'));
     } finally {
       setLoading(false);
     }
-  }, [activePage, kind, normalizedKeyword, t]);
+  }, [activePage, pageSize, kind, normalizedKeyword, t]);
 
   useEffect(() => {
     loadProducts();
@@ -402,7 +430,7 @@ const Entitlement = () => {
         showError(data.message || t('common.failed'));
         return;
       }
-      showSuccess('操作成功');
+      showSuccess(t('common.operation_success'));
       setFormOpen(false);
       await loadProducts();
     } catch (error) {
@@ -426,7 +454,7 @@ const Entitlement = () => {
         showError(data.message || t('common.failed'));
         return;
       }
-      showSuccess('操作成功');
+      showSuccess(t('common.operation_success'));
       setDeleteRow(null);
       await loadProducts();
     } catch (error) {
@@ -443,115 +471,161 @@ const Entitlement = () => {
         return;
       }
       if (row.kind === PRODUCT_KIND_SUBSCRIPTION) {
-        navigate(`/admin/entitlement/package/detail/${encodeURIComponent(productID)}`);
+        navigate(`/admin/entitlement/package/detail/${encodeURIComponent(productID)}`, {
+          state: { from: `${location.pathname}${location.search}` },
+        });
         return;
       }
-      navigate(`/admin/entitlement/topup/detail/${encodeURIComponent(productID)}`);
+      navigate(`/admin/entitlement/topup/detail/${encodeURIComponent(productID)}`, {
+        state: { from: `${location.pathname}${location.search}` },
+      });
     },
-    [navigate],
+    [navigate, location],
   );
 
-  const columns = useMemo(
-    () => [
-      {
-        title: '名称',
-        dataIndex: 'name',
-        key: 'name',
-        width: 180,
-        ellipsis: true,
-        render: (value) => value || '-',
-      },
-      {
-        title: '类型',
-        dataIndex: 'kind',
-        key: 'kind',
-        width: 84,
-        render: (value) => (
-          <AppTag color={value === PRODUCT_KIND_SUBSCRIPTION ? 'blue' : 'green'}>
-            {getProductKindLabel(value)}
-          </AppTag>
-        ),
-      },
-      {
-        title: '分组',
-        dataIndex: 'group_name',
-        key: 'group',
-        width: 150,
-        ellipsis: true,
-        render: (_, row) => row.group_name || row.group_id || '-',
-      },
-      {
-        title: '适用模型',
-        key: 'supported_models',
-        width: 92,
-        render: (_, row) => (
-          <SupportedModelsCount
-            models={row.supported_models}
-            onOpen={(models) => openModelsDialog(row, models)}
-          />
-        ),
-      },
-      {
-        title: '售价',
-        key: 'sale_price',
-        width: 130,
-        render: (_, row) => formatAmount(row.sale_price, row.sale_currency || 'CNY'),
-      },
-      {
-        title: '有效期',
-        key: 'duration',
-        width: 100,
-        render: (_, row) => formatDuration(row, t),
-      },
-      {
-        title: '可见范围',
-        key: 'visibility_scope',
-        width: 100,
-        render: (_, row) => formatVisibility(row),
-      },
-      {
-        title: '状态',
-        dataIndex: 'enabled',
-        key: 'enabled',
-        width: 84,
-        render: (value) => (
-          <AppTag color={value ? 'green' : 'default'}>
-            {value ? '启用' : '停用'}
-          </AppTag>
-        ),
-      },
-      {
-        title: t('common.updated_at', '更新时间'),
-        dataIndex: 'updated_at',
-        key: 'updated_at',
-        className: 'router-table-col-datetime',
-        width: 168,
-        render: (value) => (value ? timestamp2string(value) : '-'),
-      },
-      {
-        title: t('common.operation'),
-        key: 'action',
-        className: 'router-table-col-actions-icon',
-        width: 52,
-        render: (_, row) => (
-          <div
-            className='router-action-group-tight router-table-actions-icon-compact'
-            onClick={(event) => {
-              event.stopPropagation();
-            }}
-          >
-            <AppTableActionButton
-              icon='trash'
-              title={t('common.delete')}
-              color='red'
-              disabled={submitting}
-              onClick={() => setDeleteRow(row)}
-            />
+  const renderProductCard = useCallback(
+    (row) => {
+      const groupId = row?.group_id;
+      const groupLabel = row.group_name || row.group_id || '-';
+      const description = (row.description || '').toString().trim();
+      return (
+        <div
+          key={row.id}
+          className='entitlement-card router-row-clickable'
+          role='button'
+          tabIndex={0}
+          onClick={() => openDetail(row)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              openDetail(row);
+            }
+          }}
+        >
+          <div className='entitlement-card-header'>
+            <div className='entitlement-card-title' title={row.name || '-'}>
+              {row.name || '-'}
+            </div>
+            <div className='entitlement-card-header-end'>
+              <div className='entitlement-card-badges'>
+                <AppTag color={row.kind === PRODUCT_KIND_SUBSCRIPTION ? 'blue' : 'green'}>
+                  {getProductKindLabel(row.kind, t)}
+                </AppTag>
+                <AppTag color={row.enabled ? 'green' : 'default'}>
+                  {row.enabled ? t('entitlement.enabled') : t('entitlement.disabled')}
+                </AppTag>
+              </div>
+              <AppMenuDropdown
+                placement='bottomRight'
+                items={[
+                  {
+                    key: 'delete',
+                    danger: true,
+                    disabled: submitting,
+                    icon: <AppIcon name='trash' />,
+                    label: t('common.delete'),
+                    onClick: () => setDeleteRow(row),
+                  },
+                ]}
+              >
+                <span
+                  className='entitlement-card-menu-trigger'
+                  role='button'
+                  tabIndex={0}
+                  aria-label={t('common.operation')}
+                  aria-haspopup='menu'
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.stopPropagation();
+                    }
+                  }}
+                >
+                  <AppIcon name='ellipsis vertical' />
+                </span>
+              </AppMenuDropdown>
+            </div>
           </div>
-        ),
-      },
-    ],
-    [openModelsDialog, submitting, t],
+          <div
+            className={`entitlement-card-intro${
+              description ? '' : ' entitlement-card-intro-empty'
+            }`}
+          >
+            {description || t('entitlement.card.no_description')}
+          </div>
+          <div className='entitlement-card-meta'>
+            <div className='entitlement-card-meta-item'>
+              <span className='entitlement-card-meta-label'>
+                {t('entitlement.columns.group')}
+              </span>
+              <span className='entitlement-card-meta-value'>
+                {groupId ? (
+                  <button
+                    type='button'
+                    className='router-link-button router-link-inline'
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      navigate(
+                        `/admin/group/detail/${encodeURIComponent(groupId)}`,
+                        { state: { from: `${location.pathname}${location.search}` } },
+                      );
+                    }}
+                  >
+                    {groupLabel}
+                  </button>
+                ) : (
+                  groupLabel
+                )}
+              </span>
+            </div>
+            <div className='entitlement-card-meta-item'>
+              <span className='entitlement-card-meta-label'>
+                {t('entitlement.columns.supported_models')}
+              </span>
+              <span className='entitlement-card-meta-value'>
+                <SupportedModelsCount
+                  models={row.supported_models}
+                  onOpen={(models) => openModelsDialog(row, models)}
+                />
+              </span>
+            </div>
+            <div className='entitlement-card-meta-item'>
+              <span className='entitlement-card-meta-label'>
+                {t('entitlement.columns.sale_price')}
+              </span>
+              <span className='entitlement-card-meta-value'>
+                {formatAmount(row.sale_price, row.sale_currency || 'CNY')}
+              </span>
+            </div>
+            <div className='entitlement-card-meta-item'>
+              <span className='entitlement-card-meta-label'>
+                {t('entitlement.columns.validity')}
+              </span>
+              <span className='entitlement-card-meta-value'>
+                {formatDuration(row, t)}
+              </span>
+            </div>
+            <div className='entitlement-card-meta-item'>
+              <span className='entitlement-card-meta-label'>
+                {t('entitlement.columns.visibility')}
+              </span>
+              <span className='entitlement-card-meta-value'>
+                {formatVisibility(row, t)}
+              </span>
+            </div>
+            <div className='entitlement-card-meta-item'>
+              <span className='entitlement-card-meta-label'>
+                {t('common.updated_at')}
+              </span>
+              <span className='entitlement-card-meta-value'>
+                {row.updated_at ? timestamp2string(row.updated_at) : '-'}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    },
+    [location.pathname, location.search, navigate, openDetail, openModelsDialog, submitting, t],
   );
 
   const renderForm = () => {
@@ -560,10 +634,13 @@ const Entitlement = () => {
     return (
       <div className='router-page-stack'>
         <AppFormRow className='router-modal-form-row'>
-          <AppField label='类型' required>
+          <AppField label={t('entitlement.form.kind')} required>
             <AppSelect
               className='router-section-input'
-              options={PRODUCT_FORM_KIND_OPTIONS}
+              options={PRODUCT_FORM_KIND_OPTIONS.map((item) => ({
+                ...item,
+                text: t(item.textKey),
+              }))}
               value={form.kind}
               disabled={Boolean(form.id)}
               onChange={(_, { value }) =>
@@ -576,7 +653,7 @@ const Entitlement = () => {
               }
             />
           </AppField>
-          <AppField label='名称' required>
+          <AppField label={t('entitlement.form.name')} required>
             <AppInput
               className='router-section-input'
               value={form.name}
@@ -588,7 +665,7 @@ const Entitlement = () => {
         </AppFormRow>
 
         <AppFormRow className='router-modal-form-row'>
-          <AppField label='分组' required>
+          <AppField label={t('entitlement.form.group')} required>
             <AppSelect
               className='router-section-input'
               options={groupOptions}
@@ -600,7 +677,7 @@ const Entitlement = () => {
               }
             />
           </AppField>
-          <AppField label='排序'>
+          <AppField label={t('entitlement.form.sort_order')}>
             <AppInputNumber
               className='router-section-input'
               min={0}
@@ -615,7 +692,7 @@ const Entitlement = () => {
         </AppFormRow>
 
         <AppFormRow className='router-modal-form-row'>
-          <AppField label='说明'>
+          <AppField label={t('entitlement.form.description')}>
             <AppTextarea
               className='router-section-input'
               value={form.description}
@@ -627,7 +704,7 @@ const Entitlement = () => {
         </AppFormRow>
 
         <AppFormRow className='router-modal-form-row'>
-          <AppField label='售价' required>
+          <AppField label={t('entitlement.form.sale_price')} required>
             <AppInputNumber
               className='router-section-input'
               min={0}
@@ -640,7 +717,7 @@ const Entitlement = () => {
               }
             />
           </AppField>
-          <AppField label='售价币种' required>
+          <AppField label={t('entitlement.form.sale_currency')} required>
             <AppInput
               className='router-section-input'
               value={form.sale_currency}
@@ -656,10 +733,13 @@ const Entitlement = () => {
 
         {isSubscription ? (
           <AppFormRow className='router-modal-form-row'>
-            <AppField label='权益类型' required>
+            <AppField label={t('entitlement.type')} required>
               <AppSelect
                 className='router-section-input'
-                options={QUOTA_METRIC_OPTIONS}
+                options={QUOTA_METRIC_OPTIONS.map((item) => ({
+                  ...item,
+                  text: t(item.textKey),
+                }))}
                 value={form.quota_metric}
                 onChange={(_, { value }) =>
                   setForm((current) => ({
@@ -673,10 +753,13 @@ const Entitlement = () => {
                 }
               />
             </AppField>
-            <AppField label='周期' required>
+            <AppField label={t('entitlement.form.period')} required>
               <AppSelect
                 className='router-section-input'
-                options={PERIOD_TYPE_OPTIONS}
+                options={PERIOD_TYPE_OPTIONS.map((item) => ({
+                  ...item,
+                  text: t(item.textKey),
+                }))}
                 value={form.period_type}
                 onChange={(_, { value }) =>
                   setForm((current) => ({
@@ -690,7 +773,7 @@ const Entitlement = () => {
         ) : null}
 
         <AppFormRow className='router-modal-form-row'>
-          <AppField label={isSubscription ? '周期额度' : '到账额度'} required>
+          <AppField label={isSubscription ? t('entitlement.form.period_quota') : t('entitlement.form.arrival_quota')} required>
             <AppInputNumber
               className='router-section-input'
               min={0}
@@ -707,7 +790,7 @@ const Entitlement = () => {
               }
             />
           </AppField>
-          <AppField label='额度币种'>
+          <AppField label={t('entitlement.form.quota_currency')}>
             <AppInput
               className='router-section-input'
               value={form.quota_currency}
@@ -723,7 +806,7 @@ const Entitlement = () => {
         </AppFormRow>
 
         <AppFormRow className='router-modal-form-row'>
-          <AppField label={isSubscription ? '订阅天数' : '有效天数'}>
+          <AppField label={isSubscription ? t('entitlement.form.subscription_days') : t('entitlement.form.validity_days')}>
             <AppInputNumber
               className='router-section-input'
               min={0}
@@ -740,10 +823,13 @@ const Entitlement = () => {
               }
             />
           </AppField>
-          <AppField label='可见范围'>
+          <AppField label={t('entitlement.form.visibility')}>
             <AppSelect
               className='router-section-input'
-              options={VISIBILITY_OPTIONS}
+              options={VISIBILITY_OPTIONS.map((item) => ({
+                ...item,
+                text: t(item.textKey),
+              }))}
               value={form.visibility_scope || 'all'}
               onChange={(_, { value }) =>
                 setForm((current) => ({ ...current, visibility_scope: value || 'all' }))
@@ -754,7 +840,7 @@ const Entitlement = () => {
 
         {form.visibility_scope === 'partial_users' ? (
           <AppFormRow className='router-modal-form-row'>
-            <AppField label='可见用户'>
+            <AppField label={t('entitlement.form.visible_users')}>
               <AppSelect
                 className='router-section-input'
                 options={userOptions}
@@ -776,7 +862,7 @@ const Entitlement = () => {
         ) : null}
 
         <AppFormRow className='router-modal-form-row'>
-          <AppField label='单用户并发'>
+          <AppField label={t('entitlement.form.concurrency_per_user')}>
             <AppInputNumber
               className='router-section-input'
               min={0}
@@ -792,7 +878,7 @@ const Entitlement = () => {
               }
             />
           </AppField>
-          <AppField label='总并发'>
+          <AppField label={t('entitlement.form.concurrency_total')}>
             <AppInputNumber
               className='router-section-input'
               min={0}
@@ -811,7 +897,7 @@ const Entitlement = () => {
         </AppFormRow>
 
         <AppFormRow className='router-modal-form-row'>
-          <AppField label='余额兜底'>
+          <AppField label={t('entitlement.form.balance_fallback')}>
             <AppSwitch
               checked={isSubscription && Boolean(form.allow_balance_fallback)}
               disabled={!isSubscription}
@@ -823,7 +909,7 @@ const Entitlement = () => {
               }
             />
           </AppField>
-          <AppField label='启用'>
+          <AppField label={t('entitlement.enabled')}>
             <AppSwitch
               checked={form.enabled !== false}
               onChange={(_, { checked }) =>
@@ -857,44 +943,54 @@ const Entitlement = () => {
   };
 
   return (
-    <div className='dashboard-container'>
+    <div className={embedded ? undefined : 'dashboard-container'}>
       <AppFilterHeader
         className='router-block-gap-md'
-        breadcrumbs={[
-          { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'model', label: t('header.model') },
-          { key: 'entitlement', label: t('header.entitlement'), active: true },
-        ]}
-        meta={
-          <button
-            type='button'
-            className='router-breadcrumb-link router-page-header-link'
-            onClick={() => navigate('/admin/entitlement/payments')}
-          >
-            支付记录
-          </button>
+        breadcrumbs={
+          embedded
+            ? undefined
+            : [
+                { key: 'admin', label: t('header.admin_workspace') },
+                {
+                  key: 'entitlement',
+                  label: t('header.entitlement'),
+                  active: true,
+                },
+              ]
         }
-        metaClassName='router-page-header-meta-links'
         query={
           <div className='router-list-toolbar-query router-list-toolbar-query-compact'>
             <AppSelect
               className='router-search-form-xs'
-              options={PRODUCT_KIND_OPTIONS}
+              options={PRODUCT_KIND_OPTIONS.map((item) => ({
+                ...item,
+                text: t(item.textKey),
+              }))}
               value={kind}
               onChange={(_, { value }) => {
-                setKind((value || PRODUCT_KIND_ALL).toString());
-                setActivePage(1);
+                patchQuery({
+                  kind: (value || PRODUCT_KIND_ALL).toString(),
+                  page: 1,
+                });
               }}
             />
             <AppInput
               className='router-section-input router-search-form-sm'
-              placeholder='搜索名称、说明、分组'
+              placeholder={t('entitlement.placeholder.search')}
               value={searchKeyword}
               onChange={(_, { value }) => {
-                setSearchKeyword(value || '');
-                setActivePage(1);
+                patchQuery({ keyword: value || '', page: 1 });
               }}
             />
+            <AppButton
+              className='router-section-button'
+              disabled={kind === PRODUCT_KIND_ALL && searchKeyword === ''}
+              onClick={() =>
+                patchQuery({ kind: PRODUCT_KIND_ALL, keyword: '', page: 1 })
+              }
+            >
+              {t('common.clear_filters')}
+            </AppButton>
           </div>
         }
         actions={
@@ -921,33 +1017,51 @@ const Entitlement = () => {
         }
       />
 
-      <div className='router-table-scroll-x'>
-        <AppTable
-          className='router-hover-table router-list-table router-table-fit-page'
-          pagination={false}
-          scroll={{ x: PRODUCT_LIST_TABLE_MIN_WIDTH }}
-          rowKey='id'
-          dataSource={rows}
-          loading={loading}
-          locale={{
-            emptyText: loading ? t('common.loading') : t('common.no_data', '暂无数据'),
-          }}
-          onRow={(row) => ({
-            className: row?.id ? 'router-row-clickable' : '',
-            onClick: () => openDetail(row),
-          })}
-          columns={columns}
-        />
-      </div>
+      {embedded ? null : <EntitlementSectionTabs active='list' />}
 
-      {totalPages > 1 ? (
+      {loading && rows.length === 0 ? (
+        <AppSkeleton variant='cards' count={6} />
+      ) : loadError ? (
+        <AppErrorState
+          message={t('common.load_failed')}
+          onRetry={loadProducts}
+          retryText={t('common.retry')}
+        />
+      ) : rows.length === 0 ? (
+        <AppEmpty
+          action={
+            <AppButton
+              type='button'
+              color='blue'
+              onClick={openCreate}
+              disabled={submitting}
+            >
+              {t('common.add')}
+            </AppButton>
+          }
+        >
+          {t('entitlement.empty_cta')}
+        </AppEmpty>
+      ) : (
+        <div className='entitlement-card-grid'>
+          {rows.map((row) => renderProductCard(row))}
+        </div>
+      )}
+
+      {total > pageSize ? (
         <div className='router-pagination-wrap-md'>
           <AppPagination
             className='router-section-pagination'
             current={activePage}
-            totalPages={totalPages}
-            onPageChange={(_, { activePage: nextActivePage }) => {
-              setActivePage(Number(nextActivePage) || 1);
+            total={total}
+            pageSize={pageSize}
+            onPageChange={(_, { activePage: nextActivePage, pageSize: nextSize }) => {
+              const size = Number(nextSize) > 0 ? Number(nextSize) : pageSize;
+              if (size !== pageSize) {
+                patchQuery({ pageSize: size, page: 1 });
+                return;
+              }
+              patchQuery({ page: Number(nextActivePage) || 1 });
             }}
           />
         </div>
@@ -956,7 +1070,7 @@ const Entitlement = () => {
       <AppModal
         open={formOpen}
         size='large'
-        title='新增权益'
+        title={t('entitlement.add_title')}
         onClose={() => setFormOpen(false)}
         footer={null}
       >
@@ -966,12 +1080,12 @@ const Entitlement = () => {
       <AppModal
         open={Boolean(deleteRow)}
         size='tiny'
-        title='删除权益'
+        title={t('entitlement.delete_title')}
         onClose={() => setDeleteRow(null)}
         footer={null}
       >
         <div className='router-page-stack'>
-          <div>确认删除 {deleteRow?.name || '-'}？</div>
+          <div>{t('entitlement.confirm_delete', { name: deleteRow?.name || '-' })}</div>
           <AppFormActions>
             <AppButton
               type='button'

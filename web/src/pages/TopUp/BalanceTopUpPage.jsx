@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { showError } from '../../helpers';
 import {
   SupportedModelsSummary,
+  buildTopUpOrderReturnURL,
   buildTopUpReturnURL,
   useTopUpWorkspace,
 } from './shared.jsx';
 import { AppButton, AppSection } from '../../router-ui';
+import { formatPaymentAmount } from '../../helpers/render';
 
 const renderPlanAmount = (amount, currency) =>
-  `${Number(amount || 0).toFixed(2)} ${String(currency || 'CNY').toUpperCase()}`;
+  formatPaymentAmount(amount, currency);
 
 const renderPlanQuota = (amount, currency) =>
   `${Number(amount || 0).toFixed(2)} ${String(currency || 'USD').toUpperCase()}`;
@@ -28,7 +31,9 @@ const renderPlanValidity = (validityDays, t) => {
 
 const BalanceTopUpPage = () => {
   const { t } = useTranslation();
-  const { topupPlans, createTopupOrder } = useTopUpWorkspace();
+  const navigate = useNavigate();
+  const { topupPlans, createTopupOrder, userBalanceAmount, renderDisplayAmount } =
+    useTopUpWorkspace();
   const [creatingPlanID, setCreatingPlanID] = useState('');
 
   const handleSubmit = async (plan) => {
@@ -39,11 +44,16 @@ const BalanceTopUpPage = () => {
     }
     setCreatingPlanID(planID);
     try {
-      await createTopupOrder({
+      const created = await createTopupOrder({
         business_type: 'balance_topup',
         plan_id: planID,
         return_url: buildTopUpReturnURL(),
       });
+      // 需跳转支付的订单与即时到账(paid/fulfilled)的充值都落到承接页,
+      // 由承接页确认状态并给出「下一步」引导(创建令牌/看指南)。
+      if (created && typeof created === 'object' && created.id) {
+        navigate(buildTopUpOrderReturnURL(created.id));
+      }
     } finally {
       setCreatingPlanID('');
     }
@@ -61,6 +71,12 @@ const BalanceTopUpPage = () => {
       <div className='router-section-stack-spread'>
         <div className='router-pricing-section-hint router-pricing-section-hint-balance'>
           {t('topup.pricing.balance_hint')}
+        </div>
+        <div className='router-form-hint router-balance-topup-current-balance'>
+          {t('topup.external_topup.current_balance')}{' '}
+          <strong className='router-title-accent-primary'>
+            {renderDisplayAmount(userBalanceAmount)}
+          </strong>
         </div>
         <div className='router-grid-top-md router-balance-topup-panel'>
           <div className='router-balance-topup-grid'>

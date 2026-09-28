@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { API, showError, showInfo, showSuccess, timestamp2string } from '../helpers';
+import { API, showError, showInfo, showSuccess, timestamp2string, withCardLabels } from '../helpers';
+import { buildLogDrilldownPath } from './LogsTable.helpers';
+import useBatchRowActions from '../hooks/useBatchRowActions';
+import useUrlState from '../hooks/useUrlState';
 import {
   GROUP_LIST_COLUMN_WIDTHS,
   GROUP_LIST_TABLE_MIN_WIDTH,
@@ -10,16 +13,18 @@ import {
   AppAlert,
   AppButton,
   AppDetailSection,
+  AppEmpty,
+  AppErrorState,
   AppField,
   AppFilterHeader,
   AppFormActions,
   AppFormRow,
-  AppIcon,
   AppInput,
   AppInputNumber,
   AppModal,
   AppPopconfirm,
   AppSelect,
+  AppSpin,
   AppSwitch,
   AppTable,
   AppTableActionButton,
@@ -268,9 +273,16 @@ const GroupsManager = ({ detailGroupId = '' }) => {
   const [mode, setMode] = useState(MODE_LIST);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [statusMutatingGroupId, setStatusMutatingGroupId] = useState('');
-  const [searchKeyword, setSearchKeyword] = useState('');
+  const [batchRunning, setBatchRunning] = useState(false);
+  const batchActions = useBatchRowActions();
+  const { isSelecting: isBatchSelecting, selectedCount: batchSelectedCount } = batchActions;
+  const [{ status: statusFilter, keyword: searchKeyword }, patchQuery] = useUrlState({
+    status: { param: 'status', default: 'all' },
+    keyword: { param: 'q', default: '' },
+  });
 
   const [activeGroup, setActiveGroup] = useState(null);
   const [form, setForm] = useState(createEmptyForm());
@@ -375,10 +387,12 @@ const GroupsManager = ({ detailGroupId = '' }) => {
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const items = await fetchAllGroups();
       setRows(Array.isArray(items) ? items : []);
     } catch (error) {
+      setLoadError(true);
       showError(error);
     } finally {
       setLoading(false);
@@ -394,10 +408,16 @@ const GroupsManager = ({ detailGroupId = '' }) => {
 
   const visibleRows = useMemo(() => {
     const keyword = typeof searchKeyword === 'string' ? searchKeyword.trim().toLowerCase() : '';
-    if (!keyword) {
-      return rows;
+    let next = rows;
+    if (statusFilter === 'enabled') {
+      next = next.filter((row) => row?.enabled !== false);
+    } else if (statusFilter === 'disabled') {
+      next = next.filter((row) => row?.enabled === false);
     }
-    return rows.filter((row) => {
+    if (!keyword) {
+      return next;
+    }
+    return next.filter((row) => {
       const channelNames = Array.isArray(row.channels)
         ? row.channels.map((item) => formatChannelDisplayName(item)).join(' ')
         : '';
@@ -406,7 +426,7 @@ const GroupsManager = ({ detailGroupId = '' }) => {
         typeof item === 'string' ? item.toLowerCase().includes(keyword) : false
       );
     });
-  }, [rows, searchKeyword]);
+  }, [rows, searchKeyword, statusFilter]);
 
   useEffect(() => {
     if (mode !== MODE_EDIT) {
@@ -609,11 +629,7 @@ const GroupsManager = ({ detailGroupId = '' }) => {
   const backToList = () => {
     if (submitting) return;
     if (isDetailRoute) {
-      if (returnPath !== '') {
-        navigate(-1);
-        return;
-      }
-      navigate('/admin/group');
+      navigate(returnPath || '/admin/group');
       return;
     }
     resetToList();
@@ -814,6 +830,84 @@ const GroupsManager = ({ detailGroupId = '' }) => {
       setSubmitting(false);
     }
   };
+
+  // Batch enable/disable by looping the existing per-row PUT (the group update
+  // endpoint takes the whole object, so we reuse each row's current fields).
+  // No backend batch endpoint exists; we serialize N PUTs and surface a single
+  // aggregated result toast instead of the first error only.
+  const runBatchToggle = useCallback(
+    async (action) => {
+      if (batchRunning || submitting) {
+        return;
+      }
+      if (action !== 'enable' && action !== 'disable') {
+        return;
+      }
+      const nextEnabled = action === 'enable';
+      const keys = batchActions.selectedRowKeys;
+      if (keys.length === 0) {
+        showInfo(t('group_manage.batch.select_required'));
+        return;
+      }
+      const keySet = new Set(keys);
+      const targets = rows.filter((row) =>
+        keySet.has((row?.id || '').toString().trim()),
+      );
+      setBatchRunning(true);
+      let successCount = 0;
+      const failures = [];
+      for (const row of targets) {
+        try {
+          const res = await API.put('/api/v1/admin/group/', {
+            id: row.id,
+            name: row.name || '',
+            description: row.description || '',
+            billing_ratio: Number(row.billing_ratio ?? 1),
+            sort_order: Number(row.sort_order || 0),
+            enabled: nextEnabled,
+          });
+          if (res?.data?.success) {
+            successCount += 1;
+          } else {
+            failures.push(row.id);
+          }
+        } catch (error) {
+          failures.push(row.id);
+        }
+      }
+      setBatchRunning(false);
+      const failedCount = failures.length;
+      if (failedCount === 0) {
+        showSuccess(
+          t(
+            action === 'enable'
+              ? 'group_manage.batch.enable_all_success'
+              : 'group_manage.batch.disable_all_success',
+            { count: successCount },
+          ),
+        );
+      } else if (successCount === 0) {
+        showError(
+          t(
+            action === 'enable'
+              ? 'group_manage.batch.enable_all_failed'
+              : 'group_manage.batch.disable_all_failed',
+            { count: failedCount },
+          ),
+        );
+      } else {
+        showError(
+          t('group_manage.batch.partial', {
+            success: successCount,
+            failed: failedCount,
+          }),
+        );
+      }
+      batchActions.exit();
+      await loadCatalog();
+    },
+    [batchActions, batchRunning, loadCatalog, rows, submitting, t],
+  );
 
   const startDetailBasicEdit = useCallback(() => {
     if (!activeGroup || submitting || detailBasicEditLocked) {
@@ -1231,7 +1325,6 @@ const GroupsManager = ({ detailGroupId = '' }) => {
       <AppFilterHeader
         breadcrumbs={[
           { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'resource', label: t('header.model') },
           { key: 'group', label: t('header.group'), active: true },
         ]}
         title={t('header.group')}
@@ -1241,15 +1334,77 @@ const GroupsManager = ({ detailGroupId = '' }) => {
               type='button'
               className='router-page-button'
               color='blue'
-              disabled={submitting}
+              disabled={submitting || isBatchSelecting}
               onClick={openCreatePanel}
             >
               {t('group_manage.buttons.add')}
             </AppButton>
+            {isBatchSelecting ? (
+              <>
+                <AppPopconfirm
+                  title={t('group_manage.batch.confirm_enable', {
+                    count: batchSelectedCount,
+                  })}
+                  okText={t('group_manage.buttons.confirm')}
+                  cancelText={t('group_manage.buttons.cancel')}
+                  disabled={batchSelectedCount === 0 || batchRunning}
+                  onConfirm={() => runBatchToggle('enable')}
+                >
+                  <AppButton
+                    type='button'
+                    className='router-page-button'
+                    disabled={batchSelectedCount === 0 || batchRunning}
+                    loading={batchRunning}
+                  >
+                    {t('group_manage.batch.enable_selected', {
+                      count: batchSelectedCount,
+                    })}
+                  </AppButton>
+                </AppPopconfirm>
+                <AppPopconfirm
+                  title={t('group_manage.batch.confirm_disable', {
+                    count: batchSelectedCount,
+                  })}
+                  okText={t('group_manage.buttons.confirm')}
+                  cancelText={t('group_manage.buttons.cancel')}
+                  disabled={batchSelectedCount === 0 || batchRunning}
+                  onConfirm={() => runBatchToggle('disable')}
+                >
+                  <AppButton
+                    type='button'
+                    className='router-page-button'
+                    color='red'
+                    disabled={batchSelectedCount === 0 || batchRunning}
+                    loading={batchRunning}
+                  >
+                    {t('group_manage.batch.disable_selected', {
+                      count: batchSelectedCount,
+                    })}
+                  </AppButton>
+                </AppPopconfirm>
+                <AppButton
+                  type='button'
+                  className='router-page-button'
+                  disabled={batchRunning}
+                  onClick={batchActions.exit}
+                >
+                  {t('group_manage.batch.cancel_selection')}
+                </AppButton>
+              </>
+            ) : (
+              <AppButton
+                type='button'
+                className='router-page-button'
+                disabled={submitting || loading}
+                onClick={batchActions.enter}
+              >
+                {t('group_manage.batch.enter_selection')}
+              </AppButton>
+            )}
             <AppButton
               type='button'
               className='router-page-button'
-              disabled={submitting}
+              disabled={submitting || batchRunning}
               loading={loading}
               onClick={loadCatalog}
             >
@@ -1258,29 +1413,75 @@ const GroupsManager = ({ detailGroupId = '' }) => {
           </div>
         }
         query={
-          <AppInput
-            className='router-section-input router-search-form-sm'
-            placeholder={t('group_manage.search')}
-            value={searchKeyword}
-            onChange={(e, { value }) => setSearchKeyword(value || '')}
-          />
+          <div className='router-list-toolbar-query'>
+            <AppSelect
+              className='router-section-select'
+              value={statusFilter}
+              onChange={(_, { value }) => patchQuery({ status: value })}
+              options={[
+                { value: 'all', label: t('group_manage.filter.status_all') },
+                { value: 'enabled', label: t('group_manage.status.enabled') },
+                { value: 'disabled', label: t('group_manage.status.disabled') },
+              ]}
+            />
+            <AppInput
+              className='router-section-input router-search-form-sm'
+              placeholder={t('group_manage.search')}
+              value={searchKeyword}
+              onChange={(e, { value }) => patchQuery({ keyword: value || '' })}
+            />
+            <AppButton
+              className='router-section-button'
+              disabled={statusFilter === 'all' && searchKeyword === ''}
+              onClick={() => patchQuery({ status: 'all', keyword: '' })}
+            >
+              {t('common.clear_filters')}
+            </AppButton>
+          </div>
         }
       />
 
       <div className='router-table-scroll-x'>
-        <AppTable
-          className='router-hover-table router-list-table router-table-fit-page'
-          rowKey='id'
-          pagination={false}
-          loading={loading}
-          scroll={{ x: GROUP_LIST_TABLE_MIN_WIDTH }}
-          locale={{ emptyText: t('group_manage.messages.empty') }}
-          dataSource={visibleRows}
+        <AppSpin spinning={loading}>
+          <AppTable
+            className='router-hover-table router-list-table router-table-fit-page router-table-cardify'
+            rowKey='id'
+            pagination={false}
+            scroll={{ x: GROUP_LIST_TABLE_MIN_WIDTH }}
+            locale={{
+              emptyText: loading ? (
+                t('common.loading')
+              ) : loadError ? (
+                <AppErrorState
+                  message={t('common.load_failed')}
+                  onRetry={loadCatalog}
+                  retryText={t('common.retry')}
+                />
+              ) : (
+                <AppEmpty>{t('common.no_data')}</AppEmpty>
+              ),
+            }}
+            dataSource={visibleRows}
+          rowSelection={
+            isBatchSelecting
+              ? {
+                  ...batchActions.tableSelection,
+                  renderCell: (_, __, ___, originNode) => (
+                    <span onClick={(event) => event.stopPropagation()}>
+                      {originNode}
+                    </span>
+                  ),
+                }
+              : undefined
+          }
           onRow={(row) => ({
-            onClick: () => openViewPanel(row),
-            className: submitting || loading ? undefined : 'router-row-clickable',
+            onClick: isBatchSelecting ? undefined : () => openViewPanel(row),
+            className:
+              isBatchSelecting || submitting || loading
+                ? undefined
+                : 'router-row-clickable',
           })}
-          columns={[
+          columns={withCardLabels([
           {
             title: t('group_manage.table.id'),
             dataIndex: 'name',
@@ -1335,9 +1536,19 @@ const GroupsManager = ({ detailGroupId = '' }) => {
             title: t('group_manage.table.actions'),
             key: 'actions',
             className: 'router-table-col-actions-icon',
-            width: 72,
+            width: 104,
             render: (_, row) => (
               <div className='router-action-group-tight router-table-actions-icon-compact'>
+                <AppTableActionButton
+                  icon='book'
+                  title={t('log.drilldown.view')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(
+                      buildLogDrilldownPath('admin', { group_id: row.id }),
+                    );
+                  }}
+                />
                 <AppTableActionButton
                   icon='trash'
                   title={t('group_manage.buttons.delete')}
@@ -1351,8 +1562,9 @@ const GroupsManager = ({ detailGroupId = '' }) => {
               </div>
             ),
           },
-          ]}
+          ])}
         />
+        </AppSpin>
       </div>
     </>
   );
@@ -1537,13 +1749,21 @@ const GroupsManager = ({ detailGroupId = '' }) => {
                       title={t('group_manage.buttons.view_channel')}
                       onClick={() => openChannelDetailFromCurrentPage(channelID)}
                     />
-                    <AppTableActionButton
-                      icon='trash'
-                      title={t('group_manage.buttons.remove_channel')}
-                      color='red'
+                    <AppPopconfirm
+                      title={t('group_manage.buttons.confirm_remove_channel')}
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => removeDetailChannel(item)}
                       disabled={submitting || detailChannelsEditLocked || detailChannelModalOpen}
-                      onClick={() => removeDetailChannel(item)}
-                    />
+                    >
+                      <span>
+                        <AppTableActionButton
+                          icon='trash'
+                          title={t('group_manage.buttons.remove_channel')}
+                          color='red'
+                          disabled={submitting || detailChannelsEditLocked || detailChannelModalOpen}
+                        />
+                      </span>
+                    </AppPopconfirm>
                   </div>
                 );
               },
@@ -2276,7 +2496,6 @@ const GroupsManager = ({ detailGroupId = '' }) => {
       <AppFilterHeader
         breadcrumbs={[
           { key: 'admin', label: t('header.admin_workspace') },
-          { key: 'resource', label: t('header.model') },
           {
             key: 'group-list',
             label: t('header.group'),
@@ -2358,7 +2577,7 @@ const GroupsManager = ({ detailGroupId = '' }) => {
             }
           >
               <AppFormRow>
-                <AppField label='分组ID' readOnly>
+                <AppField label={t('group_manage.table.id')} readOnly>
                   <AppInput
                     className='router-section-input'
                     value={activeGroup.id || '-'}
