@@ -53,16 +53,16 @@ func ensureChannelListIndexesWithDB(db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("database handle is nil")
 	}
-	if !db.Migrator().HasTable(&Channel{}) {
-		if err := db.AutoMigrate(&Channel{}); err != nil {
+	if !db.Migrator().HasTable(&PlatformChannel{}) {
+		if err := db.AutoMigrate(&PlatformChannel{}); err != nil {
 			return err
 		}
 	}
 	statements := []string{
-		`CREATE INDEX IF NOT EXISTS idx_channels_status
-		 ON channels (status)`,
-		`CREATE INDEX IF NOT EXISTS idx_channels_created_time
-		 ON channels (created_time)`,
+		`CREATE INDEX IF NOT EXISTS idx_platform_channels_status
+		 ON platform_channels (status)`,
+		`CREATE INDEX IF NOT EXISTS idx_platform_channels_created_time
+		 ON platform_channels (created_time)`,
 	}
 	for _, statement := range statements {
 		if err := db.Exec(statement).Error; err != nil {

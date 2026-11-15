@@ -15,7 +15,7 @@ func cleanupDanglingGroupModelChannelsWithDB(db *gorm.DB) (int64, error) {
 		return 0, fmt.Errorf("database handle is nil")
 	}
 
-	channelIDSubQuery := db.Model(&Channel{}).Select("id")
+	channelIDSubQuery := db.Model(&PlatformChannel{}).Select("id")
 	result := db.
 		Where("channel_id <> ''").
 		Where("channel_id NOT IN (?)", channelIDSubQuery).

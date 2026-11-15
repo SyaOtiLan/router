@@ -258,7 +258,7 @@ func missingRequiredBillingCredentialField(fields []billingServiceCredentialFiel
 	return ""
 }
 
-func buildBillingServiceQuery(ctx context.Context, channel *model.Channel, profile model.ChannelBillingProfile) (billingServiceQueryRequest, error) {
+func buildBillingServiceQuery(ctx context.Context, channel *model.PlatformChannel, profile model.ChannelBillingProfile) (billingServiceQueryRequest, error) {
 	if channel == nil {
 		return billingServiceQueryRequest{}, fmt.Errorf("渠道不存在")
 	}
@@ -285,7 +285,7 @@ func buildBillingServiceQuery(ctx context.Context, channel *model.Channel, profi
 	return request, nil
 }
 
-func collectBillingServiceSnapshot(channel *model.Channel, profile model.ChannelBillingProfile, messageText string) (collectedChannelBillingSnapshot, error) {
+func collectBillingServiceSnapshot(channel *model.PlatformChannel, profile model.ChannelBillingProfile, messageText string) (collectedChannelBillingSnapshot, error) {
 	request, err := buildBillingServiceQuery(context.Background(), channel, profile)
 	if err != nil {
 		return collectedChannelBillingSnapshot{}, err
@@ -338,7 +338,7 @@ func collectBillingServiceSnapshot(channel *model.Channel, profile model.Channel
 	return convertBillingServiceSnapshot(channel, profile, decoded.Data, messageText), nil
 }
 
-func convertBillingServiceSnapshot(channel *model.Channel, profile model.ChannelBillingProfile, snapshot billingServiceSnapshot, messageText string) collectedChannelBillingSnapshot {
+func convertBillingServiceSnapshot(channel *model.PlatformChannel, profile model.ChannelBillingProfile, snapshot billingServiceSnapshot, messageText string) collectedChannelBillingSnapshot {
 	items := make([]model.ChannelBillingSnapshotItem, 0, len(snapshot.Items))
 	for index, item := range snapshot.Items {
 		items = append(items, model.ChannelBillingSnapshotItem{
@@ -493,11 +493,11 @@ type billingServiceCostQuote struct {
 }
 
 type billingServiceCostQuotes struct {
-	ChannelID string                 `json:"channel_id,omitempty"`
-	Adapter   string                 `json:"adapter"`
+	ChannelID string                    `json:"channel_id,omitempty"`
+	Adapter   string                    `json:"adapter"`
 	Quotes    []billingServiceCostQuote `json:"quotes"`
-	FetchedAt time.Time              `json:"fetched_at"`
-	Metadata  map[string]any         `json:"metadata,omitempty"`
+	FetchedAt time.Time                 `json:"fetched_at"`
+	Metadata  map[string]any            `json:"metadata,omitempty"`
 }
 
 type billingServiceCostRequest struct {
@@ -524,14 +524,15 @@ func billingServiceSupportsCost(ctx context.Context, adapter string) bool {
 	if err != nil || !found {
 		return false
 	}
-	for _, capability := range info.Capabilities {		if strings.EqualFold(strings.TrimSpace(capability), billingServiceCapabilityCostQuote) {
+	for _, capability := range info.Capabilities {
+		if strings.EqualFold(strings.TrimSpace(capability), billingServiceCapabilityCostQuote) {
 			return true
 		}
 	}
 	return false
 }
 
-func collectBillingServiceCostQuotes(ctx context.Context, channel *model.Channel, profile model.ChannelBillingProfile, models []string) (billingServiceCostQuotes, error) {
+func collectBillingServiceCostQuotes(ctx context.Context, channel *model.PlatformChannel, profile model.ChannelBillingProfile, models []string) (billingServiceCostQuotes, error) {
 	empty := billingServiceCostQuotes{}
 	if !billingServiceConfigured() {
 		return empty, fmt.Errorf("Billing 服务未配置")

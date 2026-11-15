@@ -36,7 +36,7 @@ func hydrateLogsWithChannelNames(logs []*model.Log) error {
 		channelIDs = append(channelIDs, channelID)
 	}
 	if len(channelIDs) > 0 {
-		var channels []*model.Channel
+		var channels []*model.PlatformChannel
 		if err := model.DB.Select("id", "name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 			return err
 		}
@@ -52,8 +52,8 @@ func hydrateLogsWithChannelNames(logs []*model.Log) error {
 				continue
 			}
 			log.ChannelName = channelNameByID[log.ChannelId]
-			if strings.TrimSpace(log.ChannelName) == "" && strings.TrimSpace(log.PersonalProviderName) != "" {
-				log.ChannelName = strings.TrimSpace(log.PersonalProviderName)
+			if strings.TrimSpace(log.ChannelName) == "" && strings.TrimSpace(log.PersonalChannelName) != "" {
+				log.ChannelName = strings.TrimSpace(log.PersonalChannelName)
 			}
 		}
 	}

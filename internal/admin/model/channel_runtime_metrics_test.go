@@ -24,8 +24,8 @@ func TestLoadChannelRuntimeMetricsUsesRealTrafficAndIsolatesPersonalOwner(t *tes
 		{Id: "managed-success", UserId: "user-a", CreatedAt: 110, Type: LogTypeConsume, ChannelId: "managed-1", ElapsedTime: 100, PromptTokens: 10, CompletionTokens: 5, Quota: 20},
 		{Id: "managed-failure", UserId: "user-a", CreatedAt: 120, Type: LogTypeRelayFailure, ChannelId: "managed-1", ElapsedTime: 300},
 		{Id: "managed-abort", UserId: "user-a", CreatedAt: 130, Type: LogTypeRelayFailure, ChannelId: "managed-1", ElapsedTime: 900, RelayErrorType: "client_abort"},
-		{Id: "personal-owner", UserId: "user-a", CreatedAt: 140, Type: LogTypeConsume, ChannelId: "personal:personal-1", PersonalProviderId: "personal-1", ElapsedTime: 80},
-		{Id: "personal-other-user", UserId: "user-b", CreatedAt: 150, Type: LogTypeConsume, ChannelId: "personal:personal-1", PersonalProviderId: "personal-1", ElapsedTime: 40},
+		{Id: "personal-owner", UserId: "user-a", CreatedAt: 140, Type: LogTypeConsume, ChannelId: "personal:personal-1", PersonalChannelID: "personal-1", ElapsedTime: 80},
+		{Id: "personal-other-user", UserId: "user-b", CreatedAt: 150, Type: LogTypeConsume, ChannelId: "personal:personal-1", PersonalChannelID: "personal-1", ElapsedTime: 40},
 	}
 	if err := db.Create(&rows).Error; err != nil {
 		t.Fatalf("seed logs: %v", err)
@@ -33,7 +33,7 @@ func TestLoadChannelRuntimeMetricsUsesRealTrafficAndIsolatesPersonalOwner(t *tes
 
 	metrics, err := LoadChannelRuntimeMetrics(ChannelRuntimeMetricQuery{
 		Window:     ChannelMetricWindow{Period: ChannelMetricPeriodLastHour, StartAt: 100, EndAt: 200, IntervalSeconds: 50},
-		ChannelIDs: []string{"managed-1"}, PersonalProviderIDs: []string{"personal-1"}, UserID: "user-a",
+		ChannelIDs: []string{"managed-1"}, PersonalChannelIDs: []string{"personal-1"}, UserID: "user-a",
 	})
 	if err != nil {
 		t.Fatalf("LoadChannelRuntimeMetrics: %v", err)
@@ -51,7 +51,7 @@ func TestLoadChannelRuntimeMetricsUsesRealTrafficAndIsolatesPersonalOwner(t *tes
 	if managed.PromptTokens != 10 || managed.OutputTokens != 5 || managed.TotalTokens != 15 || managed.SpendQuota != 20 {
 		t.Fatalf("managed token/quota metrics = %#v", managed)
 	}
-	personal := metrics[PersonalProviderChannelPrefix+"personal-1"]
+	personal := metrics[PersonalChannelIDPrefix+"personal-1"]
 	if personal.SuccessCount != 1 || personal.RequestCount != 1 || personal.AvgLatencyMs != 80 {
 		t.Fatalf("personal metrics = %#v, want only user-a traffic", personal)
 	}

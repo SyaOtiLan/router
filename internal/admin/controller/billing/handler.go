@@ -143,7 +143,7 @@ func loadProcurementReportChannelNames(channelIDs []string) map[string]string {
 	if len(normalizedIDs) == 0 {
 		return result
 	}
-	rows := make([]model.Channel, 0, len(normalizedIDs))
+	rows := make([]model.PlatformChannel, 0, len(normalizedIDs))
 	if err := model.DB.Select("id", "name").Where("id IN ?", normalizedIDs).Find(&rows).Error; err != nil {
 		return result
 	}

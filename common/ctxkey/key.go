@@ -41,8 +41,8 @@ const (
 	RelayModelUnavailable       = "relay_model_unavailable"
 	RelayTermination            = "relay_termination"
 	ProviderRoutingPolicy       = "provider_routing_policy"
-	PersonalProviderID          = "personal_provider_id"
-	PersonalProviderName        = "personal_provider_name"
+	PersonalChannelID           = "personal_provider_id"
+	PersonalChannelName         = "personal_provider_name"
 	PersonalRoutePolicy         = "personal_route_policy"
 	CommunityOfferID            = "community_offer_id"
 )

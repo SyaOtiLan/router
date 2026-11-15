@@ -14,7 +14,7 @@ func newFreeProcurementTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -25,7 +25,7 @@ func newFreeProcurementTestDB(t *testing.T) *gorm.DB {
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{

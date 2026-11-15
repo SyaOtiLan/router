@@ -92,7 +92,7 @@ func CreateService(c *gin.Context) {
 
 func CreateServiceFromPersonalConnection(c *gin.Context) {
 	userID := c.GetString(ctxkey.Id)
-	connection, err := model.GetPersonalProviderConnection(userID, c.Param("connection_id"))
+	connection, err := model.GetPersonalChannel(userID, c.Param("connection_id"))
 	if err != nil {
 		respondError(c, err)
 		return

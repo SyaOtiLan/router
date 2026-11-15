@@ -545,7 +545,7 @@ func hydrateAsyncTaskChannelNames(db *gorm.DB, rows []*AsyncTask) error {
 	if len(channelIDs) == 0 {
 		return nil
 	}
-	channels := make([]Channel, 0, len(channelIDs))
+	channels := make([]PlatformChannel, 0, len(channelIDs))
 	if err := db.Select("id", "name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 		return err
 	}

@@ -28,14 +28,14 @@ func TestHydrateChannelsWithModelCapabilitiesWithDB(t *testing.T) {
 		t.Fatalf("seed channel models: %v", err)
 	}
 
-	channelOne := &Channel{Id: "channel-1"}
-	channelTwo := &Channel{Id: "channel-2"}
-	channelMissing := &Channel{Id: "channel-missing"}
-	if err := HydrateChannelsWithModelCapabilitiesWithDB(db, []*Channel{channelOne, channelTwo, channelMissing}); err != nil {
+	channelOne := &PlatformChannel{Id: "channel-1"}
+	channelTwo := &PlatformChannel{Id: "channel-2"}
+	channelMissing := &PlatformChannel{Id: "channel-missing"}
+	if err := HydrateChannelsWithModelCapabilitiesWithDB(db, []*PlatformChannel{channelOne, channelTwo, channelMissing}); err != nil {
 		t.Fatalf("HydrateChannelsWithModelCapabilitiesWithDB returned error: %v", err)
 	}
 
-	selectedTypes := func(channel *Channel) map[string]bool {
+	selectedTypes := func(channel *PlatformChannel) map[string]bool {
 		types := map[string]bool{}
 		for _, row := range channel.GetChannelModels() {
 			if row.Selected {

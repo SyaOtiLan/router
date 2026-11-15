@@ -143,7 +143,7 @@ func GetChannelBillingAdapters(c *gin.Context) {
 	})
 }
 
-func buildChannelBillingSummary(channelRow *model.Channel, profile model.ChannelBillingProfile, snapshot model.ChannelBillingSnapshot) channelBillingSummaryData {
+func buildChannelBillingSummary(channelRow *model.PlatformChannel, profile model.ChannelBillingProfile, snapshot model.ChannelBillingSnapshot) channelBillingSummaryData {
 	capabilities := profile.ParseActionCapabilities()
 	summary := channelBillingSummaryData{
 		ChannelID:             strings.TrimSpace(channelRow.Id),
@@ -158,7 +158,7 @@ func buildChannelBillingSummary(channelRow *model.Channel, profile model.Channel
 	return summary
 }
 
-func buildChannelBillingProfileData(channelRow *model.Channel, profile model.ChannelBillingProfile) channelBillingProfileData {
+func buildChannelBillingProfileData(channelRow *model.PlatformChannel, profile model.ChannelBillingProfile) channelBillingProfileData {
 	fetchConfig := profile.ParseBillingConfig()
 	return channelBillingProfileData{
 		ChannelID:          strings.TrimSpace(channelRow.Id),
@@ -280,7 +280,7 @@ func attachManualPurchaseCostToSnapshotBatches(tx *gorm.DB, snapshotID string, p
 	return nil
 }
 
-func getEffectiveChannelBillingProfile(channelID string) (*model.Channel, model.ChannelBillingProfile, error) {
+func getEffectiveChannelBillingProfile(channelID string) (*model.PlatformChannel, model.ChannelBillingProfile, error) {
 	channelRow, err := channelsvc.GetByID(channelID)
 	if err != nil {
 		return nil, model.ChannelBillingProfile{}, err
@@ -738,7 +738,7 @@ func GetRecentChannelBillingAlerts(c *gin.Context) {
 	}
 	channelNameByID := make(map[string]string, len(channelIDs))
 	if len(channelIDs) > 0 {
-		channels := make([]model.Channel, 0, len(channelIDs))
+		channels := make([]model.PlatformChannel, 0, len(channelIDs))
 		if err := model.DB.Select("id", "name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 			logChannelAdminWarn(c, "list_recent_billing_alerts", stringField("reason", err.Error()))
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})

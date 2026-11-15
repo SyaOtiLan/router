@@ -110,7 +110,7 @@ func TestCollectProviderModelUsageIncludesChannelNames(t *testing.T) {
 		t.Fatalf("open sqlite database: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Channel{},
+		&model.PlatformChannel{},
 		&model.ChannelModel{},
 		&model.GroupModel{},
 		&model.GroupModelChannel{},
@@ -119,7 +119,7 @@ func TestCollectProviderModelUsageIncludesChannelNames(t *testing.T) {
 	}
 
 	const channelID = "f4dd52e7117948d58bfd5cdee400e571"
-	if err := db.Create(&model.Channel{
+	if err := db.Create(&model.PlatformChannel{
 		Id:       channelID,
 		Name:     "primary-openai",
 		Protocol: "openai",
@@ -155,7 +155,7 @@ func TestCollectProviderModelUsageIgnoresUnpublishedChannelModels(t *testing.T) 
 		t.Fatalf("open sqlite database: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Channel{},
+		&model.PlatformChannel{},
 		&model.ChannelModel{},
 		&model.GroupModel{},
 		&model.GroupModelChannel{},
@@ -164,7 +164,7 @@ func TestCollectProviderModelUsageIgnoresUnpublishedChannelModels(t *testing.T) 
 	}
 
 	const channelID = "f4dd52e7117948d58bfd5cdee400e571"
-	if err := db.Create(&model.Channel{
+	if err := db.Create(&model.PlatformChannel{
 		Id:       channelID,
 		Name:     "qingyuntop-2",
 		Protocol: "openai",

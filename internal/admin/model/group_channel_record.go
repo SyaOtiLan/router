@@ -427,8 +427,8 @@ func backfillGroupChannelRowsFromGroupModelRouteDB(db *gorm.DB, groupID string, 
 	return db.Create(&rows).Error
 }
 
-func loadChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string]*Channel, error) {
-	result := make(map[string]*Channel)
+func loadChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string]*PlatformChannel, error) {
+	result := make(map[string]*PlatformChannel)
 	if db == nil {
 		return nil, fmt.Errorf("database handle is nil")
 	}
@@ -436,7 +436,7 @@ func loadChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string]*Chann
 	if len(normalizedChannelIDs) == 0 {
 		return result, nil
 	}
-	rows := make([]Channel, 0, len(normalizedChannelIDs))
+	rows := make([]PlatformChannel, 0, len(normalizedChannelIDs))
 	if err := db.Where("id IN ?", normalizedChannelIDs).Find(&rows).Error; err != nil {
 		return nil, err
 	}

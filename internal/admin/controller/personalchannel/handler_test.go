@@ -1,4 +1,4 @@
-package personalprovider
+package personalchannel
 
 import (
 	"bytes"
@@ -16,13 +16,13 @@ import (
 	"gorm.io/gorm"
 )
 
-func newPersonalProviderControllerTestDB(t *testing.T) *gorm.DB {
+func newPersonalChannelControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=private"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.PersonalProviderConnection{}, &model.PersonalModelRoute{}, &model.Log{}); err != nil {
+	if err := db.AutoMigrate(&model.PersonalChannel{}, &model.PersonalChannelModelRoute{}, &model.Log{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	previousDB := model.DB
@@ -42,7 +42,7 @@ func newPersonalProviderControllerTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func newPersonalProviderContext(t *testing.T, method string, path string, userID string, body any) (*gin.Context, *httptest.ResponseRecorder) {
+func newPersonalChannelContext(t *testing.T, method string, path string, userID string, body any) (*gin.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -63,7 +63,7 @@ func newPersonalProviderContext(t *testing.T, method string, path string, userID
 	return c, recorder
 }
 
-func decodePersonalProviderResponse(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {
+func decodePersonalChannelResponse(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {
 	t.Helper()
 	payload := map[string]any{}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
@@ -80,17 +80,17 @@ func connectionPayload(name string, key string) map[string]any {
 		"api_key":  key,
 		"models":   []string{"gpt-5.1"},
 		"priority": 10,
-		"status":   model.PersonalProviderStatusEnabled,
+		"status":   model.PersonalChannelStatusEnabled,
 	}
 }
 
 func TestCreateConnectionNeverReturnsCredential(t *testing.T) {
-	db := newPersonalProviderControllerTestDB(t)
-	c, recorder := newPersonalProviderContext(t, http.MethodPost, "/connections", "user-a", connectionPayload("personal OpenAI", "sk-super-secret"))
+	db := newPersonalChannelControllerTestDB(t)
+	c, recorder := newPersonalChannelContext(t, http.MethodPost, "/connections", "user-a", connectionPayload("personal OpenAI", "sk-super-secret"))
 
 	CreateConnection(c)
 
-	payload := decodePersonalProviderResponse(t, recorder)
+	payload := decodePersonalChannelResponse(t, recorder)
 	if success, _ := payload["success"].(bool); !success {
 		t.Fatalf("create response = %#v", payload)
 	}
@@ -101,7 +101,7 @@ func TestCreateConnectionNeverReturnsCredential(t *testing.T) {
 	if !ok || data["credential_configured"] != true {
 		t.Fatalf("connection output = %#v", payload["data"])
 	}
-	var row model.PersonalProviderConnection
+	var row model.PersonalChannel
 	if err := db.Where("user_id = ?", "user-a").First(&row).Error; err != nil {
 		t.Fatalf("load stored connection: %v", err)
 	}
@@ -111,29 +111,29 @@ func TestCreateConnectionNeverReturnsCredential(t *testing.T) {
 }
 
 func TestUpdateConnectionWithoutAPIKeyKeepsCredential(t *testing.T) {
-	db := newPersonalProviderControllerTestDB(t)
-	row := &model.PersonalProviderConnection{
+	db := newPersonalChannelControllerTestDB(t)
+	row := &model.PersonalChannel{
 		UserId: "user-a", Name: "old name", Protocol: "openai", BaseURL: "",
 		Models: []string{"gpt-5.1"}, Priority: 1,
 	}
-	if err := model.CreatePersonalProviderConnection(row, "sk-original"); err != nil {
+	if err := model.CreatePersonalChannel(row, "sk-original"); err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
-	var before model.PersonalProviderConnection
+	var before model.PersonalChannel
 	if err := db.First(&before, "id = ?", row.Id).Error; err != nil {
 		t.Fatalf("load before update: %v", err)
 	}
 	payload := connectionPayload("new name", "")
-	c, recorder := newPersonalProviderContext(t, http.MethodPut, "/connections/"+row.Id, "user-a", payload)
+	c, recorder := newPersonalChannelContext(t, http.MethodPut, "/connections/"+row.Id, "user-a", payload)
 	c.Params = gin.Params{{Key: "id", Value: row.Id}}
 
 	UpdateConnection(c)
 
-	response := decodePersonalProviderResponse(t, recorder)
+	response := decodePersonalChannelResponse(t, recorder)
 	if success, _ := response["success"].(bool); !success {
 		t.Fatalf("update response = %#v", response)
 	}
-	var after model.PersonalProviderConnection
+	var after model.PersonalChannel
 	if err := db.First(&after, "id = ?", row.Id).Error; err != nil {
 		t.Fatalf("load after update: %v", err)
 	}
@@ -143,32 +143,32 @@ func TestUpdateConnectionWithoutAPIKeyKeepsCredential(t *testing.T) {
 }
 
 func TestOtherUserCannotReadOrDeleteConnection(t *testing.T) {
-	db := newPersonalProviderControllerTestDB(t)
-	row := &model.PersonalProviderConnection{
+	db := newPersonalChannelControllerTestDB(t)
+	row := &model.PersonalChannel{
 		UserId: "user-a", Name: "private connection", Protocol: "openai", BaseURL: "",
 		Models: []string{"gpt-5.1"}, Priority: 1,
 	}
-	if err := model.CreatePersonalProviderConnection(row, "sk-owner-only"); err != nil {
+	if err := model.CreatePersonalChannel(row, "sk-owner-only"); err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
 
-	getContext, getRecorder := newPersonalProviderContext(t, http.MethodGet, "/connections/"+row.Id, "user-b", nil)
+	getContext, getRecorder := newPersonalChannelContext(t, http.MethodGet, "/connections/"+row.Id, "user-b", nil)
 	getContext.Params = gin.Params{{Key: "id", Value: row.Id}}
 	GetConnection(getContext)
-	getPayload := decodePersonalProviderResponse(t, getRecorder)
+	getPayload := decodePersonalChannelResponse(t, getRecorder)
 	if success, _ := getPayload["success"].(bool); success || getPayload["code"] != "personal_provider_not_found" {
 		t.Fatalf("cross-user get response = %#v", getPayload)
 	}
 
-	deleteContext, deleteRecorder := newPersonalProviderContext(t, http.MethodDelete, "/connections/"+row.Id, "user-b", nil)
+	deleteContext, deleteRecorder := newPersonalChannelContext(t, http.MethodDelete, "/connections/"+row.Id, "user-b", nil)
 	deleteContext.Params = gin.Params{{Key: "id", Value: row.Id}}
 	DeleteConnection(deleteContext)
-	deletePayload := decodePersonalProviderResponse(t, deleteRecorder)
+	deletePayload := decodePersonalChannelResponse(t, deleteRecorder)
 	if success, _ := deletePayload["success"].(bool); success || deletePayload["code"] != "personal_provider_not_found" {
 		t.Fatalf("cross-user delete response = %#v", deletePayload)
 	}
 	var count int64
-	if err := db.Model(&model.PersonalProviderConnection{}).Where("id = ?", row.Id).Count(&count).Error; err != nil {
+	if err := db.Model(&model.PersonalChannel{}).Where("id = ?", row.Id).Count(&count).Error; err != nil {
 		t.Fatalf("count connection: %v", err)
 	}
 	if count != 1 {
@@ -177,21 +177,21 @@ func TestOtherUserCannotReadOrDeleteConnection(t *testing.T) {
 }
 
 func TestCreateConnectionRejectsUnsupportedProtocol(t *testing.T) {
-	newPersonalProviderControllerTestDB(t)
+	newPersonalChannelControllerTestDB(t)
 	payload := connectionPayload("unsupported", "sk-secret")
 	payload["protocol"] = "unsupported"
-	c, recorder := newPersonalProviderContext(t, http.MethodPost, "/connections", "user-a", payload)
+	c, recorder := newPersonalChannelContext(t, http.MethodPost, "/connections", "user-a", payload)
 
 	CreateConnection(c)
 
-	response := decodePersonalProviderResponse(t, recorder)
+	response := decodePersonalChannelResponse(t, recorder)
 	if success, _ := response["success"].(bool); success {
 		t.Fatalf("unsupported protocol unexpectedly succeeded: %#v", response)
 	}
 }
 
 func TestRoutingQuotaCountsPersonalChannelID(t *testing.T) {
-	db := newPersonalProviderControllerTestDB(t)
+	db := newPersonalChannelControllerTestDB(t)
 	now := time.Now().UTC()
 	rows := []model.Log{
 		{Id: "personal-current", UserId: "user-a", ChannelId: "personal:connection-a", CreatedAt: now.Unix()},
@@ -201,11 +201,11 @@ func TestRoutingQuotaCountsPersonalChannelID(t *testing.T) {
 	if err := db.Create(&rows).Error; err != nil {
 		t.Fatalf("create logs: %v", err)
 	}
-	c, recorder := newPersonalProviderContext(t, http.MethodGet, "/routing-quota", "user-a", nil)
+	c, recorder := newPersonalChannelContext(t, http.MethodGet, "/routing-quota", "user-a", nil)
 
 	RoutingQuota(c)
 
-	response := decodePersonalProviderResponse(t, recorder)
+	response := decodePersonalChannelResponse(t, recorder)
 	if success, _ := response["success"].(bool); !success {
 		t.Fatalf("routing quota response = %#v", response)
 	}

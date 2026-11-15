@@ -403,7 +403,7 @@ func loadChannelNameByIDForAlertFeed(channelIDs []string) (map[string]string, er
 	if len(channelIDs) == 0 {
 		return result, nil
 	}
-	channels := make([]model.Channel, 0, len(channelIDs))
+	channels := make([]model.PlatformChannel, 0, len(channelIDs))
 	if err := model.DB.Select("id", "name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 		return nil, err
 	}

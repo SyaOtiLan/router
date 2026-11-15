@@ -1,12 +1,12 @@
 package model
 
 type ChannelRepository struct {
-	GetChannelById               func(id string) (*Channel, error)
-	Insert                       func(channel *Channel) error
-	Update                       func(channel *Channel) error
+	GetChannelById               func(id string) (*PlatformChannel, error)
+	Insert                       func(channel *PlatformChannel) error
+	Update                       func(channel *PlatformChannel) error
 	UpdateModels                 func(id string, rows []ChannelModel) error
-	UpdateResponseTime           func(channel *Channel, responseTime int64)
-	Delete                       func(channel *Channel) error
+	UpdateResponseTime           func(channel *PlatformChannel, responseTime int64)
+	Delete                       func(channel *PlatformChannel) error
 	UpdateChannelStatusById      func(id string, status int) error
 	UpdateChannelUsedQuota       func(id string, quota int64)
 	UpdateChannelUsedQuotaDirect func(id string, quota int64)

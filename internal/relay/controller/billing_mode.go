@@ -206,7 +206,7 @@ func reserveRelayQuota(ctx context.Context, meta *meta.Meta, quota int64) (relay
 }
 
 func reserveRelayQuotaWithRequestAmount(ctx context.Context, meta *meta.Meta, quota int64, requestAmount int64) (relayBillingPlan, *relaymodel.ErrorWithStatusCode) {
-	if meta != nil && strings.TrimSpace(meta.PersonalProviderID) != "" {
+	if meta != nil && strings.TrimSpace(meta.PersonalChannelID) != "" {
 		return relayBillingPlan{Source: relayBillingSourcePersonalProvider}, nil
 	}
 	if requestAmount <= 0 {

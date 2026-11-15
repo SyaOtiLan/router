@@ -468,14 +468,14 @@ func listGroupModelBindingItemsWithDB(db *gorm.DB, groupID string) ([]GroupModel
 	}
 	sort.Strings(channelIDs)
 
-	channels := make([]Channel, 0, len(channelIDs))
+	channels := make([]PlatformChannel, 0, len(channelIDs))
 	if err := db.
 		Select("id", "name", "protocol", "status").
 		Where("id IN ?", channelIDs).
 		Find(&channels).Error; err != nil {
 		return nil, err
 	}
-	channelByID := make(map[string]Channel, len(channels))
+	channelByID := make(map[string]PlatformChannel, len(channels))
 	for _, channel := range channels {
 		channel.NormalizeIdentity()
 		channelID := strings.TrimSpace(channel.Id)
@@ -500,7 +500,7 @@ func listGroupModelBindingItemsWithDB(db *gorm.DB, groupID string) ([]GroupModel
 	return items, nil
 }
 
-func buildGroupModelBindingItems(rows []GroupModelChannel, channelByID map[string]Channel, enabledByModel map[string]bool) []GroupModelBindingItem {
+func buildGroupModelBindingItems(rows []GroupModelChannel, channelByID map[string]PlatformChannel, enabledByModel map[string]bool) []GroupModelBindingItem {
 	if len(rows) == 0 {
 		return []GroupModelBindingItem{}
 	}
@@ -547,7 +547,7 @@ func listGroupChannelModelsWithDB(db *gorm.DB, groupID string) ([]GroupChannelMo
 		boundSet[channelID] = struct{}{}
 	}
 
-	channels := make([]Channel, 0)
+	channels := make([]PlatformChannel, 0)
 	if err := db.
 		Select("id", "name", "protocol", "status", "priority", "created_time").
 		Where("status = ?", ChannelStatusEnabled).
@@ -555,7 +555,7 @@ func listGroupChannelModelsWithDB(db *gorm.DB, groupID string) ([]GroupChannelMo
 		Find(&channels).Error; err != nil {
 		return nil, err
 	}
-	channelRefs := make([]*Channel, 0, len(channels))
+	channelRefs := make([]*PlatformChannel, 0, len(channels))
 	for i := range channels {
 		channelRefs = append(channelRefs, &channels[i])
 	}
@@ -689,7 +689,7 @@ func replaceGroupModelsWithDB(db *gorm.DB, groupID string, channelIDs []string, 
 		if channel == nil {
 			continue
 		}
-		rows = append(rows, BuildGroupModelChannelsForChannel(groupID, channel, groupModels, priorityByChannelID[channelID])...)
+		rows = append(rows, BuildGroupModelChannelsForChannel(groupID, NewPlatformChannelCandidate(channel), groupModels, priorityByChannelID[channelID])...)
 	}
 	rows = ApplyGroupModelChannelBillingRatios(normalizeGroupModelChannelRowsPreserveOrder(rows), ratioOverrides, existingRatios)
 
@@ -733,7 +733,7 @@ func normalizeGroupModelBindingItems(items []GroupModelBindingItem) ([]GroupMode
 	return result, nil
 }
 
-func loadGroupModelBindingChannelsByIDWithDB(db *gorm.DB, groupID string, channelIDs []string, explicitChannels bool, items []GroupModelBindingItem) ([]string, map[string]*Channel, error) {
+func loadGroupModelBindingChannelsByIDWithDB(db *gorm.DB, groupID string, channelIDs []string, explicitChannels bool, items []GroupModelBindingItem) ([]string, map[string]*PlatformChannel, error) {
 	allowedChannelIDs := normalizeChannelIDList(channelIDs)
 	if !explicitChannels && len(allowedChannelIDs) == 0 {
 		boundIDs, err := listGroupBoundChannelIDsWithDB(db, groupID)
@@ -746,7 +746,7 @@ func loadGroupModelBindingChannelsByIDWithDB(db *gorm.DB, groupID string, channe
 		allowedChannelIDs = collectChannelIDsFromGroupModelBindingItems(items)
 	}
 	if len(allowedChannelIDs) == 0 {
-		return []string{}, map[string]*Channel{}, nil
+		return []string{}, map[string]*PlatformChannel{}, nil
 	}
 
 	channelsByID, err := loadConfigurableChannelsByIDWithDB(db, allowedChannelIDs)
@@ -756,7 +756,7 @@ func loadGroupModelBindingChannelsByIDWithDB(db *gorm.DB, groupID string, channe
 	return allowedChannelIDs, channelsByID, nil
 }
 
-func loadConfigurableChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string]*Channel, error) {
+func loadConfigurableChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string]*PlatformChannel, error) {
 	channelsByID, err := loadChannelsByIDWithDB(db, channelIDs)
 	if err != nil {
 		return nil, err
@@ -777,7 +777,7 @@ func loadConfigurableChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[s
 		return nil, fmt.Errorf("渠道不存在: %s", strings.Join(missing, ", "))
 	}
 
-	channelRefs := make([]*Channel, 0, len(channelsByID))
+	channelRefs := make([]*PlatformChannel, 0, len(channelsByID))
 	for _, channelID := range normalizedChannelIDs {
 		channel := channelsByID[channelID]
 		if channel == nil {
@@ -819,7 +819,7 @@ func resolveGroupModelBindingEnabled(item GroupModelBindingItem) bool {
 	return *item.Enabled
 }
 
-func resolveGroupModelBindingPriority(item GroupModelBindingItem, channel *Channel) *int64 {
+func resolveGroupModelBindingPriority(item GroupModelBindingItem, channel *PlatformChannel) *int64 {
 	if item.Priority != nil {
 		return helperInt64Pointer(item.Priority)
 	}
@@ -842,7 +842,7 @@ func helperInt64Pointer(value *int64) *int64 {
 	return &result
 }
 
-func channelSelectedModels(channel *Channel) []ChannelModel {
+func channelSelectedModels(channel *PlatformChannel) []ChannelModel {
 	if channel == nil {
 		return nil
 	}
@@ -860,7 +860,7 @@ func channelSelectedModels(channel *Channel) []ChannelModel {
 	return selected
 }
 
-func buildGroupChannelModelOptions(channel *Channel) []GroupChannelModelOption {
+func buildGroupChannelModelOptions(channel *PlatformChannel) []GroupChannelModelOption {
 	selectedConfigs := channelSelectedModels(channel)
 	if len(selectedConfigs) == 0 {
 		return []GroupChannelModelOption{}
@@ -889,7 +889,7 @@ type groupChannelModelCatalog struct {
 	upstreamProvider map[string]string
 }
 
-func buildGroupChannelModelCatalog(channel *Channel) groupChannelModelCatalog {
+func buildGroupChannelModelCatalog(channel *PlatformChannel) groupChannelModelCatalog {
 	catalog := groupChannelModelCatalog{
 		aliasToUpstream:  make(map[string]string),
 		upstreamSet:      make(map[string]struct{}),

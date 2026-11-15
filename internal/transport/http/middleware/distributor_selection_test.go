@@ -9,9 +9,9 @@ import (
 
 func TestPickChannelByPolicyWeightedRandomUsesTopPriorityTier(t *testing.T) {
 	weight := uint(100)
-	channels := []*adminmodel.Channel{
-		{Id: "weighted", Weight: &weight},
-		{Id: "lower-priority", Priority: int64Ptr(2)},
+	channels := []*adminmodel.ChannelCandidate{
+		{PlatformChannel: adminmodel.PlatformChannel{Id: "weighted", Weight: &weight}},
+		{PlatformChannel: adminmodel.PlatformChannel{Id: "lower-priority", Priority: int64Ptr(2)}},
 	}
 	selected := pickChannelByPolicy(channels, routing.ProviderRoutingPolicy{SelectionMethod: routing.SelectionWeightedRandom})
 	if selected == nil || selected.Id != "weighted" {

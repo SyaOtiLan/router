@@ -5,27 +5,27 @@ import (
 	channelrepo "github.com/yeying-community/router/internal/admin/repository/channel"
 )
 
-func GetAll(start, num int, status string) ([]*model.Channel, error) {
+func GetAll(start, num int, status string) ([]*model.PlatformChannel, error) {
 	return channelrepo.GetAll(start, num, status)
 }
 
-func GetAllBasic(start, num int, status string, selectAll bool) ([]*model.Channel, error) {
+func GetAllBasic(start, num int, status string, selectAll bool) ([]*model.PlatformChannel, error) {
 	return channelrepo.GetAllBasic(start, num, status, selectAll)
 }
 
-func ListPage(page int, pageSize int, keyword string, status string) ([]*model.Channel, int64, error) {
+func ListPage(page int, pageSize int, keyword string, status string) ([]*model.PlatformChannel, int64, error) {
 	return channelrepo.ListPage(page, pageSize, keyword, status)
 }
 
-func GetByID(id string) (*model.Channel, error) {
+func GetByID(id string) (*model.PlatformChannel, error) {
 	return channelrepo.GetByID(id)
 }
 
-func GetBasicByID(id string) (*model.Channel, error) {
+func GetBasicByID(id string) (*model.PlatformChannel, error) {
 	return channelrepo.GetBasicByID(id)
 }
 
-func Insert(channel *model.Channel) error {
+func Insert(channel *model.PlatformChannel) error {
 	return channelrepo.Insert(channel)
 }
 
@@ -37,7 +37,7 @@ func DeleteDisabled() (int64, error) {
 	return channelrepo.DeleteDisabled()
 }
 
-func Update(channel *model.Channel) error {
+func Update(channel *model.PlatformChannel) error {
 	return channelrepo.Update(channel)
 }
 

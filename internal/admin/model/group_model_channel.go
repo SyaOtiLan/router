@@ -37,26 +37,40 @@ func (GroupModelChannel) TableName() string {
 	return GroupModelChannelsTableName
 }
 
-func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*Channel, error) {
+func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*ChannelCandidate, error) {
 	return mustGroupModelChannelRepo().GetRandomSatisfiedChannel(group, model, ignoreFirstPriority)
 }
 
-func ListSatisfiedChannels(group string, model string) ([]*Channel, error) {
+func ListSatisfiedChannels(group string, model string) ([]*ChannelCandidate, error) {
 	return mustGroupModelChannelRepo().ListSatisfiedChannels(group, model)
 }
 
-func (channel *Channel) AddGroupModelChannels() error {
+func (channel *ChannelCandidate) AddGroupModelChannels() error {
 	return mustGroupModelChannelRepo().AddGroupModelChannels(channel)
 }
 
-func (channel *Channel) DeleteGroupModelChannels() error {
+func (channel *ChannelCandidate) DeleteGroupModelChannels() error {
 	return mustGroupModelChannelRepo().DeleteGroupModelChannels(channel)
 }
 
 // UpdateGroupModelChannels updates static group-model channel rows of this channel.
 // Make sure the channel is completed before calling this function.
-func (channel *Channel) UpdateGroupModelChannels() error {
+func (channel *ChannelCandidate) UpdateGroupModelChannels() error {
 	return mustGroupModelChannelRepo().UpdateGroupModelChannels(channel)
+}
+
+// PlatformChannel mutation adapters keep persistence-oriented call sites
+// explicit while routing repository methods operate on shared candidates.
+func (channel *PlatformChannel) AddGroupModelChannels() error {
+	return NewPlatformChannelCandidate(channel).AddGroupModelChannels()
+}
+
+func (channel *PlatformChannel) DeleteGroupModelChannels() error {
+	return NewPlatformChannelCandidate(channel).DeleteGroupModelChannels()
+}
+
+func (channel *PlatformChannel) UpdateGroupModelChannels() error {
+	return NewPlatformChannelCandidate(channel).UpdateGroupModelChannels()
 }
 
 func RefreshGroupModelChannelsByChannelStatus(channelId string, status bool) error {
@@ -65,7 +79,7 @@ func RefreshGroupModelChannelsByChannelStatus(channelId string, status bool) err
 
 // GetTopChannelByModel returns the highest-priority enabled channel for a given group+model.
 // Order: priority desc, then channel_id asc (stable for UI usage).
-func GetTopChannelByModel(group string, model string) (*Channel, error) {
+func GetTopChannelByModel(group string, model string) (*ChannelCandidate, error) {
 	return mustGroupModelChannelRepo().GetTopChannelByModel(group, model)
 }
 

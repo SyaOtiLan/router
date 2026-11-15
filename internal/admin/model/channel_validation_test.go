@@ -4,7 +4,7 @@ import "testing"
 
 func TestValidateProtocolConfiguration_DeepSeekRejectsBaseURLWithV1(t *testing.T) {
 	baseURL := "https://api.deepseek.com/v1"
-	channel := &Channel{
+	channel := &PlatformChannel{
 		Protocol: "deepseek",
 		BaseURL:  &baseURL,
 	}
@@ -19,7 +19,7 @@ func TestValidateProtocolConfiguration_DeepSeekRejectsBaseURLWithV1(t *testing.T
 }
 
 func TestValidateProtocolConfiguration_DeepSeekRejectsConfigAPIBaseURLWithV1(t *testing.T) {
-	channel := &Channel{
+	channel := &PlatformChannel{
 		Protocol: "deepseek",
 		Config:   `{"api_base_url":"https://api.deepseek.com/beta/v1"}`,
 	}
@@ -35,7 +35,7 @@ func TestValidateProtocolConfiguration_DeepSeekRejectsConfigAPIBaseURLWithV1(t *
 
 func TestValidateProtocolConfiguration_DeepSeekAcceptsRootAndBetaBaseURL(t *testing.T) {
 	baseURL := "https://api.deepseek.com/beta"
-	channel := &Channel{
+	channel := &PlatformChannel{
 		Protocol: "deepseek",
 		BaseURL:  &baseURL,
 		Config:   `{"api_base_url":"https://api.deepseek.com"}`,
@@ -47,7 +47,7 @@ func TestValidateProtocolConfiguration_DeepSeekAcceptsRootAndBetaBaseURL(t *test
 }
 
 func TestValidateProtocolConfiguration_VolcengineRealtimeEndpointRequiresAppID(t *testing.T) {
-	channel := &Channel{
+	channel := &PlatformChannel{
 		Protocol: "volcengine",
 		ChannelModels: []ChannelModel{
 			{
@@ -68,7 +68,7 @@ func TestValidateProtocolConfiguration_VolcengineRealtimeEndpointRequiresAppID(t
 }
 
 func TestValidateProtocolConfiguration_VolcengineNonRealtimeDoesNotRequireAppID(t *testing.T) {
-	channel := &Channel{
+	channel := &PlatformChannel{
 		Protocol: "volcengine",
 		ChannelModels: []ChannelModel{
 			{

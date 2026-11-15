@@ -12,9 +12,9 @@ import (
 )
 
 func TestApplyProviderRoutingPolicy(t *testing.T) {
-	channels := []*adminmodel.Channel{
-		{Id: "openai-1", ChannelModels: []adminmodel.ChannelModel{{Model: "shared", Provider: "openai", Selected: true, PublishEnabled: true, PublishStatus: adminmodel.ChannelModelPublishStatusPublished}}},
-		{Id: "anthropic-1", ChannelModels: []adminmodel.ChannelModel{{Model: "shared", Provider: "anthropic", Selected: true, PublishEnabled: true, PublishStatus: adminmodel.ChannelModelPublishStatusPublished}}},
+	channels := []*adminmodel.ChannelCandidate{
+		{PlatformChannel: adminmodel.PlatformChannel{Id: "openai-1", ChannelModels: []adminmodel.ChannelModel{{Model: "shared", Provider: "openai", Selected: true, PublishEnabled: true, PublishStatus: adminmodel.ChannelModelPublishStatusPublished}}}},
+		{PlatformChannel: adminmodel.PlatformChannel{Id: "anthropic-1", ChannelModels: []adminmodel.ChannelModel{{Model: "shared", Provider: "anthropic", Selected: true, PublishEnabled: true, PublishStatus: adminmodel.ChannelModelPublishStatusPublished}}}},
 	}
 	filtered, policyFiltered := applyProviderRoutingPolicy(channels, "shared", routing.ProviderRoutingPolicy{
 		ProviderScope: routing.ProviderScope{Mode: routing.ProviderScopeAllowList, Providers: []string{"anthropic"}},
@@ -60,9 +60,9 @@ func TestRequestBodyIsForm(t *testing.T) {
 }
 
 func TestApplyProviderRoutingPolicyOrdersProviders(t *testing.T) {
-	channels := []*adminmodel.Channel{
-		{Id: "openai-1", ChannelModels: []adminmodel.ChannelModel{{Model: "shared", Provider: "openai", Selected: true, PublishEnabled: true, PublishStatus: adminmodel.ChannelModelPublishStatusPublished}}},
-		{Id: "anthropic-1", ChannelModels: []adminmodel.ChannelModel{{Model: "shared", Provider: "anthropic", Selected: true, PublishEnabled: true, PublishStatus: adminmodel.ChannelModelPublishStatusPublished}}},
+	channels := []*adminmodel.ChannelCandidate{
+		{PlatformChannel: adminmodel.PlatformChannel{Id: "openai-1", ChannelModels: []adminmodel.ChannelModel{{Model: "shared", Provider: "openai", Selected: true, PublishEnabled: true, PublishStatus: adminmodel.ChannelModelPublishStatusPublished}}}},
+		{PlatformChannel: adminmodel.PlatformChannel{Id: "anthropic-1", ChannelModels: []adminmodel.ChannelModel{{Model: "shared", Provider: "anthropic", Selected: true, PublishEnabled: true, PublishStatus: adminmodel.ChannelModelPublishStatusPublished}}}},
 	}
 	ordered, _ := applyProviderRoutingPolicy(channels, "shared", routing.ProviderRoutingPolicy{
 		ProviderScope: routing.ProviderScope{Mode: routing.ProviderScopeAny},

@@ -15,7 +15,7 @@ func newCostMissingCountTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Channel{},
+		&model.PlatformChannel{},
 		&model.ChannelModel{},
 		&model.ChannelModelEndpoint{},
 		&model.ChannelModelEndpointTestResult{},
@@ -53,7 +53,7 @@ func seedPublishedCostModel(t *testing.T, db *gorm.DB, channelID, name string) {
 
 func TestCountChannelCostMissingModels(t *testing.T) {
 	db := newCostMissingCountTestDB(t)
-	if err := db.Create(&model.Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&model.PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	seedPublishedCostModel(t, db, "channel-1", "model-a")

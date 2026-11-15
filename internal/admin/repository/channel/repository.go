@@ -30,7 +30,7 @@ func init() {
 }
 
 func buildChannelListQuery(db *gorm.DB, keyword string, status string) *gorm.DB {
-	query := db.Model(&model.Channel{})
+	query := db.Model(&model.PlatformChannel{})
 	switch normalizeChannelListStatusFilter(status) {
 	case "enabled":
 		query = query.Where("status = ?", model.ChannelStatusEnabled)
@@ -65,7 +65,7 @@ func normalizeChannelListStatusFilter(raw string) string {
 	}
 }
 
-func ListPage(page int, pageSize int, keyword string, status string) ([]*model.Channel, int64, error) {
+func ListPage(page int, pageSize int, keyword string, status string) ([]*model.PlatformChannel, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -77,7 +77,7 @@ func ListPage(page int, pageSize int, keyword string, status string) ([]*model.C
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	channels := make([]*model.Channel, 0, pageSize)
+	channels := make([]*model.PlatformChannel, 0, pageSize)
 	if err := query.
 		Order("CASE WHEN status = " + strconv.Itoa(model.ChannelStatusEnabled) + " THEN 0 ELSE 1 END asc").
 		Order("created_time desc").
@@ -93,8 +93,8 @@ func ListPage(page int, pageSize int, keyword string, status string) ([]*model.C
 	return channels, total, nil
 }
 
-func GetAll(startIdx int, num int, status string) ([]*model.Channel, error) {
-	var channels []*model.Channel
+func GetAll(startIdx int, num int, status string) ([]*model.PlatformChannel, error) {
+	var channels []*model.PlatformChannel
 	var err error
 	switch status {
 	case "all":
@@ -113,9 +113,9 @@ func GetAll(startIdx int, num int, status string) ([]*model.Channel, error) {
 	return channels, nil
 }
 
-func GetByID(id string) (*model.Channel, error) {
+func GetByID(id string) (*model.PlatformChannel, error) {
 	id = strings.TrimSpace(id)
-	channel := model.Channel{Id: id}
+	channel := model.PlatformChannel{Id: id}
 	if err := model.DB.First(&channel, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
@@ -125,17 +125,17 @@ func GetByID(id string) (*model.Channel, error) {
 	return &channel, model.HydrateChannelWithTests(model.DB, &channel)
 }
 
-func GetBasicByID(id string) (*model.Channel, error) {
+func GetBasicByID(id string) (*model.PlatformChannel, error) {
 	id = strings.TrimSpace(id)
-	channel := model.Channel{Id: id}
+	channel := model.PlatformChannel{Id: id}
 	if err := model.DB.Omit("key").First(&channel, "id = ?", id).Error; err != nil {
 		return nil, err
 	}
 	return &channel, nil
 }
 
-func GetAllBasic(startIdx int, num int, status string, selectAll bool) ([]*model.Channel, error) {
-	var channels []*model.Channel
+func GetAllBasic(startIdx int, num int, status string, selectAll bool) ([]*model.PlatformChannel, error) {
+	var channels []*model.PlatformChannel
 	query := model.DB.Order("created_time desc")
 	if !selectAll {
 		query = query.Omit("key")
@@ -158,7 +158,7 @@ func GetAllBasic(startIdx int, num int, status string, selectAll bool) ([]*model
 	return channels, nil
 }
 
-func prepareChannelForCreate(channel *model.Channel) error {
+func prepareChannelForCreate(channel *model.PlatformChannel) error {
 	if channel == nil {
 		return gorm.ErrInvalidData
 	}
@@ -181,7 +181,7 @@ func prepareChannelForCreate(channel *model.Channel) error {
 	return nil
 }
 
-func ensureChannelIdentifierUniqueWithDB(db *gorm.DB, channel *model.Channel) error {
+func ensureChannelIdentifierUniqueWithDB(db *gorm.DB, channel *model.PlatformChannel) error {
 	if db == nil || channel == nil {
 		return nil
 	}
@@ -189,7 +189,7 @@ func ensureChannelIdentifierUniqueWithDB(db *gorm.DB, channel *model.Channel) er
 	if identifier == "" {
 		return nil
 	}
-	existing := model.Channel{}
+	existing := model.PlatformChannel{}
 	if err := db.Select("id", "name").Where("name = ?", identifier).First(&existing).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
@@ -202,7 +202,7 @@ func ensureChannelIdentifierUniqueWithDB(db *gorm.DB, channel *model.Channel) er
 	return errors.New("渠道标识已存在")
 }
 
-func Insert(channel *model.Channel) error {
+func Insert(channel *model.PlatformChannel) error {
 	if err := prepareChannelForCreate(channel); err != nil {
 		return err
 	}
@@ -236,7 +236,7 @@ func Insert(channel *model.Channel) error {
 	return channel.AddGroupModelChannels()
 }
 
-func Update(channel *model.Channel) error {
+func Update(channel *model.PlatformChannel) error {
 	channel.NormalizeIdentity()
 	channel.Id = strings.TrimSpace(channel.Id)
 	if channel.Id == "" {
@@ -247,7 +247,7 @@ func Update(channel *model.Channel) error {
 	}
 	channel.NormalizeChannelModelState()
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		existing := model.Channel{}
+		existing := model.PlatformChannel{}
 		if err := tx.First(&existing, "id = ?", channel.Id).Error; err != nil {
 			return err
 		}
@@ -282,11 +282,11 @@ func Update(channel *model.Channel) error {
 		}
 		channel.UpdatedAt = helper.GetTimestamp()
 		if channel.NameProvided {
-			if err := tx.Model(&model.Channel{}).Where("id = ?", channel.Id).Update("name", model.NormalizeChannelIdentifier(channel.Name)).Error; err != nil {
+			if err := tx.Model(&model.PlatformChannel{}).Where("id = ?", channel.Id).Update("name", model.NormalizeChannelIdentifier(channel.Name)).Error; err != nil {
 				return err
 			}
 		}
-		if err := tx.Model(&model.Channel{}).Where("id = ?", channel.Id).Omit("name").Updates(channel).Error; err != nil {
+		if err := tx.Model(&model.PlatformChannel{}).Where("id = ?", channel.Id).Omit("name").Updates(channel).Error; err != nil {
 			return err
 		}
 		if channel.ChannelModelsProvided {
@@ -343,9 +343,9 @@ func UpdateModels(channelID string, rows []model.ChannelModel) error {
 	if normalizedChannelID == "" {
 		return errors.New("渠道 ID 不能为空")
 	}
-	channel := &model.Channel{Id: normalizedChannelID}
+	channel := &model.PlatformChannel{Id: normalizedChannelID}
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		existing := model.Channel{}
+		existing := model.PlatformChannel{}
 		if err := tx.First(&existing, "id = ?", normalizedChannelID).Error; err != nil {
 			return err
 		}
@@ -396,7 +396,7 @@ func UpdateModelPublish(channelID string, modelName string, publishEnabled bool,
 }
 
 func refreshChannelGroupModelChannels(channelID string) error {
-	channel := &model.Channel{}
+	channel := &model.PlatformChannel{}
 	if err := model.DB.First(channel, "id = ?", channelID).Error; err != nil {
 		return err
 	}
@@ -437,8 +437,8 @@ func previewChannelModelSelection(existingRows []model.ChannelModel, selected []
 	return model.NormalizeChannelModelsPreserveOrder(rows)
 }
 
-func UpdateResponseTime(channel *model.Channel, responseTime int64) {
-	err := model.DB.Model(channel).Select("response_time", "test_time").Updates(model.Channel{
+func UpdateResponseTime(channel *model.PlatformChannel, responseTime int64) {
+	err := model.DB.Model(channel).Select("response_time", "test_time").Updates(model.PlatformChannel{
 		TestTime:     helper.GetTimestamp(),
 		ResponseTime: int(responseTime),
 	}).Error
@@ -447,7 +447,7 @@ func UpdateResponseTime(channel *model.Channel, responseTime int64) {
 	}
 }
 
-func Delete(channel *model.Channel) error {
+func Delete(channel *model.PlatformChannel) error {
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := model.DeleteChannelModelsByChannelIDWithDB(tx, channel.Id); err != nil {
 			return err
@@ -458,13 +458,13 @@ func Delete(channel *model.Channel) error {
 		if err := tx.Where("channel_id = ?", strings.TrimSpace(channel.Id)).Delete(&model.GroupModelChannel{}).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&model.Channel{}, "id = ?", strings.TrimSpace(channel.Id)).Error
+		return tx.Delete(&model.PlatformChannel{}, "id = ?", strings.TrimSpace(channel.Id)).Error
 	})
 }
 
 func DeleteByID(id string) error {
 	id = strings.TrimSpace(id)
-	channel := model.Channel{Id: id}
+	channel := model.PlatformChannel{Id: id}
 	return Delete(&channel)
 }
 
@@ -474,7 +474,7 @@ func DeleteDisabled() (int64, error) {
 
 func UpdateStatusByID(id string, status int) error {
 	id = strings.TrimSpace(id)
-	err := model.DB.Model(&model.Channel{}).Where("id = ?", id).Updates(map[string]any{
+	err := model.DB.Model(&model.PlatformChannel{}).Where("id = ?", id).Updates(map[string]any{
 		"status":     status,
 		"updated_at": helper.GetTimestamp(),
 	}).Error
@@ -499,7 +499,7 @@ func UpdateUsedQuota(id string, quota int64) {
 }
 
 func UpdateUsedQuotaDirect(id string, quota int64) {
-	err := model.DB.Model(&model.Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+	err := model.DB.Model(&model.PlatformChannel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
 		logger.SysError("failed to update channel used quota: " + err.Error())
 	}
@@ -508,7 +508,7 @@ func UpdateUsedQuotaDirect(id string, quota int64) {
 func UpdateTestModelByID(id string, testModel string) error {
 	id = strings.TrimSpace(id)
 	testModel = strings.TrimSpace(testModel)
-	return model.DB.Model(&model.Channel{}).Where("id = ?", id).Updates(map[string]any{
+	return model.DB.Model(&model.PlatformChannel{}).Where("id = ?", id).Updates(map[string]any{
 		"test_model": testModel,
 		"updated_at": helper.GetTimestamp(),
 	}).Error
@@ -520,7 +520,7 @@ func DeleteByStatus(status int64) (int64, error) {
 
 func deleteChannelsByQuery(query *gorm.DB) (int64, error) {
 	channelIDs := make([]string, 0)
-	if err := query.Model(&model.Channel{}).Pluck("id", &channelIDs).Error; err != nil {
+	if err := query.Model(&model.PlatformChannel{}).Pluck("id", &channelIDs).Error; err != nil {
 		return 0, err
 	}
 	if len(channelIDs) == 0 {
@@ -537,7 +537,7 @@ func deleteChannelsByQuery(query *gorm.DB) (int64, error) {
 		if err := tx.Where("channel_id IN ?", channelIDs).Delete(&model.GroupModelChannel{}).Error; err != nil {
 			return err
 		}
-		result := tx.Where("id IN ?", channelIDs).Delete(&model.Channel{})
+		result := tx.Where("id IN ?", channelIDs).Delete(&model.PlatformChannel{})
 		rowsAffected = result.RowsAffected
 		return result.Error
 	})

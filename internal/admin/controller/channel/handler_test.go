@@ -7,7 +7,7 @@ import (
 )
 
 func TestSanitizeChannelForResponseSetsKeyPreviewAndClearsKey(t *testing.T) {
-	row := &model.Channel{
+	row := &model.PlatformChannel{
 		Id:  "channel-1",
 		Key: "sk-test-secret-value",
 	}
@@ -26,7 +26,7 @@ func TestSanitizeChannelForResponseSetsKeyPreviewAndClearsKey(t *testing.T) {
 }
 
 func TestSanitizeChannelForResponseMasksShortKey(t *testing.T) {
-	row := &model.Channel{
+	row := &model.PlatformChannel{
 		Id:  "channel-1",
 		Key: "abc123",
 	}

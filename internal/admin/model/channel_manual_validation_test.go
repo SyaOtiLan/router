@@ -14,7 +14,7 @@ func newChannelManualValidationTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&Channel{}, &ProviderModel{}, &ChannelModelSyncResult{}, &ChannelModelEndpointTestResult{}); err != nil {
+	if err := db.AutoMigrate(&PlatformChannel{}, &ProviderModel{}, &ChannelModelSyncResult{}, &ChannelModelEndpointTestResult{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
 	return db
@@ -122,7 +122,7 @@ func TestValidateManualChannelModelChangesRequiresSuccessfulTestBeforeRuntimeRes
 
 func TestValidateManualChannelEndpointEnableDoesNotRequireTestResult(t *testing.T) {
 	db := newChannelManualValidationTestDB(t)
-	if err := db.Create(&Channel{
+	if err := db.Create(&PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",
@@ -153,7 +153,7 @@ func TestValidateManualChannelEndpointEnableDoesNotRequireTestResult(t *testing.
 
 func TestValidateManualChannelEndpointEnableUsesCanonicalProviderModelForSnapshotUpstream(t *testing.T) {
 	db := newChannelManualValidationTestDB(t)
-	if err := db.Create(&Channel{
+	if err := db.Create(&PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",
@@ -184,7 +184,7 @@ func TestValidateManualChannelEndpointEnableUsesCanonicalProviderModelForSnapsho
 
 func TestValidateManualChannelEndpointEnablePrefersSnapshotProviderModelWhenConfigured(t *testing.T) {
 	db := newChannelManualValidationTestDB(t)
-	if err := db.Create(&Channel{
+	if err := db.Create(&PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",
@@ -226,7 +226,7 @@ func TestValidateManualChannelEndpointEnablePrefersSnapshotProviderModelWhenConf
 
 func TestValidateManualChannelEndpointEnableBlocksUnsupportedRouterRoute(t *testing.T) {
 	db := newChannelManualValidationTestDB(t)
-	if err := db.Create(&Channel{
+	if err := db.Create(&PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",

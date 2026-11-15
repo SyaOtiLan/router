@@ -25,7 +25,7 @@ const (
 
 var channelIdentifierPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
 
-type Channel struct {
+type PlatformChannel struct {
 	Id                    string         `json:"id" gorm:"type:char(36);primaryKey"`
 	Protocol              string         `json:"protocol" gorm:"type:varchar(64);default:'openai';index"`
 	Key                   string         `json:"key" gorm:"type:text"`
@@ -53,7 +53,40 @@ type Channel struct {
 	ModelsProvided        bool           `json:"-" gorm:"-"`
 	ChannelModelsProvided bool           `json:"-" gorm:"-"`
 	NameProvided          bool           `json:"-" gorm:"-"`
-	PersonalProviderName  string         `json:"-" gorm:"-"`
+}
+
+// ChannelCandidate is the shared runtime view used by routing. It embeds
+// platform channel capabilities while keeping source and owner metadata out of
+// both persistence tables and public API payloads.
+type ChannelCandidate struct {
+	PlatformChannel     `gorm:"embedded"`
+	PersonalChannelName string `json:"-" gorm:"-"`
+	SourceType          string `json:"-" gorm:"-"`
+	OwnerID             string `json:"-" gorm:"-"`
+}
+
+const (
+	ChannelCandidateSourcePlatform  = "platform"
+	ChannelCandidateSourcePersonal  = "personal"
+	ChannelCandidateSourcePublisher = "publisher"
+)
+
+func (PlatformChannel) TableName() string  { return "platform_channels" }
+func (ChannelCandidate) TableName() string { return "platform_channels" }
+
+func (candidate *ChannelCandidate) AfterFind(tx *gorm.DB) error {
+	if err := candidate.PlatformChannel.AfterFind(tx); err != nil {
+		return err
+	}
+	candidate.SourceType = ChannelCandidateSourcePlatform
+	return nil
+}
+
+func NewPlatformChannelCandidate(channel *PlatformChannel) *ChannelCandidate {
+	if channel == nil {
+		return nil
+	}
+	return &ChannelCandidate{PlatformChannel: *channel, SourceType: ChannelCandidateSourcePlatform}
 }
 
 type ChannelConfig struct {
@@ -84,7 +117,7 @@ func (config ChannelConfig) GetAPIBaseURL() string {
 	return normalizeConfiguredBaseURL(config.APIBaseURL)
 }
 
-func (channel *Channel) NormalizeProtocol() {
+func (channel *PlatformChannel) NormalizeProtocol() {
 	if channel == nil {
 		return
 	}
@@ -113,7 +146,7 @@ func ValidateChannelIdentifier(id string) error {
 	}
 }
 
-func (channel *Channel) NormalizeIdentity() {
+func (channel *PlatformChannel) NormalizeIdentity() {
 	if channel == nil {
 		return
 	}
@@ -121,20 +154,20 @@ func (channel *Channel) NormalizeIdentity() {
 	channel.Name = NormalizeChannelIdentifier(channel.Name)
 }
 
-func (channel *Channel) AfterFind(tx *gorm.DB) error {
+func (channel *PlatformChannel) AfterFind(tx *gorm.DB) error {
 	channel.NormalizeIdentity()
 	channel.NormalizeProtocol()
 	return nil
 }
 
-func (channel *Channel) ValidateIdentifier() error {
+func (channel *PlatformChannel) ValidateIdentifier() error {
 	if channel == nil {
 		return fmt.Errorf("渠道不能为空")
 	}
 	return ValidateChannelIdentifier(channel.Name)
 }
 
-func (channel *Channel) ValidateProtocolConfiguration() error {
+func (channel *PlatformChannel) ValidateProtocolConfiguration() error {
 	if channel == nil {
 		return fmt.Errorf("渠道不能为空")
 	}
@@ -165,7 +198,7 @@ func (channel *Channel) ValidateProtocolConfiguration() error {
 	return nil
 }
 
-func (channel *Channel) UsesVolcengineRealtimeEndpoint() bool {
+func (channel *PlatformChannel) UsesVolcengineRealtimeEndpoint() bool {
 	if channel == nil {
 		return false
 	}
@@ -188,7 +221,7 @@ func (channel *Channel) UsesVolcengineRealtimeEndpoint() bool {
 	return false
 }
 
-func (channel *Channel) DisplayName() string {
+func (channel *PlatformChannel) DisplayName() string {
 	if channel == nil {
 		return ""
 	}
@@ -198,7 +231,7 @@ func (channel *Channel) DisplayName() string {
 	return strings.TrimSpace(channel.Id)
 }
 
-func (channel *Channel) EnsureID() {
+func (channel *PlatformChannel) EnsureID() {
 	if channel == nil {
 		return
 	}
@@ -207,7 +240,7 @@ func (channel *Channel) EnsureID() {
 	}
 }
 
-func (channel *Channel) GetProtocol() string {
+func (channel *PlatformChannel) GetProtocol() string {
 	if channel == nil {
 		return "openai"
 	}
@@ -218,53 +251,53 @@ func (channel *Channel) GetProtocol() string {
 	return "openai"
 }
 
-func (channel *Channel) GetChannelProtocol() int {
+func (channel *PlatformChannel) GetChannelProtocol() int {
 	if channel == nil {
 		return relaychannel.OpenAI
 	}
 	return relaychannel.TypeByProtocol(channel.GetProtocol())
 }
 
-func GetChannelById(id string) (*Channel, error) {
+func GetChannelById(id string) (*PlatformChannel, error) {
 	return mustChannelRepo().GetChannelById(id)
 }
 
-func (channel *Channel) GetPriority() int64 {
+func (channel *PlatformChannel) GetPriority() int64 {
 	if channel.Priority == nil {
 		return 0
 	}
 	return *channel.Priority
 }
 
-func (channel *Channel) GetWeight() uint {
+func (channel *PlatformChannel) GetWeight() uint {
 	if channel == nil || channel.Weight == nil || *channel.Weight == 0 {
 		return 1
 	}
 	return *channel.Weight
 }
 
-func CloneChannelWithPriority(channel *Channel, priority int64) *Channel {
+func CloneChannelWithPriority(channel *ChannelCandidate, priority int64) *ChannelCandidate {
 	if channel == nil {
 		return nil
 	}
 	cloned := *channel
 	clonedPriority := priority
-	cloned.Priority = &clonedPriority
+	cloned.PlatformChannel.Priority = &clonedPriority
 	return &cloned
 }
 
-func (channel *Channel) GetBaseURL() string {
+func (channel *PlatformChannel) GetBaseURL() string {
 	if channel.BaseURL == nil {
 		return ""
 	}
 	return strings.TrimSpace(*channel.BaseURL)
 }
 
-func (channel *Channel) ResolveAPIBaseURL(requestPath string) string {
+func (channel *PlatformChannel) ResolveAPIBaseURL(requestPath string) string {
 	return channel.ResolveAPIBaseURLForModel(requestPath)
 }
 
-func (channel *Channel) ResolveAPIBaseURLForModel(requestPath string, modelCandidates ...string) string {
+func (channel *PlatformChannel) ResolveAPIBaseURLForModel(requestPath string, modelCandidates ...string) string {
 	if channel == nil {
 		return ""
 	}
@@ -285,7 +318,7 @@ func (channel *Channel) ResolveAPIBaseURLForModel(requestPath string, modelCandi
 	return normalizeConfiguredBaseURL(relaychannel.BaseURLByProtocol(channel.GetProtocol()))
 }
 
-func (channel *Channel) GetModelMapping() map[string]string {
+func (channel *PlatformChannel) GetModelMapping() map[string]string {
 	selected := channel.selectedChannelModels()
 	if len(selected) == 0 {
 		return nil
@@ -303,7 +336,7 @@ func (channel *Channel) GetModelMapping() map[string]string {
 	return modelMapping
 }
 
-func (channel *Channel) GetChannelModels() []ChannelModel {
+func (channel *PlatformChannel) GetChannelModels() []ChannelModel {
 	if channel == nil {
 		return nil
 	}
@@ -321,7 +354,7 @@ func (channel *Channel) GetChannelModels() []ChannelModel {
 	return BuildDefaultChannelModelsWithProtocol(selected, channel.GetChannelProtocol())
 }
 
-func (channel *Channel) SelectedModelIDs() []string {
+func (channel *PlatformChannel) SelectedModelIDs() []string {
 	if channel == nil {
 		return nil
 	}
@@ -338,7 +371,7 @@ func (channel *Channel) SelectedModelIDs() []string {
 	return ParseChannelModelCSV(channel.Models)
 }
 
-func (channel *Channel) SetSelectedModelIDs(modelIDs []string) {
+func (channel *PlatformChannel) SetSelectedModelIDs(modelIDs []string) {
 	if channel == nil {
 		return
 	}
@@ -377,14 +410,14 @@ func (channel *Channel) SetSelectedModelIDs(modelIDs []string) {
 	channel.SetChannelModels(next)
 }
 
-func (channel *Channel) SetAvailableModelIDs(modelIDs []string) {
+func (channel *PlatformChannel) SetAvailableModelIDs(modelIDs []string) {
 	if channel == nil {
 		return
 	}
 	channel.AvailableModels = NormalizeChannelModelIDsPreserveOrder(modelIDs)
 }
 
-func (channel *Channel) SetChannelModels(configs []ChannelModel) {
+func (channel *PlatformChannel) SetChannelModels(configs []ChannelModel) {
 	if channel == nil {
 		return
 	}
@@ -407,7 +440,7 @@ func (channel *Channel) SetChannelModels(configs []ChannelModel) {
 	channel.Models = JoinChannelModelCSV(selected)
 }
 
-func (channel *Channel) NormalizeChannelModelState() {
+func (channel *PlatformChannel) NormalizeChannelModelState() {
 	if channel == nil {
 		return
 	}
@@ -424,7 +457,7 @@ func (channel *Channel) NormalizeChannelModelState() {
 	}
 }
 
-func (channel *Channel) SetChannelTests(results []ChannelTest) {
+func (channel *PlatformChannel) SetChannelTests(results []ChannelTest) {
 	if channel == nil {
 		return
 	}
@@ -432,23 +465,23 @@ func (channel *Channel) SetChannelTests(results []ChannelTest) {
 	channel.TestsLastTestedAt = CalcChannelTestsLastTestedAt(channel.Tests)
 }
 
-func (channel *Channel) Insert() error {
+func (channel *PlatformChannel) Insert() error {
 	return mustChannelRepo().Insert(channel)
 }
 
-func (channel *Channel) Update() error {
+func (channel *PlatformChannel) Update() error {
 	return mustChannelRepo().Update(channel)
 }
 
-func (channel *Channel) UpdateResponseTime(responseTime int64) {
+func (channel *PlatformChannel) UpdateResponseTime(responseTime int64) {
 	mustChannelRepo().UpdateResponseTime(channel, responseTime)
 }
 
-func (channel *Channel) Delete() error {
+func (channel *PlatformChannel) Delete() error {
 	return mustChannelRepo().Delete(channel)
 }
 
-func (channel *Channel) LoadConfig() (ChannelConfig, error) {
+func (channel *PlatformChannel) LoadConfig() (ChannelConfig, error) {
 	var cfg ChannelConfig
 	if channel.Config == "" {
 		return cfg, nil
@@ -480,7 +513,7 @@ func DeleteDisabledChannel() (int64, error) {
 	return mustChannelRepo().DeleteDisabledChannel()
 }
 
-func (channel *Channel) selectedChannelModels() []ChannelModel {
+func (channel *PlatformChannel) selectedChannelModels() []ChannelModel {
 	configs := channel.GetChannelModels()
 	if len(configs) == 0 {
 		return nil
@@ -498,7 +531,7 @@ func (channel *Channel) selectedChannelModels() []ChannelModel {
 	return selected
 }
 
-func (channel *Channel) GetSelectedChannelModels() []ChannelModel {
+func (channel *PlatformChannel) GetSelectedChannelModels() []ChannelModel {
 	if channel == nil {
 		return nil
 	}

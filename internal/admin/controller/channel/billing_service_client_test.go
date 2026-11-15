@@ -127,7 +127,7 @@ func TestBuildBillingServiceQueryUsesAdapterProtocol(t *testing.T) {
 		BillingSource: "vendor-a",
 		BillingConfig: `{"billing_credentials":{"key":"billing-secret"}}`,
 	}
-	query, err := buildBillingServiceQuery(context.Background(), &model.Channel{
+	query, err := buildBillingServiceQuery(context.Background(), &model.PlatformChannel{
 		Id:       "channel-1",
 		Protocol: "vendor-protocol",
 		Key:      "model-secret-must-not-be-used",
@@ -170,7 +170,7 @@ func TestBuildBillingServiceQueryRejectsMissingRequiredCredential(t *testing.T) 
 		BillingSource: "vendor-a",
 		BillingConfig: `{}`,
 	}
-	_, err := buildBillingServiceQuery(context.Background(), &model.Channel{
+	_, err := buildBillingServiceQuery(context.Background(), &model.PlatformChannel{
 		Id:  "channel-1",
 		Key: "model-secret",
 	}, profile)
@@ -193,7 +193,7 @@ func TestBuildBillingServiceQueryRejectsMissingMultiFieldCredential(t *testing.T
 		BillingSource: "vendor-aksk",
 		BillingConfig: `{}`,
 	}
-	_, err := buildBillingServiceQuery(context.Background(), &model.Channel{
+	_, err := buildBillingServiceQuery(context.Background(), &model.PlatformChannel{
 		Id:  "channel-1",
 		Key: "model-secret",
 	}, profile)
@@ -230,7 +230,7 @@ func TestCollectBillingServiceSnapshotConvertsResponse(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":{"channel_id":"channel-1","adapter":"vendor-b","fetched_at":"2026-07-18T00:00:00Z","items":[{"resource_type":"credit","quota_type":"total","quota_label":"Vendor credits","amount":15,"limit_amount":100,"used_amount":85,"remaining_amount":15,"currency":"USD","status":"low","source_ref":"vendor_credits","metadata":{"source":"test"}}],"metadata":{"request_urls":["https://billing.example.com/credits"]}}}`))
 	}, "service-key")
 
-	channelRow := &model.Channel{
+	channelRow := &model.PlatformChannel{
 		Id:       "channel-1",
 		Protocol: "vendor-protocol",
 		Key:      "model-secret-must-not-be-used",
@@ -282,7 +282,7 @@ func TestCollectChannelBillingSnapshotPrefersBillingService(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":{"channel_id":"channel-1","adapter":"vendor-a","fetched_at":"2026-07-18T00:00:00Z","items":[{"resource_type":"credit","quota_type":"total","quota_label":"Total quota","amount":50,"limit_amount":100,"used_amount":50,"remaining_amount":50,"currency":"CNY","status":"active","source_ref":"vendor_total"}]}}`))
 	}, "")
 
-	collected, err := collectChannelBillingSnapshot(&model.Channel{
+	collected, err := collectChannelBillingSnapshot(&model.PlatformChannel{
 		Id:       "channel-1",
 		Protocol: "vendor-protocol",
 		Key:      "model-secret-must-not-be-used",

@@ -643,7 +643,7 @@ func channelHealthLevelByScore(score int) string {
 	}
 }
 
-func calcChannelHealth(channel *model.Channel, nowTs int64) channelHealthMetrics {
+func calcChannelHealth(channel *model.PlatformChannel, nowTs int64) channelHealthMetrics {
 	metrics := channelHealthMetrics{
 		HealthLevel: channelHealthLevelUnknown,
 	}
@@ -795,7 +795,7 @@ func verificationStatus(hasData bool, ok bool) string {
 	return "failed"
 }
 
-func collectCapabilities(channel *model.Channel) []string {
+func collectCapabilities(channel *model.PlatformChannel) []string {
 	if channel == nil {
 		return []string{}
 	}
@@ -1001,7 +1001,7 @@ func channelHealthLevelSortRank(level string) int {
 	}
 }
 
-func selectedChannelModelNames(channel *model.Channel) []string {
+func selectedChannelModelNames(channel *model.PlatformChannel) []string {
 	if channel == nil {
 		return []string{}
 	}
@@ -1163,8 +1163,8 @@ func supplyChannelRuntimeStatus(row model.AdminSupplyChannelView, eligible bool)
 }
 
 func listDashboardChannelsForWindow(limit int, window model.ChannelMetricWindow) ([]channelHealthItem, channelHealthSummaryData, error) {
-	rows := make([]*model.Channel, 0)
-	err := model.DB.Model(&model.Channel{}).
+	rows := make([]*model.PlatformChannel, 0)
+	err := model.DB.Model(&model.PlatformChannel{}).
 		Order("used_quota desc, created_time desc").
 		Omit("key").
 		Find(&rows).Error
@@ -1204,7 +1204,7 @@ func listDashboardChannelsForWindow(limit int, window model.ChannelMetricWindow)
 			billingLevelByChannelID[strings.TrimSpace(snapshot.ChannelId)] = level
 		}
 	}
-	personalRows, err := model.ListPersonalProviderConnectionsForAdmin()
+	personalRows, err := model.ListPersonalChannelsForAdmin()
 	if err != nil {
 		return nil, channelHealthSummaryData{}, err
 	}
@@ -1235,7 +1235,7 @@ func listDashboardChannelsForWindow(limit int, window model.ChannelMetricWindow)
 		return nil, channelHealthSummaryData{}, err
 	}
 	runtimeByChannelID, err := model.LoadChannelRuntimeMetrics(model.ChannelRuntimeMetricQuery{
-		Window: window, ChannelIDs: channelIDs, PersonalProviderIDs: personalIDs,
+		Window: window, ChannelIDs: channelIDs, PersonalChannelIDs: personalIDs,
 	})
 	if err != nil {
 		return nil, channelHealthSummaryData{}, err
@@ -1314,10 +1314,10 @@ func listDashboardChannelsForWindow(limit int, window model.ChannelMetricWindow)
 	}
 	for i := range personalRows {
 		row := personalRows[i]
-		channelID := model.PersonalProviderChannelPrefix + row.Id
+		channelID := model.PersonalChannelIDPrefix + row.Id
 		runtime := runtimeByChannelID[channelID]
 		status := model.ChannelStatusManuallyDisabled
-		if row.Status == model.PersonalProviderStatusEnabled {
+		if row.Status == model.PersonalChannelStatusEnabled {
 			status = model.ChannelStatusEnabled
 		}
 		healthScore, healthLevel := runtimeChannelHealth(status, runtime, nil)
@@ -1426,17 +1426,17 @@ func listDashboardChannels() ([]channelHealthItem, channelHealthSummaryData, err
 }
 
 func countChannelSummary() (int64, int64, int64, error) {
-	total, err := countByModel(&model.Channel{})
+	total, err := countByModel(&model.PlatformChannel{})
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	enabled := int64(0)
-	err = model.DB.Model(&model.Channel{}).Where("status = ?", model.ChannelStatusEnabled).Count(&enabled).Error
+	err = model.DB.Model(&model.PlatformChannel{}).Where("status = ?", model.ChannelStatusEnabled).Count(&enabled).Error
 	if err != nil {
 		return 0, 0, 0, err
 	}
 	disabled := int64(0)
-	err = model.DB.Model(&model.Channel{}).Where("status IN ?", []int{model.ChannelStatusManuallyDisabled, model.ChannelStatusAutoDisabled}).Count(&disabled).Error
+	err = model.DB.Model(&model.PlatformChannel{}).Where("status IN ?", []int{model.ChannelStatusManuallyDisabled, model.ChannelStatusAutoDisabled}).Count(&disabled).Error
 	if err != nil {
 		return 0, 0, 0, err
 	}

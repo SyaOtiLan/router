@@ -24,23 +24,23 @@ const (
 )
 
 type ChannelModel struct {
-	ChannelId            string                              `json:"channel_id" gorm:"primaryKey;type:varchar(64);index"`
-	Model                string                              `json:"model" gorm:"primaryKey;type:varchar(255)"`
-	UpstreamModel        string                              `json:"upstream_model" gorm:"type:varchar(255);default:'';index"`
-	Provider             string                              `json:"provider,omitempty" gorm:"type:varchar(128);default:'';index"`
-	Type                 string                              `json:"type" gorm:"type:varchar(32);default:'text'"`
-	Endpoint             string                              `json:"endpoint" gorm:"type:varchar(255);default:''"`
-	Endpoints            []string                            `json:"endpoints,omitempty" gorm:"-"`
-	PublishStatus        string                              `json:"publish_status,omitempty" gorm:"-"`
-	PublishEnabled       bool                                `json:"publish_enabled" gorm:"not null;default:false;index"`
-	PublishedModel       string                              `json:"published_model,omitempty" gorm:"type:varchar(255);default:'';index"`
-	PublishedAt          int64                               `json:"published_at,omitempty" gorm:"bigint;index"`
-	PublishedBy          string                              `json:"published_by,omitempty" gorm:"type:varchar(128);default:''"`
-	Selected             bool                                `json:"selected" gorm:"default:false;index"`
-	InputPrice           *float64                            `json:"input_price,omitempty" gorm:"type:double precision"`
-	OutputPrice          *float64                            `json:"output_price,omitempty" gorm:"type:double precision"`
-	PriceUnit            string                              `json:"price_unit,omitempty" gorm:"type:varchar(64);default:''"`
-	Currency             string                              `json:"currency,omitempty" gorm:"type:varchar(16);default:''"`
+	ChannelId      string   `json:"channel_id" gorm:"primaryKey;type:varchar(64);index"`
+	Model          string   `json:"model" gorm:"primaryKey;type:varchar(255)"`
+	UpstreamModel  string   `json:"upstream_model" gorm:"type:varchar(255);default:'';index"`
+	Provider       string   `json:"provider,omitempty" gorm:"type:varchar(128);default:'';index"`
+	Type           string   `json:"type" gorm:"type:varchar(32);default:'text'"`
+	Endpoint       string   `json:"endpoint" gorm:"type:varchar(255);default:''"`
+	Endpoints      []string `json:"endpoints,omitempty" gorm:"-"`
+	PublishStatus  string   `json:"publish_status,omitempty" gorm:"-"`
+	PublishEnabled bool     `json:"publish_enabled" gorm:"not null;default:false;index"`
+	PublishedModel string   `json:"published_model,omitempty" gorm:"type:varchar(255);default:'';index"`
+	PublishedAt    int64    `json:"published_at,omitempty" gorm:"bigint;index"`
+	PublishedBy    string   `json:"published_by,omitempty" gorm:"type:varchar(128);default:''"`
+	Selected       bool     `json:"selected" gorm:"default:false;index"`
+	InputPrice     *float64 `json:"input_price,omitempty" gorm:"type:double precision"`
+	OutputPrice    *float64 `json:"output_price,omitempty" gorm:"type:double precision"`
+	PriceUnit      string   `json:"price_unit,omitempty" gorm:"type:varchar(64);default:''"`
+	Currency       string   `json:"currency,omitempty" gorm:"type:varchar(16);default:''"`
 	// TargetMargin overrides the global pricing target margin (0..0.95) for this
 	// channel+model. Nil falls back to the operator-configured global policy. See
 	// docs/商业计费/成本与盈利核算标准.md §5 — per-model granularity for the
@@ -368,19 +368,19 @@ func JoinChannelModelCSV(modelIDs []string) string {
 	return strings.Join(NormalizeChannelModelIDsPreserveOrder(modelIDs), ",")
 }
 
-func HydrateChannelWithModels(db *gorm.DB, channel *Channel) error {
+func HydrateChannelWithModels(db *gorm.DB, channel *PlatformChannel) error {
 	if channel == nil {
 		return nil
 	}
-	return HydrateChannelsWithModels(db, []*Channel{channel})
+	return HydrateChannelsWithModels(db, []*PlatformChannel{channel})
 }
 
-func HydrateChannelsWithModels(db *gorm.DB, channels []*Channel) error {
+func HydrateChannelsWithModels(db *gorm.DB, channels []*PlatformChannel) error {
 	if db == nil {
 		return fmt.Errorf("database handle is nil")
 	}
 	channelIDs := make([]string, 0, len(channels))
-	normalizedChannels := make([]*Channel, 0, len(channels))
+	normalizedChannels := make([]*PlatformChannel, 0, len(channels))
 	for _, channel := range channels {
 		if channel == nil {
 			continue
@@ -412,16 +412,38 @@ func HydrateChannelsWithModels(db *gorm.DB, channels []*Channel) error {
 	return nil
 }
 
+func HydrateChannelCandidatesWithModels(db *gorm.DB, candidates []*ChannelCandidate) error {
+	platformChannels := make([]*PlatformChannel, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		platformChannels = append(platformChannels, &candidate.PlatformChannel)
+	}
+	return HydrateChannelsWithModels(db, platformChannels)
+}
+
+func HydrateChannelCandidatesWithModelCapabilities(db *gorm.DB, candidates []*ChannelCandidate) error {
+	platformChannels := make([]*PlatformChannel, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		platformChannels = append(platformChannels, &candidate.PlatformChannel)
+	}
+	return HydrateChannelsWithModelCapabilitiesWithDB(db, platformChannels)
+}
+
 // HydrateChannelWithModelCapabilitiesWithDB 是 HydrateChannelWithModels 的轻量版:
 // 仅加载能力所需的 channel_models 行(model/type/selected),跳过端点状态、测试支持、
 // 价格组件与发布状态解析。仅用于渠道列表(只展示 capabilities),避免为一页渠道额外
 // 拉端点/测试/价格三张表。
-func HydrateChannelsWithModelCapabilitiesWithDB(db *gorm.DB, channels []*Channel) error {
+func HydrateChannelsWithModelCapabilitiesWithDB(db *gorm.DB, channels []*PlatformChannel) error {
 	if db == nil {
 		return fmt.Errorf("database handle is nil")
 	}
 	channelIDs := make([]string, 0, len(channels))
-	normalizedChannels := make([]*Channel, 0, len(channels))
+	normalizedChannels := make([]*PlatformChannel, 0, len(channels))
 	for _, channel := range channels {
 		if channel == nil {
 			continue
@@ -1013,7 +1035,7 @@ func EnsureChannelTestModelWithDB(db *gorm.DB, channelID string) error {
 	}
 
 	record := channelTestModelRecord{}
-	if err := db.Model(&Channel{}).
+	if err := db.Model(&PlatformChannel{}).
 		Select("test_model").
 		Where("id = ?", normalizedChannelID).
 		Take(&record).Error; err != nil {
@@ -1038,7 +1060,7 @@ func EnsureChannelTestModelWithDB(db *gorm.DB, channelID string) error {
 	if current == next {
 		return nil
 	}
-	return db.Model(&Channel{}).
+	return db.Model(&PlatformChannel{}).
 		Where("id = ?", normalizedChannelID).
 		Update("test_model", next).Error
 }
@@ -1361,7 +1383,7 @@ endpointResolved:
 	row.PriceComponents = NormalizeProviderModelPriceComponents(row.PriceComponents)
 }
 
-func applyChannelModelRows(channel *Channel, rows []ChannelModel) {
+func applyChannelModelRows(channel *PlatformChannel, rows []ChannelModel) {
 	if channel == nil {
 		return
 	}
@@ -1559,7 +1581,7 @@ func lockChannelRowForUpdateWithDB(db *gorm.DB, channelID string) error {
 	row := channelIDRow{}
 	return db.
 		Set("gorm:query_option", "FOR UPDATE").
-		Model(&Channel{}).
+		Model(&PlatformChannel{}).
 		Select("id").
 		Where("id = ?", normalizedChannelID).
 		Take(&row).Error
@@ -1676,13 +1698,13 @@ func loadChannelProtocolByChannelIDWithDB(db *gorm.DB, channelID string) (int, e
 		Protocol string `gorm:"column:protocol"`
 	}
 	record := channelProtocolRecord{}
-	if err := db.Model(&Channel{}).
+	if err := db.Model(&PlatformChannel{}).
 		Select("protocol").
 		Where("id = ?", normalizedChannelID).
 		Take(&record).Error; err != nil {
 		return 0, err
 	}
-	channel := Channel{Protocol: record.Protocol}
+	channel := PlatformChannel{Protocol: record.Protocol}
 	return channel.GetChannelProtocol(), nil
 }
 

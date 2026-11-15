@@ -19,7 +19,7 @@ func newOpenModelSupplyTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&User{}, &ProviderModel{}, &BillingCurrency{}, &Log{}, &UserBalanceLot{}, &UserBalanceLotTransaction{}, &PersonalProviderConnection{}, &Publisher{}, &PublisherService{}, &PublisherServiceModel{}, &ServiceOffer{}, &PublisherAuditLog{}, &PublisherOfferSettlement{}, &PublisherSettlementDelivery{}, &CommunityOfferModelRoute{}, &GroupCatalog{}, &GroupModel{}, &GroupSupplyBinding{}); err != nil {
+	if err := db.AutoMigrate(&User{}, &ProviderModel{}, &BillingCurrency{}, &Log{}, &UserBalanceLot{}, &UserBalanceLotTransaction{}, &PersonalChannel{}, &Publisher{}, &PublisherService{}, &PublisherServiceModel{}, &ServiceOffer{}, &PublisherAuditLog{}, &PublisherOfferSettlement{}, &PublisherSettlementDelivery{}, &CommunityOfferModelRoute{}, &GroupCatalog{}, &GroupModel{}, &GroupSupplyBinding{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	previousDB := DB
@@ -163,12 +163,12 @@ func TestPublisherServiceFromPersonalConnectionRequiresOwnershipAndNewCredential
 	if _, err := EnsurePublisherProfile("user-a", PublisherProfileInput{}); err != nil {
 		t.Fatalf("create publisher A: %v", err)
 	}
-	connectionA := &PersonalProviderConnection{UserId: "user-a", Name: "private-a", Protocol: "openai", BaseURL: "https://1.1.1.1/v1", Models: []string{"gpt-5.4"}, Status: PersonalProviderStatusEnabled}
-	if err := CreatePersonalProviderConnection(connectionA, "sk-private-a"); err != nil {
+	connectionA := &PersonalChannel{UserId: "user-a", Name: "private-a", Protocol: "openai", BaseURL: "https://1.1.1.1/v1", Models: []string{"gpt-5.4"}, Status: PersonalChannelStatusEnabled}
+	if err := CreatePersonalChannel(connectionA, "sk-private-a"); err != nil {
 		t.Fatalf("create connection A: %v", err)
 	}
-	connectionB := &PersonalProviderConnection{UserId: "user-b", Name: "private-b", Protocol: "openai", BaseURL: "https://1.1.1.2/v1", Models: []string{"gpt-5.4"}, Status: PersonalProviderStatusEnabled}
-	if err := CreatePersonalProviderConnection(connectionB, "sk-private-b"); err != nil {
+	connectionB := &PersonalChannel{UserId: "user-b", Name: "private-b", Protocol: "openai", BaseURL: "https://1.1.1.2/v1", Models: []string{"gpt-5.4"}, Status: PersonalChannelStatusEnabled}
+	if err := CreatePersonalChannel(connectionB, "sk-private-b"); err != nil {
 		t.Fatalf("create connection B: %v", err)
 	}
 	foreignInput := testPublisherServiceInput()

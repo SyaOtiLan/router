@@ -63,7 +63,7 @@ func TestEnsureChannelListIndexesWithDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	if err := db.AutoMigrate(&Channel{}); err != nil {
+	if err := db.AutoMigrate(&PlatformChannel{}); err != nil {
 		t.Fatalf("automigrate channel: %v", err)
 	}
 	for i := 0; i < 2; i++ {
@@ -71,10 +71,10 @@ func TestEnsureChannelListIndexesWithDB(t *testing.T) {
 			t.Fatalf("ensure channel indexes (run %d): %v", i, err)
 		}
 	}
-	names := listSQLiteIndexNames(t, db, "channels")
+	names := listSQLiteIndexNames(t, db, "platform_channels")
 	for _, want := range []string{
-		"idx_channels_status",
-		"idx_channels_created_time",
+		"idx_platform_channels_status",
+		"idx_platform_channels_created_time",
 	} {
 		if _, ok := names[want]; !ok {
 			t.Fatalf("expected index %s to exist, got %v", want, names)

@@ -72,7 +72,7 @@ type channelListCompactPageData struct {
 	PageSize int                      `json:"page_size"`
 }
 
-func sanitizeChannelForResponse(channel *model.Channel) {
+func sanitizeChannelForResponse(channel *model.PlatformChannel) {
 	if channel == nil {
 		return
 	}
@@ -99,7 +99,7 @@ func maskChannelKeyPreview(value string) string {
 	return trimmed[:3] + strings.Repeat("*", len(trimmed)-6) + trimmed[len(trimmed)-3:]
 }
 
-func buildChannelListItem(channel *model.Channel) channelListItem {
+func buildChannelListItem(channel *model.PlatformChannel) channelListItem {
 	if channel == nil {
 		return channelListItem{}
 	}
@@ -147,7 +147,7 @@ func buildChannelCircuitBreakerListItem(row model.ChannelCircuitBreakerState) *c
 	}
 }
 
-func collectChannelCapabilities(channel *model.Channel) []string {
+func collectChannelCapabilities(channel *model.PlatformChannel) []string {
 	if channel == nil {
 		return []string{}
 	}
@@ -320,7 +320,7 @@ func GetChannel(c *gin.Context) {
 }
 
 func AddChannel(c *gin.Context) {
-	channel := model.Channel{}
+	channel := model.PlatformChannel{}
 	err := c.ShouldBindJSON(&channel)
 	if err != nil {
 		logChannelAdminWarn(c, "create", stringField("reason", err.Error()))
@@ -356,7 +356,7 @@ func AddChannel(c *gin.Context) {
 
 func DeleteChannel(c *gin.Context) {
 	id := c.Param("id")
-	channel := model.Channel{Id: id}
+	channel := model.PlatformChannel{Id: id}
 	err := channelsvc.DeleteByID(channel.Id)
 	if err != nil {
 		logChannelAdminWarn(c, "delete", stringField("channel_id", channel.Id), stringField("reason", err.Error()))
@@ -409,7 +409,7 @@ func UpdateChannel(c *gin.Context) {
 		})
 		return
 	}
-	channel := model.Channel{}
+	channel := model.PlatformChannel{}
 	err = json.Unmarshal(rawBody, &channel)
 	if err != nil {
 		logChannelAdminWarn(c, "update", stringField("reason", err.Error()))

@@ -13,12 +13,12 @@ type SatisfiedChannelSelectionStats struct {
 	SelectionScope         string
 }
 
-func SelectRandomSatisfiedChannel(channels []*Channel, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) *Channel {
+func SelectRandomSatisfiedChannel(channels []*ChannelCandidate, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) *ChannelCandidate {
 	channel, _ := SelectRandomSatisfiedChannelWithStats(channels, ignoreFirstPriority, excludedChannelIDs)
 	return channel
 }
 
-func SelectRandomSatisfiedChannelWithStats(channels []*Channel, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*Channel, SatisfiedChannelSelectionStats) {
+func SelectRandomSatisfiedChannelWithStats(channels []*ChannelCandidate, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*ChannelCandidate, SatisfiedChannelSelectionStats) {
 	stats := SatisfiedChannelSelectionStats{
 		TotalCandidates: len(channels),
 	}
@@ -65,7 +65,7 @@ func SelectRandomSatisfiedChannelWithStats(channels []*Channel, ignoreFirstPrior
 	return selectWeightedChannel(filtered[:endIdx]), stats
 }
 
-func selectWeightedChannel(channels []*Channel) *Channel {
+func selectWeightedChannel(channels []*ChannelCandidate) *ChannelCandidate {
 	if len(channels) == 0 {
 		return nil
 	}
@@ -96,16 +96,16 @@ func selectWeightedChannel(channels []*Channel) *Channel {
 	return channels[len(channels)-1]
 }
 
-func filterExcludedChannels(channels []*Channel, excludedChannelIDs map[string]struct{}) []*Channel {
+func filterExcludedChannels(channels []*ChannelCandidate, excludedChannelIDs map[string]struct{}) []*ChannelCandidate {
 	if len(channels) == 0 {
 		return nil
 	}
 	if len(excludedChannelIDs) == 0 {
-		result := make([]*Channel, 0, len(channels))
+		result := make([]*ChannelCandidate, 0, len(channels))
 		result = append(result, channels...)
 		return result
 	}
-	result := make([]*Channel, 0, len(channels))
+	result := make([]*ChannelCandidate, 0, len(channels))
 	for _, channel := range channels {
 		if channel == nil {
 			continue
@@ -122,7 +122,7 @@ func filterExcludedChannels(channels []*Channel, excludedChannelIDs map[string]s
 	return result
 }
 
-func nextPriorityStartIndex(channels []*Channel) int {
+func nextPriorityStartIndex(channels []*ChannelCandidate) int {
 	if len(channels) == 0 {
 		return 0
 	}

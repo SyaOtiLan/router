@@ -14,7 +14,7 @@ func newCostTrackingModeTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -45,7 +45,7 @@ func TestNormalizeChannelCostTrackingMode(t *testing.T) {
 
 func TestSaveChannelBillingProfileRoundTripsCostTrackingMode(t *testing.T) {
 	db := newCostTrackingModeTestDB(t)
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 

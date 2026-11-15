@@ -218,7 +218,7 @@ func TestBuildChannelModelEndpointRowsPrefersSnapshotProviderModelWhenConfigured
 }
 
 func TestFilterChannelsByRequestEndpointUsesPublishedModelUpstreamMapping(t *testing.T) {
-	channels := []*Channel{{Id: "channel-1"}}
+	channels := platformChannelCandidates([]*PlatformChannel{{Id: "channel-1"}})
 	supportByChannelID := map[string]map[string]map[string]bool{
 		"channel-1": {
 			"qwen3.7-plus-2026-05-26": {
@@ -384,10 +384,10 @@ func TestReplaceChannelModelsWithDBSyncsEndpointsWithoutProviderCatalog(t *testi
 	if err != nil {
 		t.Fatalf("open sqlite db: %v", err)
 	}
-	if err := db.AutoMigrate(&Channel{}, &ChannelModel{}, &ChannelModelEndpoint{}, &ChannelModelEndpointTestResult{}, &ChannelModelPriceComponent{}, &ProviderModel{}); err != nil {
+	if err := db.AutoMigrate(&PlatformChannel{}, &ChannelModel{}, &ChannelModelEndpoint{}, &ChannelModelEndpointTestResult{}, &ChannelModelPriceComponent{}, &ProviderModel{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{
+	if err := db.Create(&PlatformChannel{
 		Id:       "channel-1",
 		Protocol: "openai",
 		Name:     "channel-1",
@@ -451,7 +451,7 @@ func TestDisableChannelModelEndpointRefreshesRequestCandidates(t *testing.T) {
 		t.Fatalf("open sqlite db: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointPolicy{},
@@ -462,7 +462,7 @@ func TestDisableChannelModelEndpointRefreshesRequestCandidates(t *testing.T) {
 		t.Fatalf("auto migrate: %v", err)
 	}
 
-	channels := []Channel{
+	channels := []PlatformChannel{
 		{Id: "facai-01", Name: "facai-01", Protocol: "openai", Status: ChannelStatusEnabled},
 		{Id: "hanbbq-1", Name: "hanbbq-1", Protocol: "openai", Status: ChannelStatusEnabled},
 	}
@@ -550,7 +550,7 @@ func TestDisableChannelModelEndpointRefreshesRequestCandidates(t *testing.T) {
 	}
 }
 
-func channelIDsForTest(channels []*Channel) []string {
+func channelIDsForTest(channels []*ChannelCandidate) []string {
 	ids := make([]string, 0, len(channels))
 	for _, channel := range channels {
 		if channel != nil {
@@ -605,7 +605,7 @@ func TestReplaceChannelModelsWithDBSyncsEndpointsFromStoredRows(t *testing.T) {
 		t.Fatalf("open sqlite db: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -614,7 +614,7 @@ func TestReplaceChannelModelsWithDBSyncsEndpointsFromStoredRows(t *testing.T) {
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{
+	if err := db.Create(&PlatformChannel{
 		Id:       "channel-1",
 		Protocol: "openai",
 		Name:     "channel-1",

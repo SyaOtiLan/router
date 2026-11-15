@@ -111,7 +111,7 @@ func TestBuildChannelModelTestResult_PreserveIsStream(t *testing.T) {
 }
 
 func TestResolveChannelImageModelTestSize_UsesLargeSizeForVolcengineSeedream(t *testing.T) {
-	channel := &adminmodel.Channel{Protocol: "volcengine"}
+	channel := &adminmodel.PlatformChannel{Protocol: "volcengine"}
 	got := resolveChannelImageModelTestSize(channel, "doubao-seedream-5-0-lite-260128")
 	if got != "2048x2048" {
 		t.Fatalf("resolveChannelImageModelTestSize() = %q, want 2048x2048", got)
@@ -119,7 +119,7 @@ func TestResolveChannelImageModelTestSize_UsesLargeSizeForVolcengineSeedream(t *
 }
 
 func TestResolveChannelImageModelTestSize_KeepsDefaultForRegularImages(t *testing.T) {
-	channel := &adminmodel.Channel{Protocol: "openai"}
+	channel := &adminmodel.PlatformChannel{Protocol: "openai"}
 	got := resolveChannelImageModelTestSize(channel, "gpt-image-1")
 	if got != "1024x1024" {
 		t.Fatalf("resolveChannelImageModelTestSize() = %q, want 1024x1024", got)
@@ -399,7 +399,7 @@ func TestCreateChannelModelTestTasksAllowsSameModelMultipleEndpoints(t *testing.
 	}
 	adminmodel.DB = db
 	if err := db.AutoMigrate(
-		&adminmodel.Channel{},
+		&adminmodel.PlatformChannel{},
 		&adminmodel.ChannelModel{},
 		&adminmodel.ChannelModelPriceComponent{},
 		&adminmodel.ChannelModelEndpoint{},
@@ -411,7 +411,7 @@ func TestCreateChannelModelTestTasksAllowsSameModelMultipleEndpoints(t *testing.
 	); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
-	if err := db.Create(&adminmodel.Channel{
+	if err := db.Create(&adminmodel.PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",
@@ -457,7 +457,7 @@ func TestCreateChannelModelTestTasksAllowsSameModelMultipleEndpoints(t *testing.
 		}
 	}
 
-	channelRow := &adminmodel.Channel{}
+	channelRow := &adminmodel.PlatformChannel{}
 	if err := db.Where("id = ?", "channel-1").Take(channelRow).Error; err != nil {
 		t.Fatalf("load channel: %v", err)
 	}
@@ -570,7 +570,7 @@ func TestRestoreRuntimeDisabledCapabilitiesAfterSuccessfulTests(t *testing.T) {
 	}
 	adminmodel.DB = db
 	if err := db.AutoMigrate(
-		&adminmodel.Channel{},
+		&adminmodel.PlatformChannel{},
 		&adminmodel.ChannelModel{},
 		&adminmodel.ChannelModelPriceComponent{},
 		&adminmodel.ChannelModelEndpoint{},
@@ -583,7 +583,7 @@ func TestRestoreRuntimeDisabledCapabilitiesAfterSuccessfulTests(t *testing.T) {
 	); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
-	if err := db.Create(&adminmodel.Channel{
+	if err := db.Create(&adminmodel.PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",

@@ -76,7 +76,7 @@ func loadTaskChannelOptions(channelIDs []string) ([]taskFilterOption, error) {
 	if len(normalizedIDs) == 0 {
 		return []taskFilterOption{}, nil
 	}
-	var channels []*model.Channel
+	var channels []*model.PlatformChannel
 	if err := model.DB.Select("id", "name").Where("id IN ?", normalizedIDs).Find(&channels).Error; err != nil {
 		return nil, err
 	}
