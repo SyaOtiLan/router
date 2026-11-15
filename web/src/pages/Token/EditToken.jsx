@@ -64,6 +64,9 @@ const EditToken = ({ admin = false } = {}) => {
   })();
   const [loading, setLoading] = useState(isDetailMode);
   const [modelOptions, setModelOptions] = useState([]);
+  const [availableGroups, setAvailableGroups] = useState([]);
+  const [groupRouteOrder, setGroupRouteOrder] = useState([]);
+  const [persistedGroupRouteOrder, setPersistedGroupRouteOrder] = useState([]);
   const [unrestrictedModels, setUnrestrictedModels] = useState(isCreateMode);
   const [modelKeyword, setModelKeyword] = useState('');
   const [modelProviderFilter, setModelProviderFilter] = useState('all');
@@ -104,6 +107,16 @@ const EditToken = ({ admin = false } = {}) => {
   } = inputs;
   const navigate = useNavigate();
   const allModelValues = modelOptions.map((option) => option.value);
+  const orderedGroupOptions = useMemo(() => {
+    const byId = new Map(availableGroups.map((group) => [group.id, group]));
+    const preferred = groupRouteOrder.filter((groupId) => byId.has(groupId));
+    const seen = new Set(preferred);
+    const order = [
+      ...preferred,
+      ...availableGroups.map((group) => group.id).filter((id) => !seen.has(id)),
+    ];
+    return order.map((id) => byId.get(id)).filter(Boolean);
+  }, [availableGroups, groupRouteOrder]);
 
   const routePolicyOptions = [
     { value: 'personal_first', label: '自用渠道优先，供给渠道回退' },
@@ -346,6 +359,11 @@ const EditToken = ({ admin = false } = {}) => {
     }
     setInputs(normalizedData);
     setPersistedInputs(normalizedData);
+    const savedGroupRouteOrder = Array.isArray(data?.group_route_order)
+      ? data.group_route_order.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+    setGroupRouteOrder(savedGroupRouteOrder);
+    setPersistedGroupRouteOrder(savedGroupRouteOrder);
     setExpireTimeMode('custom');
     setQuotaInputValue(
       chargeAmountToBillingInputValue(
@@ -359,6 +377,54 @@ const EditToken = ({ admin = false } = {}) => {
   const handleInputChange = (e, { name, value }) => {
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   };
+
+  const moveGroupRoute = (index, direction) => {
+    const current = orderedGroupOptions.map((group) => group.id);
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= current.length) {
+      return;
+    }
+    [current[index], current[nextIndex]] = [current[nextIndex], current[index]];
+    setGroupRouteOrder(current);
+  };
+
+  const renderGroupRouteOrder = (readOnly = false) => (
+    <div className='router-token-group-route'>
+      <div className='router-form-hint'>{t('token.edit.group_routes_notice')}</div>
+      {orderedGroupOptions.length === 0 ? (
+        <div className='router-section-message'>{t('token.edit.group_routes_empty')}</div>
+      ) : (
+        <ol className='router-token-group-route-list' aria-label={t('token.edit.group_routes_title')}>
+          {orderedGroupOptions.map((group, index) => (
+            <li className='router-token-group-route-item' key={group.id}>
+              <span className='router-token-group-route-position'>{index + 1}</span>
+              <span className='router-token-group-route-name'>{group.name}</span>
+              {!readOnly ? (
+                <span className='router-token-group-route-actions'>
+                  <AppButton
+                    className='router-page-button'
+                    disabled={index === 0}
+                    aria-label={t('token.edit.group_routes_move_up', { name: group.name })}
+                    onClick={() => moveGroupRoute(index, -1)}
+                  >
+                    {t('token.edit.group_routes_move_up_short')}
+                  </AppButton>
+                  <AppButton
+                    className='router-page-button'
+                    disabled={index === orderedGroupOptions.length - 1}
+                    aria-label={t('token.edit.group_routes_move_down', { name: group.name })}
+                    onClick={() => moveGroupRoute(index, 1)}
+                  >
+                    {t('token.edit.group_routes_move_down_short')}
+                  </AppButton>
+                </span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
 
   const formatDateTimeLocalInputValue = (value) => {
     const normalizedValue = (value || '').toString().trim();
@@ -390,8 +456,9 @@ const EditToken = ({ admin = false } = {}) => {
         ? persistedInputs.models.length === 0
         : true
     );
+    setGroupRouteOrder(persistedGroupRouteOrder);
     setDetailEditingSection('');
-  }, [billingCurrencyIndex, persistedInputs, quotaDisplayUnit]);
+  }, [billingCurrencyIndex, persistedGroupRouteOrder, persistedInputs, quotaDisplayUnit]);
 
   const handleCancel = () => {
     if (isCreateMode) {
@@ -519,6 +586,21 @@ const EditToken = ({ admin = false } = {}) => {
       let res = await API.get(`/api/v1/public/user/models/available`);
       const { success, message, data } = res.data || {};
       if (success && data) {
+        const groupById = new Map();
+        (Array.isArray(res.data?.sources) ? res.data.sources : []).forEach((source) => {
+          const id = (source?.group_id || '').toString().trim();
+          if (id === '' || groupById.has(id)) {
+            return;
+          }
+          groupById.set(id, {
+            id,
+            name: (source?.group_name || source?.group_id || id).toString().trim(),
+            priority: Number(source?.priority || 0),
+          });
+        });
+        setAvailableGroups(Array.from(groupById.values()).sort((left, right) =>
+          left.priority - right.priority || left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+        ));
         const itemByModel = new Map(
           (Array.isArray(res.data?.items) ? res.data.items : []).map((item) => [
             (item?.model || '').toString().trim(),
@@ -631,6 +713,8 @@ const EditToken = ({ admin = false } = {}) => {
       return;
     }
     localInputs.models = unrestrictedModels ? '' : localInputs.models.join(',');
+    const orderedGroupIDs = orderedGroupOptions.map((group) => group.id);
+    const groupOrderPayload = admin ? {} : { group_route_order: orderedGroupIDs };
     let res;
     if (isDetailMode) {
       const normalizedTokenId = (tokenId || '').toString().trim();
@@ -640,15 +724,21 @@ const EditToken = ({ admin = false } = {}) => {
       }
       res = await API.put(`${apiBase}/`, {
         ...localInputs,
+        ...groupOrderPayload,
         id: normalizedTokenId,
       });
     } else {
-      res = await API.post(`/api/v1/public/token/`, localInputs);
+      res = await API.post(`/api/v1/public/token/`, { ...localInputs, ...groupOrderPayload });
     }
     const { success, message, data } = res.data;
     if (success) {
       if (isDetailMode) {
         showSuccess(t('token.edit.messages.update_success'));
+        const savedOrder = Array.isArray(data?.group_route_order)
+          ? data.group_route_order
+          : orderedGroupIDs;
+        setGroupRouteOrder(savedOrder);
+        setPersistedGroupRouteOrder(savedOrder);
         syncTokenState(data || {
           ...inputs,
           id: tokenId,
@@ -660,6 +750,8 @@ const EditToken = ({ admin = false } = {}) => {
         showSuccess(t('token.edit.messages.create_success'));
         setCreatedToken(data || null);
         setInputs(originInputs);
+        setGroupRouteOrder([]);
+        setPersistedGroupRouteOrder([]);
         setUnrestrictedModels(modelOptions.length > 0);
         setExpireTimeMode('custom');
         setQuotaInputValue(
@@ -1110,6 +1202,11 @@ const EditToken = ({ admin = false } = {}) => {
                     />
                   </AppField>
                 </AppFormRow>
+                {!admin ? (
+                  <AppDetailSection title={t('token.edit.group_routes_title')}>
+                    {renderGroupRouteOrder(false)}
+                  </AppDetailSection>
+                ) : null}
                 <AppFormRow>
                   <AppField label={t('token.edit.ip_limit')}>
                     <AppInput
@@ -1222,6 +1319,7 @@ const EditToken = ({ admin = false } = {}) => {
               items={[
                 { key: 'basic', label: t('common.basic_info') },
                 { key: 'models', label: t('token.detail.sections.models') },
+                ...(!admin ? [{ key: 'groups', label: t('token.detail.sections.groups') }] : []),
                 { key: 'usage', label: t('token.detail.sections.usage') },
               ]}
             />
@@ -1440,6 +1538,33 @@ const EditToken = ({ admin = false } = {}) => {
               >
                   {renderModelScopeControls(modelsReadonly)}
             </AppDetailSection>
+            ) : null}
+            {activeDetailTab === 'groups' && !admin ? (
+              <AppDetailSection
+                title={t('token.edit.group_routes_title')}
+                headerEnd={detailEditingSection === 'groups' ? (
+                  <>
+                    <AppButton className='router-page-button' onClick={cancelDetailSectionEdit}>
+                      {t('token.edit.buttons.cancel')}
+                    </AppButton>
+                    <AppButton className='router-page-button' color='blue' onClick={submit}>
+                      {t('token.edit.buttons.submit')}
+                    </AppButton>
+                  </>
+                ) : (
+                  <AppButton
+                    className='router-page-button'
+                    color='blue'
+                    onClick={() => startDetailSectionEdit('groups')}
+                    disabled={detailEditingSection !== ''}
+                  >
+                    {t('token.buttons.edit')}
+                  </AppButton>
+                )}
+                bodyClassName='router-page-stack'
+              >
+                {renderGroupRouteOrder(detailEditingSection !== 'groups')}
+              </AppDetailSection>
             ) : null}
             {activeDetailTab === 'usage' ? (
               <AppDetailSection title={t('token.created.usage_title')}>

@@ -145,12 +145,51 @@ func GetToken(c *gin.Context) {
 		})
 		return
 	}
+	token.GroupRouteOrder, err = model.ListTokenGroupRouteOrder(token.Id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data":    presenter.NewToken(token),
 	})
 	return
+}
+
+var listTokenUserEntitlementSourcesFn = model.ListUserEntitlementSources
+
+func validateTokenGroupRouteOrder(userID string, groupIDs []string) error {
+	sources, err := listTokenUserEntitlementSourcesFn(strings.TrimSpace(userID))
+	if err != nil {
+		return err
+	}
+	allowed := make(map[string]struct{}, len(sources))
+	for _, source := range sources {
+		groupID := strings.TrimSpace(source.GroupID)
+		if groupID != "" {
+			allowed[groupID] = struct{}{}
+		}
+	}
+	seen := make(map[string]struct{}, len(groupIDs))
+	for _, groupID := range groupIDs {
+		normalized := strings.TrimSpace(groupID)
+		if normalized == "" {
+			return fmt.Errorf("分组顺序中包含空分组")
+		}
+		if _, ok := allowed[normalized]; !ok {
+			return fmt.Errorf("分组不在当前用户的有效权益中")
+		}
+		if _, ok := seen[normalized]; ok {
+			return fmt.Errorf("分组顺序中不能包含重复分组")
+		}
+		seen[normalized] = struct{}{}
+	}
+	if len(seen) != len(allowed) {
+		return fmt.Errorf("请包含当前所有有权益的分组")
+	}
+	return nil
 }
 
 func GetTokenStatus(c *gin.Context) {
@@ -311,6 +350,12 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	userID := c.GetString(ctxkey.Id)
+	if token.GroupRouteOrder != nil {
+		if err := validateTokenGroupRouteOrder(userID, token.GroupRouteOrder); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": fmt.Sprintf("分组顺序无效：%s", err.Error())})
+			return
+		}
+	}
 	err = validateTokenModelEntitlement(c.Request.Context(), userID, token)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -337,13 +382,20 @@ func AddToken(c *gin.Context) {
 		RoutePolicy:           model.NormalizePersonalRoutePolicy(token.RoutePolicy),
 		Subnet:                token.Subnet,
 	}
-	err = tokensvc.Create(&cleanToken)
+	if token.GroupRouteOrder != nil {
+		err = tokensvc.CreateWithGroupRouteOrder(&cleanToken, token.GroupRouteOrder)
+	} else {
+		err = tokensvc.Create(&cleanToken)
+	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
+	}
+	if token.GroupRouteOrder != nil {
+		cleanToken.GroupRouteOrder = append([]string{}, token.GroupRouteOrder...)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -382,6 +434,12 @@ func UpdateToken(c *gin.Context) {
 			"message": err.Error(),
 		})
 		return
+	}
+	if token.GroupRouteOrder != nil {
+		if err := validateTokenGroupRouteOrder(userId, token.GroupRouteOrder); err != nil {
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": fmt.Sprintf("分组顺序无效：%s", err.Error())})
+			return
+		}
 	}
 	normalizeTokenRequestCountLimit(&token)
 	err = validateToken(c, token)
@@ -447,13 +505,22 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.Subnet = token.Subnet
 		cleanToken.UpdatedTime = helper.GetTimestamp()
 	}
-	err = tokensvc.Update(cleanToken)
+	if statusOnly == "" && token.GroupRouteOrder != nil {
+		err = tokensvc.UpdateWithGroupRouteOrder(cleanToken, token.GroupRouteOrder)
+	} else {
+		err = tokensvc.Update(cleanToken)
+	}
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
+	}
+	if statusOnly == "" && token.GroupRouteOrder != nil {
+		cleanToken.GroupRouteOrder = append([]string{}, token.GroupRouteOrder...)
+	} else if statusOnly != "" {
+		cleanToken.GroupRouteOrder, _ = model.ListTokenGroupRouteOrder(cleanToken.Id)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

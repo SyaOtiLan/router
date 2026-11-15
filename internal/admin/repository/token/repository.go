@@ -239,8 +239,38 @@ func Create(token *model.Token) error {
 	return model.DB.Create(token).Error
 }
 
+func CreateWithGroupRouteOrder(token *model.Token, groupIDs []string) error {
+	if strings.TrimSpace(token.Id) == "" {
+		token.Id = random.GetUUID()
+	}
+	if token.CreatedTime == 0 {
+		token.CreatedTime = helper.GetTimestamp()
+	}
+	if token.UpdatedTime == 0 {
+		token.UpdatedTime = token.CreatedTime
+	}
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(token).Error; err != nil {
+			return err
+		}
+		return model.ReplaceTokenGroupRouteOrderWithDB(tx, token.Id, groupIDs, token.UpdatedTime)
+	})
+}
+
 func Update(token *model.Token) error {
 	if err := model.DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "remain_request_count", "unlimited_request_count", "models", "route_policy", "subnet", "updated_time").Updates(token).Error; err != nil {
+		return err
+	}
+	return invalidateTokenCacheFn(token.Key)
+}
+
+func UpdateWithGroupRouteOrder(token *model.Token, groupIDs []string) error {
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "remain_request_count", "unlimited_request_count", "models", "route_policy", "subnet", "updated_time").Updates(token).Error; err != nil {
+			return err
+		}
+		return model.ReplaceTokenGroupRouteOrderWithDB(tx, token.Id, groupIDs, token.UpdatedTime)
+	}); err != nil {
 		return err
 	}
 	return invalidateTokenCacheFn(token.Key)
@@ -251,7 +281,12 @@ func SelectUpdate(token *model.Token) error {
 }
 
 func Delete(token *model.Token) error {
-	if err := model.DB.Delete(token).Error; err != nil {
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("token_id = ?", token.Id).Delete(&model.TokenGroupRoute{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(token).Error
+	}); err != nil {
 		return err
 	}
 	return invalidateTokenCacheFn(token.Key)

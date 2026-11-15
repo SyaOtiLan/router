@@ -41,8 +41,11 @@ type Token struct {
 	// RoutePolicy is the default source policy for models allowed by this token.
 	// A per-model rule can choose a stricter source boundary or a preference,
 	// but cannot relax personal_only or community_only on this token.
-	RoutePolicy string  `json:"route_policy" gorm:"type:varchar(32);not null;default:'personal_first'"`
-	Subnet      *string `json:"subnet" gorm:"default:''"`
+	RoutePolicy string `json:"route_policy" gorm:"type:varchar(32);not null;default:'personal_first'"`
+	// GroupRouteOrder stores the user's preferred order for entitled groups.
+	// Phase-one persists this preference only; relay routing does not read it yet.
+	GroupRouteOrder []string `json:"group_route_order,omitempty" gorm:"-"`
+	Subnet          *string  `json:"subnet" gorm:"default:''"`
 }
 
 func (Token) TableName() string {

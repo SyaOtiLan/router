@@ -2018,6 +2018,7 @@
       "title": "Token Detail",
       "sections": {
         "models": "Model Scope",
+        "groups": "Group Order",
         "usage": "Usage",
         "limits": "Limits"
       },
@@ -2032,6 +2033,13 @@
       "name": "Name",
       "name_placeholder": "Please enter name",
       "models": "Model Scope",
+      "group_routes_title": "Group Order",
+      "group_routes_notice": "Save entitled groups in your preferred order. Phase one stores this preference only and does not change request routing. Group access and pricing remain platform-managed.",
+      "group_routes_empty": "There are no entitled groups to order.",
+      "group_routes_move_up": "Move {{name}} up",
+      "group_routes_move_down": "Move {{name}} down",
+      "group_routes_move_up_short": "Move up",
+      "group_routes_move_down_short": "Move down",
       "models_placeholder": "Please select allowed models, leave empty for no restrictions",
       "models_mode_unrestricted": "Follow account models",
       "models_mode_manual": "Manually restrict models",

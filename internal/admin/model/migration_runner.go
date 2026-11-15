@@ -85,6 +85,13 @@ func restoreCompletedChannelModelTestOperationsWithDB(db *gorm.DB) error {
 func runMainVersionedMigrations(db *gorm.DB) error {
 	migrations := []versionedMigration{
 		{
+			Version:     "202611151000_token_group_route_order",
+			Description: "persist user-managed token group route order without changing relay routing",
+			Up: func(tx *gorm.DB) error {
+				return tx.AutoMigrate(&TokenGroupRoute{})
+			},
+		},
+		{
 			Version:     "202610241330_channel_model_tests_are_verifications",
 			Description: "stop treating channel model verification as an asynchronous system task",
 			Up: func(tx *gorm.DB) error {

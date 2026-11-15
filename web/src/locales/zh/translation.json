@@ -2018,6 +2018,7 @@
       "title": "令牌详情",
       "sections": {
         "models": "模型范围",
+        "groups": "分组顺序",
         "usage": "如何调用",
         "limits": "限制设置"
       },
@@ -2032,6 +2033,13 @@
       "name": "名称",
       "name_placeholder": "请输入名称",
       "models": "模型范围",
+      "group_routes_title": "分组顺序",
+      "group_routes_notice": "按你希望的顺序保存已获权益的分组。阶段一仅保存偏好，暂时不会改变请求路由；分组访问权和价格仍由平台配置。",
+      "group_routes_empty": "当前没有可排序的权益分组。",
+      "group_routes_move_up": "将 {{name}} 上移",
+      "group_routes_move_down": "将 {{name}} 下移",
+      "group_routes_move_up_short": "上移",
+      "group_routes_move_down_short": "下移",
       "models_placeholder": "请选择允许使用的模型，留空则不进行限制",
       "models_mode_unrestricted": "跟随账号可用模型",
       "models_mode_manual": "手动限制模型范围",

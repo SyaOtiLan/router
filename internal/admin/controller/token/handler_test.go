@@ -22,7 +22,7 @@ func newTokenControllerTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Token{}); err != nil {
+	if err := db.AutoMigrate(&model.Token{}, &model.TokenGroupRoute{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
 	originalDB := model.DB
@@ -119,6 +119,34 @@ func TestGetTokenReturnsRawKey(t *testing.T) {
 	key, _ := row["key"].(string)
 	if key != "secretTokenValue1234" {
 		t.Fatalf("key=%q, want raw value", key)
+	}
+}
+
+func TestValidateTokenGroupRouteOrderRequiresEveryEntitledGroup(t *testing.T) {
+	previous := listTokenUserEntitlementSourcesFn
+	listTokenUserEntitlementSourcesFn = func(userID string) ([]model.UserEntitlementSource, error) {
+		if userID != "user-1" {
+			t.Fatalf("userID=%q, want user-1", userID)
+		}
+		return []model.UserEntitlementSource{
+			{GroupID: "group-a"},
+			{GroupID: "group-a"}, // Multiple entitlements in one group count once.
+			{GroupID: "group-b"},
+		}, nil
+	}
+	t.Cleanup(func() { listTokenUserEntitlementSourcesFn = previous })
+
+	if err := validateTokenGroupRouteOrder("user-1", []string{"group-b", "group-a"}); err != nil {
+		t.Fatalf("valid complete order rejected: %v", err)
+	}
+	for _, groupIDs := range [][]string{
+		{"group-a"},
+		{"group-a", "group-a", "group-b"},
+		{"group-a", "group-c"},
+	} {
+		if err := validateTokenGroupRouteOrder("user-1", groupIDs); err == nil {
+			t.Errorf("invalid order %v was accepted", groupIDs)
+		}
 	}
 }
 

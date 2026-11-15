@@ -15,7 +15,7 @@ func newTokenRepositoryTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.Token{}); err != nil {
+	if err := db.AutoMigrate(&model.Token{}, &model.TokenGroupRoute{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
 	previousDB := model.DB
@@ -97,6 +97,9 @@ func TestDeleteInvalidatesTokenCache(t *testing.T) {
 	if err := db.Create(token).Error; err != nil {
 		t.Fatalf("create token: %v", err)
 	}
+	if err := model.ReplaceTokenGroupRouteOrderWithDB(db, token.Id, []string{"group-a"}, 100); err != nil {
+		t.Fatalf("seed token group order: %v", err)
+	}
 
 	var invalidatedKey string
 	previousInvalidate := invalidateTokenCacheFn
@@ -117,6 +120,110 @@ func TestDeleteInvalidatesTokenCache(t *testing.T) {
 
 	if _, err := GetByID("token-1"); err == nil {
 		t.Fatalf("expected deleted token lookup to fail")
+	}
+	if order, err := model.ListTokenGroupRouteOrderWithDB(db, "token-1"); err != nil || len(order) != 0 {
+		t.Fatalf("deleted token group order=%v err=%v, want no rows", order, err)
+	}
+}
+
+func TestCreateWithGroupRouteOrderIsAtomic(t *testing.T) {
+	db := newTokenRepositoryTestDB(t)
+	token := &model.Token{
+		UserId:      "user-1",
+		Key:         "secret-key-create-1",
+		Name:        "created",
+		Status:      model.TokenStatusEnabled,
+		CreatedTime: 100,
+		UpdatedTime: 100,
+	}
+	if err := CreateWithGroupRouteOrder(token, []string{"group-a", "group-b"}); err != nil {
+		t.Fatalf("CreateWithGroupRouteOrder: %v", err)
+	}
+	if token.Id == "" {
+		t.Fatal("expected create to assign a token ID")
+	}
+	order, err := model.ListTokenGroupRouteOrderWithDB(db, token.Id)
+	if err != nil || len(order) != 2 || order[0] != "group-a" || order[1] != "group-b" {
+		t.Fatalf("created token route order=%v err=%v, want [group-a group-b]", order, err)
+	}
+
+	failed := &model.Token{
+		UserId:      "user-1",
+		Key:         "secret-key-create-2",
+		Name:        "must-rollback",
+		Status:      model.TokenStatusEnabled,
+		CreatedTime: 100,
+		UpdatedTime: 100,
+	}
+	if err := CreateWithGroupRouteOrder(failed, []string{"group-a", "group-a"}); err == nil {
+		t.Fatal("duplicate group order should fail")
+	}
+	if _, err := GetByID(failed.Id); err == nil {
+		t.Fatal("token row should roll back when its group order fails")
+	}
+}
+
+func TestUpdateWithGroupRouteOrderIsAtomic(t *testing.T) {
+	db := newTokenRepositoryTestDB(t)
+	token := &model.Token{
+		Id:          "token-1",
+		UserId:      "user-1",
+		Key:         "secret-key-1",
+		Name:        "before",
+		Status:      model.TokenStatusEnabled,
+		CreatedTime: 100,
+		UpdatedTime: 100,
+	}
+	if err := db.Create(token).Error; err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	if err := model.ReplaceTokenGroupRouteOrderWithDB(db, token.Id, []string{"group-a", "group-b"}, 100); err != nil {
+		t.Fatalf("seed route order: %v", err)
+	}
+
+	previousInvalidate := invalidateTokenCacheFn
+	invalidateTokenCacheFn = func(string) error { return nil }
+	t.Cleanup(func() { invalidateTokenCacheFn = previousInvalidate })
+
+	updated := *token
+	updated.Name = "after"
+	updated.UpdatedTime = 200
+	if err := UpdateWithGroupRouteOrder(&updated, []string{"group-b", "group-a"}); err != nil {
+		t.Fatalf("update token and order: %v", err)
+	}
+	stored, err := GetByID(token.Id)
+	if err != nil {
+		t.Fatalf("read updated token: %v", err)
+	}
+	if stored.Name != "after" {
+		t.Fatalf("name=%q, want after", stored.Name)
+	}
+	order, err := model.ListTokenGroupRouteOrderWithDB(db, token.Id)
+	if err != nil {
+		t.Fatalf("read order: %v", err)
+	}
+	if len(order) != 2 || order[0] != "group-b" || order[1] != "group-a" {
+		t.Fatalf("order=%v, want [group-b group-a]", order)
+	}
+
+	updated.Name = "must-rollback"
+	updated.UpdatedTime = 300
+	if err := UpdateWithGroupRouteOrder(&updated, []string{"group-a", "group-a"}); err == nil {
+		t.Fatal("duplicate order should fail")
+	}
+	stored, err = GetByID(token.Id)
+	if err != nil {
+		t.Fatalf("read token after rejected update: %v", err)
+	}
+	if stored.Name != "after" {
+		t.Fatalf("name after failed order update=%q, want rolled-back name after", stored.Name)
+	}
+	order, err = model.ListTokenGroupRouteOrderWithDB(db, token.Id)
+	if err != nil {
+		t.Fatalf("read order after rejected update: %v", err)
+	}
+	if len(order) != 2 || order[0] != "group-b" || order[1] != "group-a" {
+		t.Fatalf("order after failed update=%v, want previous order [group-b group-a]", order)
 	}
 }
 
@@ -313,4 +420,3 @@ func TestGetAllAdminFilteredSpansUsers(t *testing.T) {
 		t.Fatalf("keyword tokens = %#v, want single t2", byKeyword)
 	}
 }
-

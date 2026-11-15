@@ -6023,6 +6023,72 @@ html[data-theme='dark'] .router-ui-modal .ant-modal-close {
     grid-template-columns: minmax(0, 1fr);
 }
 
+.router-token-group-route {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(720px, 100%);
+}
+
+.router-token-group-route-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--router-border-subtle, #d9d9d9);
+}
+
+.router-token-group-route-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--router-border-subtle, #d9d9d9);
+}
+
+.router-token-group-route-position {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--router-primary-color, #1677ff);
+    border-radius: 50%;
+    color: var(--router-primary-color, #1677ff);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.router-token-group-route-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--router-text-primary, #1f2329);
+    overflow-wrap: anywhere;
+}
+
+.router-token-group-route-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+}
+
+@media (max-width: 520px) {
+    .router-token-group-route-item {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .router-token-group-route-name {
+        padding-top: 4px;
+    }
+
+    .router-token-group-route-actions {
+        width: 100%;
+        padding-left: 38px;
+    }
+}
+
 .router-token-basic-info-row .router-ui-textarea {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
     word-break: break-all;
