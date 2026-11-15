@@ -43,8 +43,16 @@ func Create(token *model.Token) error {
 	return tokenrepo.Create(token)
 }
 
+func CreateWithGroupRouteOrder(token *model.Token, groupIDs []string) error {
+	return tokenrepo.CreateWithGroupRouteOrder(token, groupIDs)
+}
+
 func Update(token *model.Token) error {
 	return tokenrepo.Update(token)
+}
+
+func UpdateWithGroupRouteOrder(token *model.Token, groupIDs []string) error {
+	return tokenrepo.UpdateWithGroupRouteOrder(token, groupIDs)
 }
 
 func DeleteByID(tokenId, userId string) error {
