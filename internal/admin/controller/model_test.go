@@ -397,7 +397,7 @@ func TestListGroupModelSupportedEndpointsUsesUpstreamModelMapping(t *testing.T) 
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Channel{},
+		&model.PlatformChannel{},
 		&model.ChannelModel{},
 		&model.GroupModelChannel{},
 		&model.ChannelModelEndpoint{},
@@ -405,7 +405,7 @@ func TestListGroupModelSupportedEndpointsUsesUpstreamModelMapping(t *testing.T) 
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	channel := model.Channel{
+	channel := model.PlatformChannel{
 		Id:       "channel-1",
 		Name:     "qwen-lx",
 		Protocol: "qwen",
@@ -743,14 +743,14 @@ func TestBuildUserModelStatusPayloadAggregatesGroupModels(t *testing.T) {
 			"claude-sonnet-4-6": {"text", "tool_calling"},
 		}, nil
 	}
-	loadSatisfiedChannelsFn = func(groupID string, modelName string) ([]*model.Channel, error) {
+	loadSatisfiedChannelsFn = func(groupID string, modelName string) ([]*model.ChannelCandidate, error) {
 		switch modelName {
 		case "gpt-5.4":
-			return []*model.Channel{{Id: "channel-1"}, {Id: "channel-2"}}, nil
+			return []*model.ChannelCandidate{{PlatformChannel: model.PlatformChannel{Id: "channel-1"}}, {PlatformChannel: model.PlatformChannel{Id: "channel-2"}}}, nil
 		case "claude-sonnet-4-6":
-			return []*model.Channel{{Id: "channel-3"}}, nil
+			return []*model.ChannelCandidate{{PlatformChannel: model.PlatformChannel{Id: "channel-3"}}}, nil
 		default:
-			return []*model.Channel{}, nil
+			return []*model.ChannelCandidate{}, nil
 		}
 	}
 	t.Cleanup(func() {

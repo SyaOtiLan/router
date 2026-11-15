@@ -16,7 +16,7 @@ type providerFileInputCatalogEntry struct {
 }
 
 // refreshOfficialProviderFileInputWithDB marks only catalogued models with a
-// documented provider-native file input API. Channel PDF policy alone is not
+// documented provider-native file input API. PlatformChannel PDF policy alone is not
 // evidence that every model on that channel understands files.
 func refreshOfficialProviderFileInputWithDB(db *gorm.DB) error {
 	if db == nil {

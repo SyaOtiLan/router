@@ -70,7 +70,7 @@ func refreshAllChannelsBilling() error {
 	return nil
 }
 
-func shouldRefreshChannelBillingInBatch(channel *model.Channel) bool {
+func shouldRefreshChannelBillingInBatch(channel *model.PlatformChannel) bool {
 	if channel == nil {
 		return false
 	}

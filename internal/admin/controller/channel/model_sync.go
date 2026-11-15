@@ -330,7 +330,7 @@ func providerOfficialUpstreamModel(provider string, modelName string) string {
 	return normalizedModel
 }
 
-func loadChannelSyncState(protocol string, key string, baseURL string, channelID string, configRaw json.RawMessage, selectedModels []string, channelModels []model.ChannelModel, testModel string) (*model.Channel, string, error) {
+func loadChannelSyncState(protocol string, key string, baseURL string, channelID string, configRaw json.RawMessage, selectedModels []string, channelModels []model.ChannelModel, testModel string) (*model.PlatformChannel, string, error) {
 	normalizedProtocol := relaychannel.NormalizeProtocolName(protocol)
 	trimmedKey := strings.TrimSpace(key)
 	trimmedBaseURL := strings.TrimSpace(baseURL)
@@ -339,7 +339,7 @@ func loadChannelSyncState(protocol string, key string, baseURL string, channelID
 	normalizedChannelModels := model.NormalizeChannelModelsPreserveOrder(channelModels)
 	keySource := "request"
 
-	resolvedChannel := &model.Channel{
+	resolvedChannel := &model.PlatformChannel{
 		Protocol: normalizedProtocol,
 		Key:      trimmedKey,
 	}

@@ -268,7 +268,7 @@ func TestBuildDisabledChannelModelConfigsNoopWhenTargetMissing(t *testing.T) {
 func TestReplaceChannelModelsWithDBClearsRuntimeDisableMetadataWhenModelRestored(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -277,7 +277,7 @@ func TestReplaceChannelModelsWithDBClearsRuntimeDisableMetadataWhenModelRestored
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -324,7 +324,7 @@ func TestReplaceChannelModelsWithDBClearsRuntimeDisableMetadataWhenModelRestored
 func TestReplaceChannelModelsWithDBPreservesPublishStateForUnchangedSelectedModel(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -333,7 +333,7 @@ func TestReplaceChannelModelsWithDBPreservesPublishStateForUnchangedSelectedMode
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -374,7 +374,7 @@ func TestReplaceChannelModelsWithDBPreservesPublishStateForUnchangedSelectedMode
 func TestReplaceChannelModelsWithDBClearsPublishStateWhenRoutingConfigChanges(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -383,7 +383,7 @@ func TestReplaceChannelModelsWithDBClearsPublishStateWhenRoutingConfigChanges(t 
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -424,7 +424,7 @@ func TestReplaceChannelModelsWithDBClearsPublishStateWhenRoutingConfigChanges(t 
 func TestSetChannelModelPublishEnabledWithDBBlocksUnsupportedImageTokenBilling(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -432,7 +432,7 @@ func TestSetChannelModelPublishEnabledWithDBBlocksUnsupportedImageTokenBilling(t
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -478,7 +478,7 @@ func TestSetChannelModelPublishEnabledWithDBBlocksUnsupportedImageTokenBilling(t
 func TestSetChannelModelPublishEnabledWithDBAllowsGPTImage2TokenBilling(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -487,7 +487,7 @@ func TestSetChannelModelPublishEnabledWithDBAllowsGPTImage2TokenBilling(t *testi
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -563,7 +563,7 @@ func TestSetChannelModelPublishEnabledWithDBAllowsGPTImage2TokenBilling(t *testi
 func TestSetChannelModelPublishEnabledWithDBBlocksDuplicatePublishedModel(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointTestResult{},
@@ -571,7 +571,7 @@ func TestSetChannelModelPublishEnabledWithDBBlocksDuplicatePublishedModel(t *tes
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	rows := []ChannelModel{
@@ -669,7 +669,7 @@ func TestValidateChannelModelDisableTransitionsWithDBBlocksWhenEnabledEndpointsE
 func TestDeleteChannelModelWithDBBlocksWhenModelStillReturned(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointPolicy{},
@@ -680,7 +680,7 @@ func TestDeleteChannelModelWithDBBlocksWhenModelStillReturned(t *testing.T) {
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -711,7 +711,7 @@ func TestDeleteChannelModelWithDBBlocksWhenModelStillReturned(t *testing.T) {
 func TestDeleteChannelModelWithDBIgnoresReturnedDisplayModel(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointPolicy{},
@@ -722,7 +722,7 @@ func TestDeleteChannelModelWithDBIgnoresReturnedDisplayModel(t *testing.T) {
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -758,7 +758,7 @@ func TestDeleteChannelModelWithDBIgnoresReturnedDisplayModel(t *testing.T) {
 func TestDeleteChannelModelWithDBPrefersExactUpstreamModel(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointPolicy{},
@@ -769,7 +769,7 @@ func TestDeleteChannelModelWithDBPrefersExactUpstreamModel(t *testing.T) {
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -815,7 +815,7 @@ func TestDeleteChannelModelWithDBPrefersExactUpstreamModel(t *testing.T) {
 func TestDeleteChannelModelWithDBBlocksWhenEnabledEndpointsExist(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointPolicy{},
@@ -826,7 +826,7 @@ func TestDeleteChannelModelWithDBBlocksWhenEnabledEndpointsExist(t *testing.T) {
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{
@@ -857,7 +857,7 @@ func TestDeleteChannelModelWithDBBlocksWhenEnabledEndpointsExist(t *testing.T) {
 func TestDeleteChannelModelWithDBAllowsNotReturnedModelWithEnabledEndpoints(t *testing.T) {
 	db := openChannelModelTestDB(t)
 	if err := db.AutoMigrate(
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelModel{},
 		&ChannelModelEndpoint{},
 		&ChannelModelEndpointPolicy{},
@@ -868,7 +868,7 @@ func TestDeleteChannelModelWithDBAllowsNotReturnedModelWithEnabledEndpoints(t *t
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{

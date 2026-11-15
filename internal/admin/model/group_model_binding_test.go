@@ -13,7 +13,7 @@ func openGroupModelBindingTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&GroupCatalog{}, &GroupChannel{}, &GroupModel{}, &GroupModelChannel{}, &Channel{}, &ChannelModel{}, &ChannelModelEndpoint{}, &ChannelModelEndpointTestResult{}, &ChannelModelPriceComponent{}, &ChannelProcurementBatch{}, &ChannelBillingProfile{}); err != nil {
+	if err := db.AutoMigrate(&GroupCatalog{}, &GroupChannel{}, &GroupModel{}, &GroupModelChannel{}, &PlatformChannel{}, &ChannelModel{}, &ChannelModelEndpoint{}, &ChannelModelEndpointTestResult{}, &ChannelModelPriceComponent{}, &ChannelProcurementBatch{}, &ChannelBillingProfile{}); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
 	return db
@@ -30,7 +30,7 @@ func TestBuildGroupModelBindingItemsPreservesDisabledGroupModelState(t *testing.
 			Priority:      &priority,
 		},
 	}
-	channelByID := map[string]Channel{
+	channelByID := map[string]PlatformChannel{
 		"channel-1": {
 			Id:       "channel-1",
 			Name:     "channel-1",
@@ -66,7 +66,7 @@ func TestReplaceSingleGroupModelWithDB_PreservesDisabledState(t *testing.T) {
 		t.Fatalf("create group: %v", err)
 	}
 
-	channel := Channel{
+	channel := PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",
@@ -175,7 +175,7 @@ func TestReplaceSingleGroupModelWithDB_PreservesModelChannelBillingRatio(t *test
 		t.Fatalf("create group: %v", err)
 	}
 
-	channel := Channel{
+	channel := PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",
@@ -311,7 +311,7 @@ func TestReplaceGroupModelRowsWithDB_PreservesDisabledState(t *testing.T) {
 
 func TestBuildGroupChannelModelOptionsOnlyIncludesPublishedModels(t *testing.T) {
 	db := openGroupModelBindingTestDB(t)
-	channel := Channel{
+	channel := PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",
@@ -399,7 +399,7 @@ func TestBuildGroupChannelModelOptionsOnlyIncludesPublishedModels(t *testing.T) 
 		t.Fatalf("create endpoint test result: %v", err)
 	}
 
-	loaded := Channel{}
+	loaded := PlatformChannel{}
 	if err := db.First(&loaded, "id = ?", channel.Id).Error; err != nil {
 		t.Fatalf("load channel: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestBuildGroupChannelModelOptionsOnlyIncludesPublishedModels(t *testing.T) 
 
 func TestResolveGroupBindingProcurementReadinessFollowsCostTrackingMode(t *testing.T) {
 	db := openGroupModelBindingTestDB(t)
-	if err := db.Create(&Channel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&PlatformChannel{Id: "channel-1", Name: "channel-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	if err := db.Create(&ChannelModel{

@@ -117,7 +117,7 @@ func Relay(c *gin.Context) {
 	// entitlement up front. Once that private upstream fails, resolve the
 	// community side lazily and continue through its normal candidate set.
 	if retryable && allowFallbackForError && personalRoutePolicy == dbmodel.PersonalRoutePolicyPersonalFirst &&
-		dbmodel.IsPersonalProviderChannelID(channelId) && !isPinnedResponsesRequest(c) &&
+		dbmodel.IsPersonalChannelCandidateID(channelId) && !isPinnedResponsesRequest(c) &&
 		isPersonalProviderTextRelay(c) {
 		fallbackGroup, fallbackSource, entitlementErr := dbmodel.ResolveUserEntitlementGroupForModel(ctx, userId, originalModel)
 		if entitlementErr == nil {
@@ -270,7 +270,7 @@ func Relay(c *gin.Context) {
 	if bizErr != nil && personalRoutePolicy == dbmodel.PersonalRoutePolicyCommunityFirst &&
 		shouldRetry(c, bizErr) && shouldRetryRemainingCandidates(bizErr) && !isPinnedResponsesRequest(c) &&
 		isPersonalProviderTextRelay(c) {
-		personalChannels, personalErr := dbmodel.ListPersonalProviderChannelsForModel(userId, originalModel)
+		personalChannels, personalErr := dbmodel.ListPersonalChannelCandidatesForModel(userId, originalModel)
 		if personalErr == nil && len(personalChannels) > 0 {
 			personalChannel := personalChannels[0]
 			if _, failed := failedChannelIDs[strings.TrimSpace(personalChannel.Id)]; !failed {
@@ -339,29 +339,29 @@ func buildRelayFailureLog(c *gin.Context, bizErr *model.ErrorWithStatusCode, ret
 	}
 	channelID := strings.TrimSpace(c.GetString(ctxkey.ChannelId))
 	return &dbmodel.Log{
-		UserId:               userID,
-		GroupId:              strings.TrimSpace(c.GetString(ctxkey.Group)),
-		ChannelId:            channelID,
-		ModelName:            requestModel,
-		TokenName:            strings.TrimSpace(c.GetString(ctxkey.TokenName)),
-		Quota:                0,
-		BillingSource:        "",
-		Content:              "relay request failed before settlement",
-		RequestModelName:     requestModel,
-		ActualModelName:      requestModel,
-		UpstreamEndpoint:     c.Request.URL.Path,
-		UpstreamProtocol:     relayProtocolName(c),
-		RouteDecision:        routeobs.FinalizedRouteDecisionJSON(c),
-		FallbackCount:        retryCount,
-		FallbackAttempts:     strings.TrimSpace(c.GetString(ctxkey.RelayFallbackAttempts)),
-		RelayErrorType:       strings.TrimSpace(bizErr.Error.Type),
-		RelayErrorCode:       errorCodeString(bizErr.Error.Code),
-		RelayErrorMessage:    strings.TrimSpace(bizErr.Error.Message),
-		ElapsedTime:          0,
-		IsStream:             false,
-		UpstreamSource:       relayUpstreamSource(c),
-		PersonalProviderId:   strings.TrimSpace(c.GetString(ctxkey.PersonalProviderID)),
-		PersonalProviderName: strings.TrimSpace(c.GetString(ctxkey.PersonalProviderName)),
+		UserId:              userID,
+		GroupId:             strings.TrimSpace(c.GetString(ctxkey.Group)),
+		ChannelId:           channelID,
+		ModelName:           requestModel,
+		TokenName:           strings.TrimSpace(c.GetString(ctxkey.TokenName)),
+		Quota:               0,
+		BillingSource:       "",
+		Content:             "relay request failed before settlement",
+		RequestModelName:    requestModel,
+		ActualModelName:     requestModel,
+		UpstreamEndpoint:    c.Request.URL.Path,
+		UpstreamProtocol:    relayProtocolName(c),
+		RouteDecision:       routeobs.FinalizedRouteDecisionJSON(c),
+		FallbackCount:       retryCount,
+		FallbackAttempts:    strings.TrimSpace(c.GetString(ctxkey.RelayFallbackAttempts)),
+		RelayErrorType:      strings.TrimSpace(bizErr.Error.Type),
+		RelayErrorCode:      errorCodeString(bizErr.Error.Code),
+		RelayErrorMessage:   strings.TrimSpace(bizErr.Error.Message),
+		ElapsedTime:         0,
+		IsStream:            false,
+		UpstreamSource:      relayUpstreamSource(c),
+		PersonalChannelID:   strings.TrimSpace(c.GetString(ctxkey.PersonalChannelID)),
+		PersonalChannelName: strings.TrimSpace(c.GetString(ctxkey.PersonalChannelName)),
 	}
 }
 
@@ -369,7 +369,7 @@ func relayUpstreamSource(c *gin.Context) string {
 	if c != nil && strings.TrimSpace(c.GetString(ctxkey.CommunityOfferID)) != "" {
 		return "community_offer"
 	}
-	if c != nil && strings.TrimSpace(c.GetString(ctxkey.PersonalProviderID)) != "" {
+	if c != nil && strings.TrimSpace(c.GetString(ctxkey.PersonalChannelID)) != "" {
 		return "personal_provider"
 	}
 	return "community_package"
@@ -724,7 +724,7 @@ func selectedChannelProvider(c *gin.Context, requestModel string) string {
 	return dbmodel.NormalizeGroupModelProviderValue(selected.Provider)
 }
 
-func channelProvider(channel *dbmodel.Channel, requestModel string) string {
+func channelProvider(channel *dbmodel.ChannelCandidate, requestModel string) string {
 	if channel == nil {
 		return ""
 	}

@@ -35,7 +35,7 @@ func listGroupChannelsWithDB(db *gorm.DB, groupID string, enabledOnly bool) ([]G
 	}
 	groupID = strings.TrimSpace(groupID)
 
-	channels := make([]Channel, 0)
+	channels := make([]ChannelCandidate, 0)
 	query := db.
 		Select("id", "name", "protocol", "status", "created_time").
 		Order("created_time desc")
@@ -45,11 +45,11 @@ func listGroupChannelsWithDB(db *gorm.DB, groupID string, enabledOnly bool) ([]G
 	if err := query.Find(&channels).Error; err != nil {
 		return nil, err
 	}
-	channelRefs := make([]*Channel, 0, len(channels))
+	channelRefs := make([]*ChannelCandidate, 0, len(channels))
 	for i := range channels {
 		channelRefs = append(channelRefs, &channels[i])
 	}
-	if err := HydrateChannelsWithModels(db, channelRefs); err != nil {
+	if err := HydrateChannelCandidatesWithModels(db, channelRefs); err != nil {
 		return nil, err
 	}
 
@@ -87,7 +87,7 @@ func listGroupChannelsWithDB(db *gorm.DB, groupID string, enabledOnly bool) ([]G
 			Protocol:     channel.GetProtocol(),
 			Status:       channel.Status,
 			Models:       strings.TrimSpace(channel.Models),
-			ModelOptions: buildGroupChannelModelOptions(&channel),
+			ModelOptions: buildGroupChannelModelOptions(&channel.PlatformChannel),
 			Bound:        bound,
 			Priority:     resolveGroupChannelPriority(bound, priorityByChannelID[channelID], channel.Priority),
 			BillingRatio: helperFloat64Pointer(resolveGroupChannelBillingRatio(bound, billingRatioByChannelID[channelID])),
@@ -147,7 +147,7 @@ func replaceGroupChannelsWithItemsDB(db *gorm.DB, groupID string, items []GroupC
 	if err != nil {
 		return err
 	}
-	channelsByID := make(map[string]Channel, len(normalizedChannelIDs))
+	channelsByID := make(map[string]ChannelCandidate, len(normalizedChannelIDs))
 	if len(normalizedChannelIDs) > 0 {
 		enabledChannels, err := loadEnabledChannelsByIDWithDB(db, normalizedChannelIDs)
 		if err != nil {
@@ -241,7 +241,7 @@ func refreshGroupModelChannelsForChannelWithDB(db *gorm.DB, channelID string, re
 		if err != nil {
 			return err
 		}
-		rows := BuildGroupModelChannelsForChannel(groupID, channel, groupModels, priorityByChannelID[normalizedChannelID])
+		rows := BuildGroupModelChannelsForChannel(groupID, NewPlatformChannelCandidate(channel), groupModels, priorityByChannelID[normalizedChannelID])
 		rows = ApplyGroupModelChannelBillingRatios(normalizeGroupModelChannelRowsPreserveOrder(rows), nil, existingRatios)
 		if err := db.Where(groupCol+" = ? AND channel_id = ?", groupID, normalizedChannelID).Delete(&GroupModelChannel{}).Error; err != nil {
 			return err
@@ -340,16 +340,16 @@ func resolveGroupChannelUpdatedAt(bound bool, bindingUpdatedAt int64, fallback i
 	return fallback
 }
 
-func loadEnabledChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string]*Channel, error) {
+func loadEnabledChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string]*ChannelCandidate, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database handle is nil")
 	}
 	normalizedChannelIDs := normalizeChannelIDList(channelIDs)
 	if len(normalizedChannelIDs) == 0 {
-		return map[string]*Channel{}, nil
+		return map[string]*ChannelCandidate{}, nil
 	}
 
-	channels := make([]Channel, 0, len(normalizedChannelIDs))
+	channels := make([]ChannelCandidate, 0, len(normalizedChannelIDs))
 	if err := db.
 		Select("id", "name", "protocol", "status", "priority", "created_time").
 		Where("id IN ?", normalizedChannelIDs).
@@ -357,7 +357,7 @@ func loadEnabledChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string
 		return nil, err
 	}
 
-	channelsByID := make(map[string]*Channel, len(channels))
+	channelsByID := make(map[string]*ChannelCandidate, len(channels))
 	disabled := make([]string, 0)
 	for i := range channels {
 		channel := &channels[i]
@@ -387,11 +387,11 @@ func loadEnabledChannelsByIDWithDB(db *gorm.DB, channelIDs []string) (map[string
 		return nil, fmt.Errorf("渠道未启用，不能绑定到分组: %s", strings.Join(disabled, ", "))
 	}
 
-	channelRefs := make([]*Channel, 0, len(channels))
+	channelRefs := make([]*ChannelCandidate, 0, len(channels))
 	for i := range channels {
 		channelRefs = append(channelRefs, &channels[i])
 	}
-	if err := HydrateChannelsWithModels(db, channelRefs); err != nil {
+	if err := HydrateChannelCandidatesWithModels(db, channelRefs); err != nil {
 		return nil, err
 	}
 	return channelsByID, nil
@@ -439,11 +439,11 @@ func normalizeModelNames(models []string) []string {
 	return result
 }
 
-func BuildGroupModelChannelsForChannel(groupID string, channel *Channel, groupModels []GroupModel, channelPriority *int64) []GroupModelChannel {
+func BuildGroupModelChannelsForChannel(groupID string, channel *ChannelCandidate, groupModels []GroupModel, channelPriority *int64) []GroupModelChannel {
 	if channel == nil {
 		return nil
 	}
-	catalog := buildGroupChannelModelCatalog(channel)
+	catalog := buildGroupChannelModelCatalog(&channel.PlatformChannel)
 	result := make([]GroupModelChannel, 0, len(groupModels))
 	seenGroupModelChannelKeys := make(map[string]struct{}, len(groupModels))
 	priority := helperInt64Pointer(channel.Priority)
@@ -480,7 +480,7 @@ func BuildGroupModelChannelsForChannel(groupID string, channel *Channel, groupMo
 			BillingRatio:  defaultGroupModelChannelBillingRatio(),
 		})
 	}
-	for _, row := range channelSelectedModels(channel) {
+	for _, row := range channelSelectedModels(&channel.PlatformChannel) {
 		modelName := ChannelModelPublishedName(row)
 		if modelName == "" {
 			continue

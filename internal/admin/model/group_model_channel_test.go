@@ -69,9 +69,11 @@ func TestGetRouteBillingRatioCombinesGroupAndModelChannel(t *testing.T) {
 
 func TestCloneChannelWithPriorityDoesNotMutateOriginal(t *testing.T) {
 	originalPriority := int64(0)
-	channel := &Channel{
-		Id:       "channel-1",
-		Priority: &originalPriority,
+	channel := &ChannelCandidate{
+		PlatformChannel: PlatformChannel{
+			Id:       "channel-1",
+			Priority: &originalPriority,
+		},
 	}
 
 	cloned := CloneChannelWithPriority(channel, 3)
@@ -93,7 +95,7 @@ func TestCloneChannelWithPriorityDoesNotMutateOriginal(t *testing.T) {
 }
 
 func TestChannelSelectedModelConfigsOnlyIncludesPublishedRows(t *testing.T) {
-	channel := &Channel{}
+	channel := &PlatformChannel{}
 	channel.SetChannelModels([]ChannelModel{
 		{
 			Model:          "active-model",

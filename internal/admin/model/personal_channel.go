@@ -26,11 +26,11 @@ import (
 )
 
 const (
-	PersonalProviderConnectionsTableName = "personal_provider_connections"
-	PersonalModelRoutesTableName         = "personal_model_routes"
+	PersonalChannelsTableName           = "personal_channels"
+	PersonalChannelModelRoutesTableName = "personal_channel_model_routes"
 
-	PersonalProviderStatusEnabled  = 1
-	PersonalProviderStatusDisabled = 2
+	PersonalChannelStatusEnabled  = 1
+	PersonalChannelStatusDisabled = 2
 
 	PersonalRoutePolicyPersonalFirst     = "personal_first"
 	PersonalRoutePolicyPersonalOnly      = "personal_only"
@@ -38,16 +38,17 @@ const (
 	PersonalRoutePolicyCommunityOnly     = "community_only"
 	PersonalRoutePolicyCommunityFirst    = "community_first"
 
-	PersonalProviderChannelPrefix = "personal:"
-	PersonalProviderSourceType    = "personal_provider"
+	PersonalChannelIDPrefix            = "personal:"
+	PersonalChannelSourceType          = "personal_provider"
+	PersonalChannelCandidateSourceType = "personal"
 )
 
-// PersonalProviderConnection belongs to exactly one Router user. Credentials
+// PersonalChannel belongs to exactly one Router user. Credentials
 // are encrypted at rest and deliberately never carry a JSON field.
-type PersonalProviderConnection struct {
+type PersonalChannel struct {
 	Id                   string   `json:"id" gorm:"type:char(36);primaryKey"`
-	UserId               string   `json:"user_id" gorm:"type:char(36);not null;index:idx_personal_provider_user_name,priority:1;index"`
-	Name                 string   `json:"name" gorm:"type:varchar(96);not null;index:idx_personal_provider_user_name,priority:2"`
+	UserId               string   `json:"user_id" gorm:"type:char(36);not null;index:idx_personal_channel_user_name,priority:1;index"`
+	Name                 string   `json:"name" gorm:"type:varchar(96);not null;index:idx_personal_channel_user_name,priority:2"`
 	Protocol             string   `json:"protocol" gorm:"type:varchar(64);not null;default:'openai'"`
 	BaseURL              string   `json:"base_url" gorm:"type:text;not null;default:''"`
 	CredentialEncrypted  string   `json:"-" gorm:"type:text;not null"`
@@ -63,9 +64,9 @@ type PersonalProviderConnection struct {
 	LastCheckError       string   `json:"last_check_error" gorm:"type:text;not null;default:''"`
 }
 
-func (PersonalProviderConnection) TableName() string { return PersonalProviderConnectionsTableName }
+func (PersonalChannel) TableName() string { return PersonalChannelsTableName }
 
-type PersonalModelRoute struct {
+type PersonalChannelModelRoute struct {
 	UserId      string `json:"user_id" gorm:"type:char(36);primaryKey"`
 	Model       string `json:"model" gorm:"type:varchar(255);primaryKey"`
 	RoutePolicy string `json:"route_policy" gorm:"type:varchar(32);not null"`
@@ -73,7 +74,7 @@ type PersonalModelRoute struct {
 	UpdatedAt   int64  `json:"updated_at" gorm:"bigint;not null"`
 }
 
-func (PersonalModelRoute) TableName() string { return PersonalModelRoutesTableName }
+func (PersonalChannelModelRoute) TableName() string { return PersonalChannelModelRoutesTableName }
 
 func NormalizePersonalRoutePolicy(value string) string {
 	switch strings.TrimSpace(strings.ToLower(value)) {
@@ -107,12 +108,12 @@ func IsPersonalProviderProtocol(value string) bool {
 	}
 }
 
-func IsPersonalProviderChannelID(channelID string) bool {
-	return strings.HasPrefix(strings.TrimSpace(channelID), PersonalProviderChannelPrefix)
+func IsPersonalChannelCandidateID(channelID string) bool {
+	return strings.HasPrefix(strings.TrimSpace(channelID), PersonalChannelIDPrefix)
 }
 
-func PersonalProviderIDFromChannelID(channelID string) string {
-	return strings.TrimPrefix(strings.TrimSpace(channelID), PersonalProviderChannelPrefix)
+func PersonalChannelIDFromCandidateID(channelID string) string {
+	return strings.TrimPrefix(strings.TrimSpace(channelID), PersonalChannelIDPrefix)
 }
 
 func normalizePersonalProviderModels(models []string) []string {
@@ -133,7 +134,7 @@ func normalizePersonalProviderModels(models []string) []string {
 	return result
 }
 
-func (connection *PersonalProviderConnection) normalize() error {
+func (connection *PersonalChannel) normalize() error {
 	if connection == nil {
 		return errors.New("个人渠道不能为空")
 	}
@@ -165,22 +166,22 @@ func (connection *PersonalProviderConnection) normalize() error {
 		return errors.New("至少选择一个模型")
 	}
 	if connection.Status == 0 {
-		connection.Status = PersonalProviderStatusEnabled
+		connection.Status = PersonalChannelStatusEnabled
 	}
-	if connection.Status != PersonalProviderStatusEnabled && connection.Status != PersonalProviderStatusDisabled {
+	if connection.Status != PersonalChannelStatusEnabled && connection.Status != PersonalChannelStatusDisabled {
 		return errors.New("个人渠道状态无效")
 	}
 	return nil
 }
 
-func (connection *PersonalProviderConnection) hydrate() {
+func (connection *PersonalChannel) hydrate() {
 	var models []string
 	_ = json.Unmarshal([]byte(connection.ModelsJSON), &models)
 	connection.Models = normalizePersonalProviderModels(models)
 	connection.CredentialConfigured = strings.TrimSpace(connection.CredentialEncrypted) != ""
 }
 
-func (connection *PersonalProviderConnection) persistModels() error {
+func (connection *PersonalChannel) persistModels() error {
 	encoded, err := json.Marshal(normalizePersonalProviderModels(connection.Models))
 	if err != nil {
 		return err
@@ -242,8 +243,8 @@ func decryptPersonalProviderCredential(value string) (string, error) {
 	return "", errors.New("无法解密个人渠道凭据，请轮换凭据")
 }
 
-func ListPersonalProviderConnections(userID string) ([]PersonalProviderConnection, error) {
-	rows := make([]PersonalProviderConnection, 0)
+func ListPersonalChannels(userID string) ([]PersonalChannel, error) {
+	rows := make([]PersonalChannel, 0)
 	if err := DB.Where("user_id = ?", strings.TrimSpace(userID)).Order("priority desc, updated_at desc, id asc").Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -253,11 +254,11 @@ func ListPersonalProviderConnections(userID string) ([]PersonalProviderConnectio
 	return rows, nil
 }
 
-func ListPersonalProviderConnectionsForAdmin() ([]PersonalProviderConnection, error) {
-	if DB == nil || !DB.Migrator().HasTable(&PersonalProviderConnection{}) {
-		return []PersonalProviderConnection{}, nil
+func ListPersonalChannelsForAdmin() ([]PersonalChannel, error) {
+	if DB == nil || !DB.Migrator().HasTable(&PersonalChannel{}) {
+		return []PersonalChannel{}, nil
 	}
-	rows := make([]PersonalProviderConnection, 0)
+	rows := make([]PersonalChannel, 0)
 	if err := DB.Order("updated_at desc, id asc").Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -268,16 +269,16 @@ func ListPersonalProviderConnectionsForAdmin() ([]PersonalProviderConnection, er
 	return rows, nil
 }
 
-// ListPersonalProviderModels reads only public connection metadata. It is used
+// ListPersonalChannelModels reads only public connection metadata. It is used
 // when validating an API Token so a user can authorize a model supplied by a
 // private connection even before buying a community package for that model.
-func ListPersonalProviderModels(userID string) ([]string, error) {
-	if DB == nil || !DB.Migrator().HasTable(&PersonalProviderConnection{}) {
+func ListPersonalChannelModels(userID string) ([]string, error) {
+	if DB == nil || !DB.Migrator().HasTable(&PersonalChannel{}) {
 		return []string{}, nil
 	}
-	rows := make([]PersonalProviderConnection, 0)
+	rows := make([]PersonalChannel, 0)
 	if err := DB.Select("models_json").
-		Where("user_id = ? AND status = ?", strings.TrimSpace(userID), PersonalProviderStatusEnabled).
+		Where("user_id = ? AND status = ?", strings.TrimSpace(userID), PersonalChannelStatusEnabled).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -289,13 +290,13 @@ func ListPersonalProviderModels(userID string) ([]string, error) {
 	return normalizePersonalProviderModels(models), nil
 }
 
-// MergePersonalProviderModelsIntoEntitlements adds a user's enabled personal
+// MergePersonalChannelModelsIntoEntitlements adds a user's enabled personal
 // connection models to the same catalog returned to Token management. It keeps
 // these sources separate from billable community entitlements: no group is
 // assigned and a model that is already available through a package retains its
 // package provider metadata.
-func MergePersonalProviderModelsIntoEntitlements(userID string, payload UserEntitlementModelsPayload) (UserEntitlementModelsPayload, error) {
-	connections, err := ListPersonalProviderConnections(userID)
+func MergePersonalChannelModelsIntoEntitlements(userID string, payload UserEntitlementModelsPayload) (UserEntitlementModelsPayload, error) {
+	connections, err := ListPersonalChannels(userID)
 	if err != nil {
 		return payload, err
 	}
@@ -314,7 +315,7 @@ func MergePersonalProviderModelsIntoEntitlements(userID string, payload UserEnti
 		}
 	}
 	for _, connection := range connections {
-		if connection.Status != PersonalProviderStatusEnabled {
+		if connection.Status != PersonalChannelStatusEnabled {
 			continue
 		}
 		for _, modelName := range connection.Models {
@@ -323,7 +324,7 @@ func MergePersonalProviderModelsIntoEntitlements(userID string, payload UserEnti
 				continue
 			}
 			source := UserEntitlementModelSource{
-				SourceType: PersonalProviderSourceType,
+				SourceType: PersonalChannelSourceType,
 				SourceID:   connection.Id,
 				SourceName: connection.Name,
 				Priority:   int(connection.Priority),
@@ -334,7 +335,7 @@ func MergePersonalProviderModelsIntoEntitlements(userID string, payload UserEnti
 			}
 			payload.Items = append(payload.Items, UserAvailableModel{
 				Model:         normalizedModel,
-				Provider:      PersonalProviderSourceType,
+				Provider:      PersonalChannelSourceType,
 				ProviderLabel: "个人渠道",
 				Sources:       []UserEntitlementModelSource{source},
 			})
@@ -353,8 +354,8 @@ func MergePersonalProviderModelsIntoEntitlements(userID string, payload UserEnti
 	return payload, nil
 }
 
-func GetPersonalProviderConnection(userID string, id string) (*PersonalProviderConnection, error) {
-	row := &PersonalProviderConnection{}
+func GetPersonalChannel(userID string, id string) (*PersonalChannel, error) {
+	row := &PersonalChannel{}
 	if err := DB.Where("id = ? AND user_id = ?", strings.TrimSpace(id), strings.TrimSpace(userID)).First(row).Error; err != nil {
 		return nil, err
 	}
@@ -362,7 +363,7 @@ func GetPersonalProviderConnection(userID string, id string) (*PersonalProviderC
 	return row, nil
 }
 
-func CreatePersonalProviderConnection(connection *PersonalProviderConnection, credential string) error {
+func CreatePersonalChannel(connection *PersonalChannel, credential string) error {
 	if err := connection.normalize(); err != nil {
 		return err
 	}
@@ -388,14 +389,14 @@ func CreatePersonalProviderConnection(connection *PersonalProviderConnection, cr
 	return nil
 }
 
-func UpdatePersonalProviderConnection(connection *PersonalProviderConnection, credential *string) error {
+func UpdatePersonalChannel(connection *PersonalChannel, credential *string) error {
 	if err := connection.normalize(); err != nil {
 		return err
 	}
 	if err := connection.persistModels(); err != nil {
 		return err
 	}
-	existing := &PersonalProviderConnection{}
+	existing := &PersonalChannel{}
 	if err := DB.Where("id = ? AND user_id = ?", connection.Id, connection.UserId).First(existing).Error; err != nil {
 		return err
 	}
@@ -419,7 +420,7 @@ func UpdatePersonalProviderConnection(connection *PersonalProviderConnection, cr
 		updates["last_check_ok"] = false
 		updates["last_check_error"] = ""
 	}
-	result := DB.Model(&PersonalProviderConnection{}).Where("id = ? AND user_id = ?", connection.Id, connection.UserId).Updates(updates)
+	result := DB.Model(&PersonalChannel{}).Where("id = ? AND user_id = ?", connection.Id, connection.UserId).Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -429,8 +430,8 @@ func UpdatePersonalProviderConnection(connection *PersonalProviderConnection, cr
 	return nil
 }
 
-func DeletePersonalProviderConnection(userID string, id string) error {
-	result := DB.Where("id = ? AND user_id = ?", strings.TrimSpace(id), strings.TrimSpace(userID)).Delete(&PersonalProviderConnection{})
+func DeletePersonalChannel(userID string, id string) error {
+	result := DB.Where("id = ? AND user_id = ?", strings.TrimSpace(id), strings.TrimSpace(userID)).Delete(&PersonalChannel{})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -440,8 +441,8 @@ func DeletePersonalProviderConnection(userID string, id string) error {
 	return nil
 }
 
-func ListPersonalModelRoutes(userID string) ([]PersonalModelRoute, error) {
-	rows := make([]PersonalModelRoute, 0)
+func ListPersonalChannelModelRoutes(userID string) ([]PersonalChannelModelRoute, error) {
+	rows := make([]PersonalChannelModelRoute, 0)
 	if err := DB.Where("user_id = ?", strings.TrimSpace(userID)).Order("model asc").Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -451,7 +452,7 @@ func ListPersonalModelRoutes(userID string) ([]PersonalModelRoute, error) {
 	return rows, nil
 }
 
-func UpsertPersonalModelRoute(userID string, modelName string, policy string) error {
+func UpsertPersonalChannelModelRoute(userID string, modelName string, policy string) error {
 	userID, modelName = strings.TrimSpace(userID), strings.TrimSpace(modelName)
 	if userID == "" || modelName == "" {
 		return errors.New("用户和模型不能为空")
@@ -460,12 +461,12 @@ func UpsertPersonalModelRoute(userID string, modelName string, policy string) er
 		return errors.New("路由策略无效")
 	}
 	now := helper.GetTimestamp()
-	row := PersonalModelRoute{UserId: userID, Model: modelName, RoutePolicy: NormalizePersonalRoutePolicy(policy), CreatedAt: now, UpdatedAt: now}
-	return DB.Where(PersonalModelRoute{UserId: userID, Model: modelName}).Assign(map[string]any{"route_policy": row.RoutePolicy, "updated_at": now}).FirstOrCreate(&row).Error
+	row := PersonalChannelModelRoute{UserId: userID, Model: modelName, RoutePolicy: NormalizePersonalRoutePolicy(policy), CreatedAt: now, UpdatedAt: now}
+	return DB.Where(PersonalChannelModelRoute{UserId: userID, Model: modelName}).Assign(map[string]any{"route_policy": row.RoutePolicy, "updated_at": now}).FirstOrCreate(&row).Error
 }
 
-func DeletePersonalModelRoute(userID string, modelName string) error {
-	result := DB.Where("user_id = ? AND model = ?", strings.TrimSpace(userID), strings.TrimSpace(modelName)).Delete(&PersonalModelRoute{})
+func DeletePersonalChannelModelRoute(userID string, modelName string) error {
+	result := DB.Where("user_id = ? AND model = ?", strings.TrimSpace(userID), strings.TrimSpace(modelName)).Delete(&PersonalChannelModelRoute{})
 	if result.Error != nil {
 		return result.Error
 	}
@@ -480,7 +481,7 @@ func ResolvePersonalRoutePolicy(userID string, token *Token, modelName string) s
 	if token != nil {
 		policy = NormalizePersonalRoutePolicy(token.RoutePolicy)
 	}
-	row := PersonalModelRoute{}
+	row := PersonalChannelModelRoute{}
 	if err := DB.Select("route_policy").Where("user_id = ? AND model = ?", strings.TrimSpace(userID), strings.TrimSpace(modelName)).First(&row).Error; err == nil {
 		modelPolicy := NormalizePersonalRoutePolicy(row.RoutePolicy)
 		// A Token can carry a hard source boundary. A user-level model rule is
@@ -497,11 +498,11 @@ const personalProviderVerificationTimeout = 12 * time.Second
 
 var doPersonalProviderVerificationRequest = client.DoPersonalProviderRequest
 
-// VerifyPersonalProviderConnection probes the protocol's model catalogue. It
+// VerifyPersonalChannel probes the protocol's model catalogue. It
 // validates the stored endpoint and credential without sending an inference
 // request, so a verification never consumes model tokens by design.
-func VerifyPersonalProviderConnection(userID string, id string) (*PersonalProviderConnection, error) {
-	connection, err := GetPersonalProviderConnection(userID, id)
+func VerifyPersonalChannel(userID string, id string) (*PersonalChannel, error) {
+	connection, err := GetPersonalChannel(userID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -514,7 +515,7 @@ func VerifyPersonalProviderConnection(userID string, id string) (*PersonalProvid
 	if err != nil {
 		updates["last_check_error"] = truncatePersonalProviderCheckError(err.Error())
 	}
-	if updateErr := DB.Model(&PersonalProviderConnection{}).
+	if updateErr := DB.Model(&PersonalChannel{}).
 		Where("id = ? AND user_id = ?", connection.Id, connection.UserId).
 		Updates(updates).Error; updateErr != nil {
 		return nil, updateErr
@@ -528,7 +529,7 @@ func VerifyPersonalProviderConnection(userID string, id string) (*PersonalProvid
 	return connection, nil
 }
 
-func verifyPersonalProviderCredential(connection *PersonalProviderConnection, credential string) error {
+func verifyPersonalProviderCredential(connection *PersonalChannel, credential string) error {
 	endpoint, err := personalProviderVerificationEndpoint(connection)
 	if err != nil {
 		return err
@@ -564,7 +565,7 @@ func verifyPersonalProviderCredential(connection *PersonalProviderConnection, cr
 	return nil
 }
 
-func personalProviderVerificationEndpoint(connection *PersonalProviderConnection) (string, error) {
+func personalProviderVerificationEndpoint(connection *PersonalChannel) (string, error) {
 	if connection == nil {
 		return "", errors.New("个人渠道不能为空")
 	}
@@ -622,14 +623,14 @@ func truncatePersonalProviderCheckError(value string) string {
 	return value[:512]
 }
 
-func ListPersonalProviderChannelsForModel(userID string, modelName string) ([]*Channel, error) {
-	connections, err := ListPersonalProviderConnections(userID)
+func ListPersonalChannelCandidatesForModel(userID string, modelName string) ([]*ChannelCandidate, error) {
+	connections, err := ListPersonalChannels(userID)
 	if err != nil {
 		return nil, err
 	}
-	channels := make([]*Channel, 0)
+	channels := make([]*ChannelCandidate, 0)
 	for _, connection := range connections {
-		if connection.Status != PersonalProviderStatusEnabled {
+		if connection.Status != PersonalChannelStatusEnabled {
 			continue
 		}
 		matched := false
@@ -647,7 +648,12 @@ func ListPersonalProviderChannelsForModel(userID string, modelName string) ([]*C
 			return nil, fmt.Errorf("个人渠道 %s 的凭据不可用: %w", connection.Name, decryptErr)
 		}
 		baseURL := connection.BaseURL
-		channel := &Channel{Id: PersonalProviderChannelPrefix + connection.Id, Name: "personal-" + connection.Id, Protocol: connection.Protocol, Key: credential, BaseURL: &baseURL, Status: ChannelStatusEnabled, Priority: &connection.Priority, PersonalProviderName: connection.Name}
+		channel := &ChannelCandidate{
+			PlatformChannel:     PlatformChannel{Id: PersonalChannelIDPrefix + connection.Id, Name: "personal-" + connection.Id, Protocol: connection.Protocol, Key: credential, BaseURL: &baseURL, Status: ChannelStatusEnabled, Priority: &connection.Priority},
+			PersonalChannelName: connection.Name,
+			SourceType:          PersonalChannelCandidateSourceType,
+			OwnerID:             connection.UserId,
+		}
 		rows := BuildDefaultChannelModelsWithProtocol(connection.Models, channel.GetChannelProtocol())
 		for i := range rows {
 			rows[i].ChannelId = channel.Id
@@ -659,15 +665,15 @@ func ListPersonalProviderChannelsForModel(userID string, modelName string) ([]*C
 	return channels, nil
 }
 
-func ResolvePersonalProviderChannel(userID string, channelID string) (*Channel, error) {
-	if !IsPersonalProviderChannelID(channelID) {
+func ResolvePersonalChannelCandidate(userID string, channelID string) (*ChannelCandidate, error) {
+	if !IsPersonalChannelCandidateID(channelID) {
 		return nil, gorm.ErrRecordNotFound
 	}
-	connection, err := GetPersonalProviderConnection(userID, PersonalProviderIDFromChannelID(channelID))
+	connection, err := GetPersonalChannel(userID, PersonalChannelIDFromCandidateID(channelID))
 	if err != nil {
 		return nil, err
 	}
-	if connection.Status != PersonalProviderStatusEnabled {
+	if connection.Status != PersonalChannelStatusEnabled {
 		return nil, errors.New("个人渠道已禁用")
 	}
 	credential, err := decryptPersonalProviderCredential(connection.CredentialEncrypted)
@@ -675,7 +681,12 @@ func ResolvePersonalProviderChannel(userID string, channelID string) (*Channel, 
 		return nil, err
 	}
 	baseURL := connection.BaseURL
-	channel := &Channel{Id: PersonalProviderChannelPrefix + connection.Id, Name: "personal-" + connection.Id, Protocol: connection.Protocol, Key: credential, BaseURL: &baseURL, Status: ChannelStatusEnabled, Priority: &connection.Priority, PersonalProviderName: connection.Name}
+	channel := &ChannelCandidate{
+		PlatformChannel:     PlatformChannel{Id: PersonalChannelIDPrefix + connection.Id, Name: "personal-" + connection.Id, Protocol: connection.Protocol, Key: credential, BaseURL: &baseURL, Status: ChannelStatusEnabled, Priority: &connection.Priority},
+		PersonalChannelName: connection.Name,
+		SourceType:          PersonalChannelCandidateSourceType,
+		OwnerID:             connection.UserId,
+	}
 	rows := BuildDefaultChannelModelsWithProtocol(connection.Models, channel.GetChannelProtocol())
 	for i := range rows {
 		rows[i].ChannelId = channel.Id

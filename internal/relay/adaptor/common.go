@@ -180,7 +180,7 @@ func DoRequest(c *gin.Context, req *http.Request) (*http.Response, error) {
 		resp *http.Response
 		err  error
 	)
-	if strings.TrimSpace(c.GetString(ctxkey.PersonalProviderID)) != "" {
+	if strings.TrimSpace(c.GetString(ctxkey.PersonalChannelID)) != "" {
 		resp, err = client.DoPersonalProviderRequest(req)
 	} else {
 		resp, err = client.HTTPClient.Do(req)

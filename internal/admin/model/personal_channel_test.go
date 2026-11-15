@@ -38,46 +38,46 @@ func TestPersonalProviderCredentialEncryptionRoundTrip(t *testing.T) {
 	}
 }
 
-func TestListPersonalProviderModelsOnlyReturnsEnabledConnectionModels(t *testing.T) {
+func TestListPersonalChannelModelsOnlyReturnsEnabledConnectionModels(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=private"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&PersonalProviderConnection{}); err != nil {
+	if err := db.AutoMigrate(&PersonalChannel{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	previousDB := DB
 	DB = db
 	t.Cleanup(func() { DB = previousDB })
-	rows := []PersonalProviderConnection{
-		{Id: "p1", UserId: "u1", Name: "enabled", Status: PersonalProviderStatusEnabled, ModelsJSON: `["gpt-5.1","gpt-5.1"]`},
-		{Id: "p2", UserId: "u1", Name: "disabled", Status: PersonalProviderStatusDisabled, ModelsJSON: `["claude-opus"]`},
+	rows := []PersonalChannel{
+		{Id: "p1", UserId: "u1", Name: "enabled", Status: PersonalChannelStatusEnabled, ModelsJSON: `["gpt-5.1","gpt-5.1"]`},
+		{Id: "p2", UserId: "u1", Name: "disabled", Status: PersonalChannelStatusDisabled, ModelsJSON: `["claude-opus"]`},
 	}
 	if err := db.Create(&rows).Error; err != nil {
 		t.Fatalf("seed connections: %v", err)
 	}
-	models, err := ListPersonalProviderModels("u1")
+	models, err := ListPersonalChannelModels("u1")
 	if err != nil {
-		t.Fatalf("ListPersonalProviderModels() error = %v", err)
+		t.Fatalf("ListPersonalChannelModels() error = %v", err)
 	}
 	if len(models) != 1 || models[0] != "gpt-5.1" {
 		t.Fatalf("models = %#v, want [gpt-5.1]", models)
 	}
 }
 
-func TestMergePersonalProviderModelsIntoEntitlementsKeepsPrivateSourceSeparate(t *testing.T) {
+func TestMergePersonalChannelModelsIntoEntitlementsKeepsPrivateSourceSeparate(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=private"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&PersonalProviderConnection{}); err != nil {
+	if err := db.AutoMigrate(&PersonalChannel{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	previousDB := DB
 	DB = db
 	t.Cleanup(func() { DB = previousDB })
-	if err := db.Create(&PersonalProviderConnection{
-		Id: "p1", UserId: "u1", Name: "My OpenAI", Status: PersonalProviderStatusEnabled,
+	if err := db.Create(&PersonalChannel{
+		Id: "p1", UserId: "u1", Name: "My OpenAI", Status: PersonalChannelStatusEnabled,
 		ModelsJSON: `["gpt-5.1","private-model"]`,
 	}).Error; err != nil {
 		t.Fatalf("seed connection: %v", err)
@@ -89,9 +89,9 @@ func TestMergePersonalProviderModelsIntoEntitlementsKeepsPrivateSourceSeparate(t
 			Sources: []UserEntitlementModelSource{{SourceType: UserEntitlementSourcePackage, SourceID: "pkg", GroupID: "group"}},
 		}},
 	}
-	merged, err := MergePersonalProviderModelsIntoEntitlements("u1", payload)
+	merged, err := MergePersonalChannelModelsIntoEntitlements("u1", payload)
 	if err != nil {
-		t.Fatalf("MergePersonalProviderModelsIntoEntitlements() error = %v", err)
+		t.Fatalf("MergePersonalChannelModelsIntoEntitlements() error = %v", err)
 	}
 	if len(merged.Models) != 2 || merged.Models[0] != "gpt-5.1" || merged.Models[1] != "private-model" {
 		t.Fatalf("models = %#v, want [gpt-5.1 private-model]", merged.Models)
@@ -102,7 +102,7 @@ func TestMergePersonalProviderModelsIntoEntitlementsKeepsPrivateSourceSeparate(t
 			privateItem = &merged.Items[index]
 		}
 	}
-	if privateItem == nil || privateItem.Provider != PersonalProviderSourceType || len(privateItem.Sources) != 1 {
+	if privateItem == nil || privateItem.Provider != PersonalChannelSourceType || len(privateItem.Sources) != 1 {
 		t.Fatalf("private model item = %#v", privateItem)
 	}
 	if privateItem.Sources[0].GroupID != "" || privateItem.Sources[0].SourceID != "p1" {
@@ -163,25 +163,25 @@ func TestPersonalProviderProtocolAndRoutePolicyValidation(t *testing.T) {
 	}
 }
 
-func TestDeletePersonalModelRouteRequiresOwnership(t *testing.T) {
+func TestDeletePersonalChannelModelRouteRequiresOwnership(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=private"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&PersonalModelRoute{}); err != nil {
+	if err := db.AutoMigrate(&PersonalChannelModelRoute{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	previousDB := DB
 	DB = db
 	t.Cleanup(func() { DB = previousDB })
-	if err := db.Create(&PersonalModelRoute{UserId: "owner", Model: "gpt-5.1", RoutePolicy: PersonalRoutePolicyPersonalOnly}).Error; err != nil {
+	if err := db.Create(&PersonalChannelModelRoute{UserId: "owner", Model: "gpt-5.1", RoutePolicy: PersonalRoutePolicyPersonalOnly}).Error; err != nil {
 		t.Fatalf("seed route: %v", err)
 	}
-	if err := DeletePersonalModelRoute("other-user", "gpt-5.1"); !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := DeletePersonalChannelModelRoute("other-user", "gpt-5.1"); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("cross-user delete error = %v, want record not found", err)
 	}
 	var count int64
-	if err := db.Model(&PersonalModelRoute{}).Where("user_id = ? AND model = ?", "owner", "gpt-5.1").Count(&count).Error; err != nil {
+	if err := db.Model(&PersonalChannelModelRoute{}).Where("user_id = ? AND model = ?", "owner", "gpt-5.1").Count(&count).Error; err != nil {
 		t.Fatalf("count route: %v", err)
 	}
 	if count != 1 {
@@ -194,13 +194,13 @@ func TestResolvePersonalRoutePolicyDoesNotRelaxTokenSourceBoundary(t *testing.T)
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&PersonalModelRoute{}); err != nil {
+	if err := db.AutoMigrate(&PersonalChannelModelRoute{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	previousDB := DB
 	DB = db
 	t.Cleanup(func() { DB = previousDB })
-	if err := db.Create(&PersonalModelRoute{UserId: "user-a", Model: "model-a", RoutePolicy: PersonalRoutePolicyCommunityFirst}).Error; err != nil {
+	if err := db.Create(&PersonalChannelModelRoute{UserId: "user-a", Model: "model-a", RoutePolicy: PersonalRoutePolicyCommunityFirst}).Error; err != nil {
 		t.Fatalf("seed model route: %v", err)
 	}
 	if got := ResolvePersonalRoutePolicy("user-a", &Token{RoutePolicy: PersonalRoutePolicyPersonalOnly}, "model-a"); got != PersonalRoutePolicyPersonalOnly {
@@ -214,12 +214,12 @@ func TestResolvePersonalRoutePolicyDoesNotRelaxTokenSourceBoundary(t *testing.T)
 	}
 }
 
-func TestVerifyPersonalProviderConnectionPersistsSafeHealthStatus(t *testing.T) {
+func TestVerifyPersonalChannelPersistsSafeHealthStatus(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=private"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&PersonalProviderConnection{}); err != nil {
+	if err := db.AutoMigrate(&PersonalChannel{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	previousDB := DB
@@ -241,18 +241,18 @@ func TestVerifyPersonalProviderConnectionPersistsSafeHealthStatus(t *testing.T) 
 		config.JWTSecret = previousSecret
 		doPersonalProviderVerificationRequest = previousRequest
 	})
-	connection := &PersonalProviderConnection{UserId: "user-a", Name: "OpenAI", Protocol: "openai", Models: []string{"gpt-5.1"}, Status: PersonalProviderStatusEnabled}
-	if err := CreatePersonalProviderConnection(connection, "sk-test"); err != nil {
+	connection := &PersonalChannel{UserId: "user-a", Name: "OpenAI", Protocol: "openai", Models: []string{"gpt-5.1"}, Status: PersonalChannelStatusEnabled}
+	if err := CreatePersonalChannel(connection, "sk-test"); err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
-	verified, err := VerifyPersonalProviderConnection("user-a", connection.Id)
+	verified, err := VerifyPersonalChannel("user-a", connection.Id)
 	if err != nil {
-		t.Fatalf("VerifyPersonalProviderConnection: %v", err)
+		t.Fatalf("VerifyPersonalChannel: %v", err)
 	}
 	if !verified.LastCheckOK || verified.LastCheckedAt == 0 || verified.LastCheckError != "" {
 		t.Fatalf("verification result = %+v", verified)
 	}
-	var stored PersonalProviderConnection
+	var stored PersonalChannel
 	if err := db.First(&stored, "id = ?", connection.Id).Error; err != nil {
 		t.Fatalf("load stored connection: %v", err)
 	}
@@ -262,11 +262,11 @@ func TestVerifyPersonalProviderConnectionPersistsSafeHealthStatus(t *testing.T) 
 }
 
 func TestPersonalProviderVerificationEndpointUsesProtocolHeaders(t *testing.T) {
-	endpoint, err := personalProviderVerificationEndpoint(&PersonalProviderConnection{Protocol: "gemini"})
+	endpoint, err := personalProviderVerificationEndpoint(&PersonalChannel{Protocol: "gemini"})
 	if err != nil || endpoint != "https://generativelanguage.googleapis.com/v1beta/models" {
 		t.Fatalf("gemini endpoint = %q, %v", endpoint, err)
 	}
-	endpoint, err = personalProviderVerificationEndpoint(&PersonalProviderConnection{Protocol: "ali"})
+	endpoint, err = personalProviderVerificationEndpoint(&PersonalChannel{Protocol: "ali"})
 	if err != nil || endpoint != "https://dashscope.aliyuncs.com/compatible-mode/v1/models" {
 		t.Fatalf("ali endpoint = %q, %v", endpoint, err)
 	}

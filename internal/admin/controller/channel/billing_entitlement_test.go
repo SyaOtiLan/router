@@ -116,7 +116,7 @@ func TestDetermineBillingItemStatusExpiresPastPeriodicReset(t *testing.T) {
 }
 
 func TestShouldRefreshChannelBillingInBatchSkipsInsufficientBalanceAutoDisabled(t *testing.T) {
-	channel := &model.Channel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
+	channel := &model.PlatformChannel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
 
 	if shouldRefreshChannelBillingInBatch(channel) {
 		t.Fatalf("insufficient-balance auto-disabled channel should not be refreshed in billing batch")
@@ -124,7 +124,7 @@ func TestShouldRefreshChannelBillingInBatchSkipsInsufficientBalanceAutoDisabled(
 }
 
 func TestShouldRefreshChannelBillingInBatchIncludesEnabled(t *testing.T) {
-	channel := &model.Channel{Id: "channel-1", Status: model.ChannelStatusEnabled}
+	channel := &model.PlatformChannel{Id: "channel-1", Status: model.ChannelStatusEnabled}
 
 	if !shouldRefreshChannelBillingInBatch(channel) {
 		t.Fatalf("enabled channel should be refreshed")
@@ -132,7 +132,7 @@ func TestShouldRefreshChannelBillingInBatchIncludesEnabled(t *testing.T) {
 }
 
 func TestShouldRefreshChannelBillingInBatchSkipsManualDisabled(t *testing.T) {
-	channel := &model.Channel{Id: "channel-1", Status: model.ChannelStatusManuallyDisabled}
+	channel := &model.PlatformChannel{Id: "channel-1", Status: model.ChannelStatusManuallyDisabled}
 
 	if shouldRefreshChannelBillingInBatch(channel) {
 		t.Fatalf("manually disabled channel should not be auto-refreshed")
@@ -140,7 +140,7 @@ func TestShouldRefreshChannelBillingInBatchSkipsManualDisabled(t *testing.T) {
 }
 
 func TestShouldRefreshChannelBillingInBatchSkipsOtherAutoDisabled(t *testing.T) {
-	channel := &model.Channel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
+	channel := &model.PlatformChannel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
 
 	if shouldRefreshChannelBillingInBatch(channel) {
 		t.Fatalf("non-insufficient-balance auto-disabled channel should not be refreshed")

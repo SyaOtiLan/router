@@ -21,7 +21,7 @@ func newChannelEndpointControllerTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Channel{},
+		&model.PlatformChannel{},
 		&model.ChannelModel{},
 		&model.ChannelTest{},
 		&model.GroupCatalog{},
@@ -82,7 +82,7 @@ func callGetChannelEndpointsForTest(t *testing.T, channelID string) map[string]a
 
 func seedEndpointControllerChannel(t *testing.T, db *gorm.DB) {
 	t.Helper()
-	if err := db.Create(&model.Channel{
+	if err := db.Create(&model.PlatformChannel{
 		Id:       "channel-1",
 		Name:     "channel-1",
 		Protocol: "openai",

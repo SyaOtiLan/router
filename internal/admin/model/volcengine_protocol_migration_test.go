@@ -12,11 +12,11 @@ func TestRenameVolcengineRealtimeChannelsToVolcengineWithDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&Channel{}); err != nil {
+	if err := db.AutoMigrate(&PlatformChannel{}); err != nil {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
 	baseURL := "https://openspeech.bytedance.com"
-	rows := []Channel{
+	rows := []PlatformChannel{
 		{Id: "realtime-1", Name: "realtime-1", Protocol: "volcengine-realtime", BaseURL: &baseURL},
 		{Id: "standard-1", Name: "standard-1", Protocol: "volcengine", BaseURL: &baseURL},
 	}
@@ -28,7 +28,7 @@ func TestRenameVolcengineRealtimeChannelsToVolcengineWithDB(t *testing.T) {
 		t.Fatalf("renameVolcengineRealtimeChannelsToVolcengineWithDB returned error: %v", err)
 	}
 
-	var channels []Channel
+	var channels []PlatformChannel
 	if err := db.Order("id asc").Find(&channels).Error; err != nil {
 		t.Fatalf("load channels: %v", err)
 	}

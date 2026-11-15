@@ -7,7 +7,7 @@ import (
 )
 
 func TestResolveChannelModelTestTaskTargetsIncludesRuntimeDisabledExplicitModel(t *testing.T) {
-	channel := &model.Channel{}
+	channel := &model.PlatformChannel{}
 	channel.SetChannelModels([]model.ChannelModel{
 		{
 			ChannelId:     "channel-1",

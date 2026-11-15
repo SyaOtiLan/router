@@ -236,7 +236,7 @@ func CacheGetGroupModels(ctx context.Context, group string) ([]string, error) {
 	return models, nil
 }
 
-var group2model2channels map[string]map[string][]*Channel
+var group2model2channels map[string]map[string][]*ChannelCandidate
 var group2model2channel2upstream map[string]map[string]map[string]string
 var channel2model2endpointEnabled map[string]map[string]map[string]bool
 var channel2model2endpointBaseURL map[string]map[string]map[string]string
@@ -244,9 +244,9 @@ var channel2model2endpointPolicy map[string]map[string]map[string][]ChannelModel
 var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
-	var channels []*Channel
+	var channels []*ChannelCandidate
 	DB.Where("status IN ?", []int{ChannelStatusEnabled, ChannelStatusHalfOpen}).Find(&channels)
-	if err := HydrateChannelsWithModels(DB, channels); err != nil {
+	if err := HydrateChannelCandidatesWithModels(DB, channels); err != nil {
 		logger.SysError("failed to hydrate channel models for cache: " + err.Error())
 	}
 	var rows []*GroupModelChannel
@@ -267,16 +267,16 @@ func InitChannelCache() {
 		}
 		groups[groupName] = true
 	}
-	newGroup2model2channels := make(map[string]map[string][]*Channel)
+	newGroup2model2channels := make(map[string]map[string][]*ChannelCandidate)
 	newGroup2model2channel2upstream := make(map[string]map[string]map[string]string)
 	newChannel2model2endpointEnabled := buildChannelModelEndpointSupportCache(endpointRows)
 	newChannel2model2endpointBaseURL := buildChannelModelEndpointBaseURLCache(endpointRows)
 	newChannel2model2endpointPolicy := buildChannelModelEndpointPolicyCache(policyRows)
 	for group := range groups {
-		newGroup2model2channels[group] = make(map[string][]*Channel)
+		newGroup2model2channels[group] = make(map[string][]*ChannelCandidate)
 		newGroup2model2channel2upstream[group] = make(map[string]map[string]string)
 	}
-	channelByID := make(map[string]*Channel, len(channels))
+	channelByID := make(map[string]*ChannelCandidate, len(channels))
 	for _, channel := range channels {
 		if channel == nil {
 			continue
@@ -303,7 +303,7 @@ func InitChannelCache() {
 			continue
 		}
 		if _, ok := newGroup2model2channels[groupName][modelName]; !ok {
-			newGroup2model2channels[groupName][modelName] = make([]*Channel, 0)
+			newGroup2model2channels[groupName][modelName] = make([]*ChannelCandidate, 0)
 		}
 		if _, ok := newGroup2model2channel2upstream[groupName][modelName]; !ok {
 			newGroup2model2channel2upstream[groupName][modelName] = make(map[string]string)
@@ -340,16 +340,20 @@ func InitChannelCache() {
 	logger.SysLog("channels synced from database")
 }
 
-func resolveRuntimeChannelPriority(channel *Channel, priority int64) int64 {
+func resolveRuntimeChannelPriority(channel *ChannelCandidate, priority int64) int64 {
 	if channel != nil && channel.Status == ChannelStatusHalfOpen {
 		return ChannelHalfOpenPriority
 	}
 	return priority
 }
 
-func CacheListSatisfiedChannels(group string, model string) ([]*Channel, error) {
+func CacheListSatisfiedChannels(group string, model string) ([]*ChannelCandidate, error) {
 	if !config.MemoryCacheEnabled {
-		return ListSatisfiedChannels(group, model)
+		channels, err := ListSatisfiedChannels(group, model)
+		if err != nil {
+			return nil, err
+		}
+		return channels, nil
 	}
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
@@ -357,7 +361,7 @@ func CacheListSatisfiedChannels(group string, model string) ([]*Channel, error) 
 	if len(channels) == 0 {
 		return nil, errors.New("channel not found")
 	}
-	result := make([]*Channel, 0, len(channels))
+	result := make([]*ChannelCandidate, 0, len(channels))
 	result = append(result, channels...)
 	return result, nil
 }
@@ -373,10 +377,10 @@ type ChannelCandidateFilter struct {
 	Reason    string
 }
 
-func CacheListSatisfiedChannelsForRequestWithStats(group string, model string, requestPath string) ([]*Channel, ChannelCandidateStats, error) {
+func CacheListSatisfiedChannelsForRequestWithStats(group string, model string, requestPath string) ([]*ChannelCandidate, ChannelCandidateStats, error) {
 	channels, managedErr := CacheListSatisfiedChannels(group, model)
 	if managedErr != nil {
-		channels = []*Channel{}
+		channels = []*ChannelCandidate{}
 	}
 	filtered, err := cacheFilterChannelsByRequestEndpoint(group, channels, model, requestPath)
 	if err != nil {
@@ -429,7 +433,7 @@ func CacheListSatisfiedChannelsForRequestWithStats(group string, model string, r
 	}, nil
 }
 
-func CacheListSatisfiedChannelsForRequest(group string, model string, requestPath string) ([]*Channel, error) {
+func CacheListSatisfiedChannelsForRequest(group string, model string, requestPath string) ([]*ChannelCandidate, error) {
 	channels, _, err := CacheListSatisfiedChannelsForRequestWithStats(group, model, requestPath)
 	return channels, err
 }
@@ -690,25 +694,25 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*Channel, error) {
+func CacheGetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority bool) (*ChannelCandidate, error) {
 	return CacheGetRandomSatisfiedChannelExcluding(group, model, ignoreFirstPriority, nil)
 }
 
-func CacheGetRandomSatisfiedChannelForRequest(group string, model string, requestPath string, ignoreFirstPriority bool) (*Channel, error) {
+func CacheGetRandomSatisfiedChannelForRequest(group string, model string, requestPath string, ignoreFirstPriority bool) (*ChannelCandidate, error) {
 	return CacheGetRandomSatisfiedChannelForRequestExcluding(group, model, requestPath, ignoreFirstPriority, nil)
 }
 
-func CacheGetRandomSatisfiedChannelExcluding(group string, model string, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*Channel, error) {
+func CacheGetRandomSatisfiedChannelExcluding(group string, model string, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*ChannelCandidate, error) {
 	channel, _, err := CacheSelectRandomSatisfiedChannelExcluding(group, model, ignoreFirstPriority, excludedChannelIDs)
 	return channel, err
 }
 
-func CacheGetRandomSatisfiedChannelForRequestExcluding(group string, model string, requestPath string, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*Channel, error) {
+func CacheGetRandomSatisfiedChannelForRequestExcluding(group string, model string, requestPath string, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*ChannelCandidate, error) {
 	channel, _, err := CacheSelectRandomSatisfiedChannelForRequestExcluding(group, model, requestPath, ignoreFirstPriority, excludedChannelIDs)
 	return channel, err
 }
 
-func CacheSelectRandomSatisfiedChannelExcluding(group string, model string, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*Channel, SatisfiedChannelSelectionStats, error) {
+func CacheSelectRandomSatisfiedChannelExcluding(group string, model string, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*ChannelCandidate, SatisfiedChannelSelectionStats, error) {
 	if !config.MemoryCacheEnabled {
 		channels, err := ListSatisfiedChannels(group, model)
 		if err != nil {
@@ -733,7 +737,7 @@ func CacheSelectRandomSatisfiedChannelExcluding(group string, model string, igno
 	return channel, stats, nil
 }
 
-func CacheSelectRandomSatisfiedChannelForRequestExcluding(group string, model string, requestPath string, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*Channel, SatisfiedChannelSelectionStats, error) {
+func CacheSelectRandomSatisfiedChannelForRequestExcluding(group string, model string, requestPath string, ignoreFirstPriority bool, excludedChannelIDs map[string]struct{}) (*ChannelCandidate, SatisfiedChannelSelectionStats, error) {
 	channels, err := CacheListSatisfiedChannelsForRequest(group, model, requestPath)
 	if err != nil {
 		return nil, SatisfiedChannelSelectionStats{}, err
@@ -786,10 +790,10 @@ func buildChannelModelEndpointBaseURLCache(rows []ChannelModelEndpoint) map[stri
 	return result
 }
 
-func cacheFilterChannelsByRequestEndpoint(group string, channels []*Channel, modelName string, requestPath string) ([]*Channel, error) {
+func cacheFilterChannelsByRequestEndpoint(group string, channels []*ChannelCandidate, modelName string, requestPath string) ([]*ChannelCandidate, error) {
 	normalizedEndpoint := NormalizeRequestedChannelModelEndpoint(requestPath)
 	if normalizedEndpoint == "" || len(channels) == 0 {
-		result := make([]*Channel, 0, len(channels))
+		result := make([]*ChannelCandidate, 0, len(channels))
 		result = append(result, channels...)
 		return result, nil
 	}
@@ -819,18 +823,18 @@ func cacheFilterChannelsByRequestEndpoint(group string, channels []*Channel, mod
 	return filterChannelsByRequestEndpointWithMappings(group, channels, modelName, requestPath, supportByChannelID, upstreamByGroup), nil
 }
 
-func filterChannelsByRequestEndpoint(channels []*Channel, modelName string, requestPath string, supportByChannelID map[string]map[string]map[string]bool) []*Channel {
+func filterChannelsByRequestEndpoint(channels []*ChannelCandidate, modelName string, requestPath string, supportByChannelID map[string]map[string]map[string]bool) []*ChannelCandidate {
 	return filterChannelsByRequestEndpointWithMappings("", channels, modelName, requestPath, supportByChannelID, nil)
 }
 
-func filterChannelsByRequestEndpointWithMappings(group string, channels []*Channel, modelName string, requestPath string, supportByChannelID map[string]map[string]map[string]bool, upstreamByGroup map[string]map[string]map[string]string) []*Channel {
+func filterChannelsByRequestEndpointWithMappings(group string, channels []*ChannelCandidate, modelName string, requestPath string, supportByChannelID map[string]map[string]map[string]bool, upstreamByGroup map[string]map[string]map[string]string) []*ChannelCandidate {
 	normalizedEndpoint := NormalizeRequestedChannelModelEndpoint(requestPath)
 	if normalizedEndpoint == "" || len(channels) == 0 {
-		result := make([]*Channel, 0, len(channels))
+		result := make([]*ChannelCandidate, 0, len(channels))
 		result = append(result, channels...)
 		return result
 	}
-	result := make([]*Channel, 0, len(channels))
+	result := make([]*ChannelCandidate, 0, len(channels))
 	normalizedModelName := strings.TrimSpace(modelName)
 	for _, channel := range channels {
 		if channel == nil {

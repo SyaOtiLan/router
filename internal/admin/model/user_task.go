@@ -244,7 +244,7 @@ func hydrateUserTaskRelations(db *gorm.DB, rows []*UserTask) error {
 	}
 	channelNames := map[string]string{}
 	if len(channelIDs) > 0 {
-		channels := make([]Channel, 0, len(channelIDs))
+		channels := make([]PlatformChannel, 0, len(channelIDs))
 		if err := db.Select("id", "name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 			return err
 		}

@@ -16,7 +16,7 @@ func runMainBaselineMigrationWithDB(tx *gorm.DB) error {
 		&WalletAddressCleanupAuditLog{},
 		&IdentityPasskeyLoginSession{},
 		&IdentityLoginSession{},
-		&Channel{},
+		&PlatformChannel{},
 		&ChannelBillingProfile{},
 		&ChannelBillingSnapshot{},
 		&ChannelBillingSnapshotItem{},

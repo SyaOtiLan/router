@@ -139,19 +139,19 @@ func NormalizeChannelTestRows(rows []ChannelTest) []ChannelTest {
 	return result
 }
 
-func HydrateChannelWithTests(db *gorm.DB, channel *Channel) error {
+func HydrateChannelWithTests(db *gorm.DB, channel *PlatformChannel) error {
 	if channel == nil {
 		return nil
 	}
-	return HydrateChannelsWithTests(db, []*Channel{channel})
+	return HydrateChannelsWithTests(db, []*PlatformChannel{channel})
 }
 
-func HydrateChannelsWithTests(db *gorm.DB, channels []*Channel) error {
+func HydrateChannelsWithTests(db *gorm.DB, channels []*PlatformChannel) error {
 	if db == nil {
 		return fmt.Errorf("database handle is nil")
 	}
 	channelIDs := make([]string, 0, len(channels))
-	normalizedChannels := make([]*Channel, 0, len(channels))
+	normalizedChannels := make([]*PlatformChannel, 0, len(channels))
 	for _, channel := range channels {
 		if channel == nil {
 			continue

@@ -168,10 +168,10 @@ func TestSelectChannelHealthProbeEndpointRequiresOfficialIntersection(t *testing
 
 func TestPersistAutomaticProbeDoesNotUpdateEndpointConfiguration(t *testing.T) {
 	db := newChannelHealthProbeTestDB(t)
-	if err := db.AutoMigrate(&model.Channel{}, &model.ChannelModelPriceComponent{}, &model.ChannelModelEndpointTestResult{}); err != nil {
+	if err := db.AutoMigrate(&model.PlatformChannel{}, &model.ChannelModelPriceComponent{}, &model.ChannelModelEndpointTestResult{}); err != nil {
 		t.Fatalf("migrate endpoint test results: %v", err)
 	}
-	if err := db.Create(&model.Channel{Id: "image-channel", Name: "image-channel"}).Error; err != nil {
+	if err := db.Create(&model.PlatformChannel{Id: "image-channel", Name: "image-channel"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	previousDB := model.DB

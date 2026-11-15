@@ -260,8 +260,8 @@ func formatChannelUsageLabelsWithDB(db *gorm.DB, channelIDs []string) ([]string,
 		return []string{}, nil
 	}
 
-	channels := make([]model.Channel, 0, len(normalizedIDs))
-	if err := db.Model(&model.Channel{}).
+	channels := make([]model.PlatformChannel, 0, len(normalizedIDs))
+	if err := db.Model(&model.PlatformChannel{}).
 		Select("id", "name").
 		Where("id IN ?", normalizedIDs).
 		Find(&channels).Error; err != nil {

@@ -10,7 +10,7 @@ import (
 	channelsvc "github.com/yeying-community/router/internal/admin/service/channel"
 )
 
-func shouldProbeInsufficientBalanceRecovery(channel *model.Channel, state model.ChannelCircuitBreakerState) bool {
+func shouldProbeInsufficientBalanceRecovery(channel *model.PlatformChannel, state model.ChannelCircuitBreakerState) bool {
 	if channel == nil || channel.Status != model.ChannelStatusAutoDisabled {
 		return false
 	}
@@ -25,7 +25,7 @@ func EnqueueInsufficientBalanceChannelRecoveryTests(limit int) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	channelByID := make(map[string]*model.Channel)
+	channelByID := make(map[string]*model.PlatformChannel)
 	channelIDs := make([]string, 0)
 	for _, channelRow := range channels {
 		if channelRow == nil || channelRow.Status != model.ChannelStatusAutoDisabled {

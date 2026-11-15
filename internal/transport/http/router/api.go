@@ -16,7 +16,7 @@ import (
 	group "github.com/yeying-community/router/internal/admin/controller/group"
 	log "github.com/yeying-community/router/internal/admin/controller/log"
 	option "github.com/yeying-community/router/internal/admin/controller/option"
-	personalprovider "github.com/yeying-community/router/internal/admin/controller/personalprovider"
+	personalchannel "github.com/yeying-community/router/internal/admin/controller/personalchannel"
 	plan "github.com/yeying-community/router/internal/admin/controller/plan"
 	publisher "github.com/yeying-community/router/internal/admin/controller/publisher"
 	task "github.com/yeying-community/router/internal/admin/controller/task"
@@ -138,19 +138,19 @@ func SetApiRouter(engine *gin.Engine) {
 			publicTokenRoute.DELETE("/:id", token.DeleteToken)
 		}
 
-		personalProviderRoute := publicRouter.Group("/personal-provider")
-		personalProviderRoute.Use(middleware.UserAuth())
+		personalChannelRoute := publicRouter.Group("/personal-provider")
+		personalChannelRoute.Use(middleware.UserAuth())
 		{
-			personalProviderRoute.GET("/connections", personalprovider.ListConnections)
-			personalProviderRoute.POST("/connections", personalprovider.CreateConnection)
-			personalProviderRoute.GET("/connections/:id", personalprovider.GetConnection)
-			personalProviderRoute.PUT("/connections/:id", personalprovider.UpdateConnection)
-			personalProviderRoute.POST("/connections/:id/verify", personalprovider.VerifyConnection)
-			personalProviderRoute.DELETE("/connections/:id", personalprovider.DeleteConnection)
-			personalProviderRoute.GET("/model-routes", personalprovider.ListModelRoutes)
-			personalProviderRoute.PUT("/model-routes", personalprovider.UpsertModelRoute)
-			personalProviderRoute.DELETE("/model-routes/:model", personalprovider.DeleteModelRoute)
-			personalProviderRoute.GET("/routing-quota", personalprovider.RoutingQuota)
+			personalChannelRoute.GET("/connections", personalchannel.ListConnections)
+			personalChannelRoute.POST("/connections", personalchannel.CreateConnection)
+			personalChannelRoute.GET("/connections/:id", personalchannel.GetConnection)
+			personalChannelRoute.PUT("/connections/:id", personalchannel.UpdateConnection)
+			personalChannelRoute.POST("/connections/:id/verify", personalchannel.VerifyConnection)
+			personalChannelRoute.DELETE("/connections/:id", personalchannel.DeleteConnection)
+			personalChannelRoute.GET("/model-routes", personalchannel.ListModelRoutes)
+			personalChannelRoute.PUT("/model-routes", personalchannel.UpsertModelRoute)
+			personalChannelRoute.DELETE("/model-routes/:model", personalchannel.DeleteModelRoute)
+			personalChannelRoute.GET("/routing-quota", personalchannel.RoutingQuota)
 		}
 
 		publisherRoute := publicRouter.Group("/publisher")

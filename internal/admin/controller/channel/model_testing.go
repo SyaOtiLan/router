@@ -303,7 +303,7 @@ func normalizeChannelModelTestMode(raw string) string {
 	}
 }
 
-func selectedChannelModels(channel *model.Channel) []model.ChannelModel {
+func selectedChannelModels(channel *model.PlatformChannel) []model.ChannelModel {
 	if channel == nil {
 		return nil
 	}
@@ -333,7 +333,7 @@ func resolveSelectionModelType(row model.ChannelModel) string {
 	return model.InferModelType(referenceModel)
 }
 
-func resolveChannelTestTargetModels(channel *model.Channel, mode string, requestedModel string, requestedModels []string) []model.ChannelModel {
+func resolveChannelTestTargetModels(channel *model.PlatformChannel, mode string, requestedModel string, requestedModels []string) []model.ChannelModel {
 	if channel == nil {
 		return nil
 	}
@@ -413,11 +413,11 @@ func buildChannelModelTestResult(row model.ChannelModel, execution channelModelT
 	return result
 }
 
-func runSingleChannelModelTest(channel *model.Channel, row model.ChannelModel) (model.ChannelTest, channelModelTestExecution) {
+func runSingleChannelModelTest(channel *model.PlatformChannel, row model.ChannelModel) (model.ChannelTest, channelModelTestExecution) {
 	return runSingleChannelModelTestWithContextAndStream(context.Background(), channel, row, nil, "", imageEditTestInput{}, "")
 }
 
-func runSingleChannelModelTestWithContext(ctx context.Context, channel *model.Channel, row model.ChannelModel) (model.ChannelTest, channelModelTestExecution) {
+func runSingleChannelModelTestWithContext(ctx context.Context, channel *model.PlatformChannel, row model.ChannelModel) (model.ChannelTest, channelModelTestExecution) {
 	return runSingleChannelModelTestWithContextAndStream(ctx, channel, row, nil, "", imageEditTestInput{}, "")
 }
 
@@ -535,7 +535,7 @@ func resolveChannelModelTestEndpointForRow(row model.ChannelModel) (string, erro
 	return "", fmt.Errorf("模型 %s 未声明支持测试端点 %s", strings.TrimSpace(row.Model), endpoint)
 }
 
-func runSingleChannelModelTestWithContextAndStream(ctx context.Context, channel *model.Channel, row model.ChannelModel, requestedStream *bool, requestedAudioLanguage string, imageEditInput imageEditTestInput, responsesTestMode string) (model.ChannelTest, channelModelTestExecution) {
+func runSingleChannelModelTestWithContextAndStream(ctx context.Context, channel *model.PlatformChannel, row model.ChannelModel, requestedStream *bool, requestedAudioLanguage string, imageEditInput imageEditTestInput, responsesTestMode string) (model.ChannelTest, channelModelTestExecution) {
 	modelType := resolveSelectionModelType(row)
 	endpoint, endpointErr := resolveChannelModelTestEndpointForRow(row)
 	if endpointErr != nil {
@@ -710,7 +710,7 @@ func logChannelModelTestExecution(c *gin.Context, channelID string, result model
 	logChannelAdminWarn(c, "test_model_result", fields...)
 }
 
-func runChannelModelTests(c *gin.Context, channel *model.Channel, mode string, requestedModel string, requestedModels []string) ([]model.ChannelTest, error) {
+func runChannelModelTests(c *gin.Context, channel *model.PlatformChannel, mode string, requestedModel string, requestedModels []string) ([]model.ChannelTest, error) {
 	targetRows := resolveChannelTestTargetModels(channel, mode, requestedModel, requestedModels)
 	if len(targetRows) == 0 {
 		return nil, fmt.Errorf("未找到可用于测试的模型")
@@ -737,7 +737,7 @@ func runChannelModelTests(c *gin.Context, channel *model.Channel, mode string, r
 	return model.NormalizeChannelTestRows(results), nil
 }
 
-func resolveChannelUpstreamModelName(channel *model.Channel, requestedModel string) string {
+func resolveChannelUpstreamModelName(channel *model.PlatformChannel, requestedModel string) string {
 	modelName := strings.TrimSpace(requestedModel)
 	if channel == nil {
 		return modelName
@@ -754,7 +754,7 @@ func resolveChannelUpstreamModelName(channel *model.Channel, requestedModel stri
 	return modelName
 }
 
-func newChannelRelayRuntimeContext(path string, channel *model.Channel, requestCtx context.Context) (*gin.Context, *meta.Meta, error) {
+func newChannelRelayRuntimeContext(path string, channel *model.PlatformChannel, requestCtx context.Context) (*gin.Context, *meta.Meta, error) {
 	if channel == nil {
 		return nil, nil, fmt.Errorf("渠道不能为空")
 	}
@@ -773,7 +773,7 @@ func newChannelRelayRuntimeContext(path string, channel *model.Channel, requestC
 	c.Request = req.WithContext(requestCtx)
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Request.Header.Set("User-Agent", "router-channel-model-tester/1.0")
-	middleware.SetupContextForSelectedChannel(c, channel, "")
+	middleware.SetupContextForSelectedChannel(c, model.NewPlatformChannelCandidate(channel), "")
 	return c, meta.GetByContext(c), nil
 }
 
@@ -823,7 +823,7 @@ func parseChannelUpstreamError(statusCode int, body []byte) error {
 	return fmt.Errorf("http status code: %d, error message: %s", statusCode, message)
 }
 
-func executeChannelTextModelTest(ctx context.Context, channel *model.Channel, path string, request *relaymodel.GeneralOpenAIRequest) channelModelTestExecution {
+func executeChannelTextModelTest(ctx context.Context, channel *model.PlatformChannel, path string, request *relaymodel.GeneralOpenAIRequest) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	if request == nil {
 		execution.Err = fmt.Errorf("请求不能为空")
@@ -966,7 +966,7 @@ func replaceModelNameInRawTextRequest(body []byte, modelName string) ([]byte, bo
 	return updatedBody, stream, nil
 }
 
-func executeChannelTextModelTestRawBody(ctx context.Context, channel *model.Channel, path string, requestBody []byte, requestedModel string) channelModelTestExecution {
+func executeChannelTextModelTestRawBody(ctx context.Context, channel *model.PlatformChannel, path string, requestBody []byte, requestedModel string) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	if len(requestBody) == 0 {
 		execution.Err = fmt.Errorf("请求不能为空")
@@ -1069,7 +1069,7 @@ func executeChannelTextModelTestRawBody(ctx context.Context, channel *model.Chan
 	return execution
 }
 
-func executeChannelTextModelTestRawBodyWithRetry(ctx context.Context, channel *model.Channel, path string, requestBody []byte, requestedModel string, maxAttempts int) channelModelTestExecution {
+func executeChannelTextModelTestRawBodyWithRetry(ctx context.Context, channel *model.PlatformChannel, path string, requestBody []byte, requestedModel string, maxAttempts int) channelModelTestExecution {
 	if maxAttempts < 1 {
 		maxAttempts = 1
 	}
@@ -1230,7 +1230,7 @@ func parseEmbeddingModelTestResponse(resp string) (string, error) {
 	return fmt.Sprintf("embedding dimensions: %d", len(embedding)), nil
 }
 
-func executeChannelEmbeddingModelTest(ctx context.Context, channel *model.Channel, modelName string) channelModelTestExecution {
+func executeChannelEmbeddingModelTest(ctx context.Context, channel *model.PlatformChannel, modelName string) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	actualModel := resolveChannelUpstreamModelName(channel, modelName)
 	if strings.TrimSpace(actualModel) == "" {
@@ -1302,7 +1302,7 @@ func executeChannelEmbeddingModelTest(ctx context.Context, channel *model.Channe
 	return execution
 }
 
-func executeChannelImageResponsesModelTest(ctx context.Context, channel *model.Channel, modelName string) channelModelTestExecution {
+func executeChannelImageResponsesModelTest(ctx context.Context, channel *model.PlatformChannel, modelName string) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	request := map[string]any{
 		"model": resolveChannelUpstreamModelName(channel, modelName),
@@ -1383,7 +1383,7 @@ func executeChannelImageResponsesModelTest(ctx context.Context, channel *model.C
 	return execution
 }
 
-func executeChannelImageModelTest(ctx context.Context, channel *model.Channel, modelName string) channelModelTestExecution {
+func executeChannelImageModelTest(ctx context.Context, channel *model.PlatformChannel, modelName string) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	c, relayMeta, err := newChannelRelayRuntimeContext("/v1/images/generations", channel, ctx)
 	if err != nil {
@@ -1467,7 +1467,7 @@ func executeChannelImageModelTest(ctx context.Context, channel *model.Channel, m
 	return execution
 }
 
-func resolveChannelImageModelTestSize(channel *model.Channel, actualModelName string) string {
+func resolveChannelImageModelTestSize(channel *model.PlatformChannel, actualModelName string) string {
 	if channel != nil &&
 		channel.GetChannelProtocol() == relaychannel.VolcEngine &&
 		strings.Contains(strings.ToLower(strings.TrimSpace(actualModelName)), "seedream") {
@@ -1533,7 +1533,7 @@ func resolveChannelImageEditTestImage(ctx context.Context, input imageEditTestIn
 	return imageBytes, filename, nil
 }
 
-func executeChannelImageEditModelTest(ctx context.Context, channel *model.Channel, modelName string, imageEditInput imageEditTestInput) channelModelTestExecution {
+func executeChannelImageEditModelTest(ctx context.Context, channel *model.PlatformChannel, modelName string, imageEditInput imageEditTestInput) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	actualModelName := resolveChannelUpstreamModelName(channel, modelName)
 	if actualModelName == "" {
@@ -1703,7 +1703,7 @@ func executeChannelImageEditModelTest(ctx context.Context, channel *model.Channe
 	return execution
 }
 
-func executeChannelAudioModelTest(ctx context.Context, channel *model.Channel, modelName string, language string) channelModelTestExecution {
+func executeChannelAudioModelTest(ctx context.Context, channel *model.PlatformChannel, modelName string, language string) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	execution.IsStream = false
 	actualModelName := resolveChannelUpstreamModelName(channel, modelName)
@@ -1996,7 +1996,7 @@ func buildZhipuRealtimeSessionUpdate(modelName string) map[string]any {
 	}
 }
 
-func executeChannelRealtimeModelTest(ctx context.Context, channel *model.Channel, modelName string) channelModelTestExecution {
+func executeChannelRealtimeModelTest(ctx context.Context, channel *model.PlatformChannel, modelName string) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	actualModelName := resolveChannelUpstreamModelName(channel, modelName)
 	if actualModelName == "" {
@@ -2244,7 +2244,7 @@ func executeChannelRealtimeModelTest(ctx context.Context, channel *model.Channel
 	return execution
 }
 
-func executeChannelVideoModelTest(ctx context.Context, channel *model.Channel, modelName string) channelModelTestExecution {
+func executeChannelVideoModelTest(ctx context.Context, channel *model.PlatformChannel, modelName string) channelModelTestExecution {
 	execution := channelModelTestExecution{}
 	actualModelName := resolveChannelUpstreamModelName(channel, modelName)
 	if actualModelName == "" {

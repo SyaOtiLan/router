@@ -101,7 +101,7 @@ func runChannelBillingAutoRefreshOnce() {
 	logger.SysLogf("[billing.channel] auto refresh queued submitted=%d reused=%d failed=%d", submittedCount, reusedCount, failedCount)
 }
 
-func runChannelProviderUsageSyncScheduling(channels []*model.Channel) {
+func runChannelProviderUsageSyncScheduling(channels []*model.PlatformChannel) {
 	submitted, reused, failed := 0, 0, 0
 	for _, channel := range channels {
 		if !shouldAutoRefreshChannelBilling(channel) || strings.TrimSpace(channel.Id) == "" {
@@ -152,7 +152,7 @@ func normalizedChannelBillingAutoRefreshIntervalSeconds() int {
 	return interval
 }
 
-func shouldAutoRefreshChannelBilling(channel *model.Channel) bool {
+func shouldAutoRefreshChannelBilling(channel *model.PlatformChannel) bool {
 	if channel == nil {
 		return false
 	}

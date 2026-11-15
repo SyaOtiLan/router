@@ -116,18 +116,18 @@ func NewRedemptions(redemptions []*model.Redemption) []*Redemption {
 	return items
 }
 
-type Channel struct {
-	*model.Channel
+type PlatformChannel struct {
+	*model.PlatformChannel
 	UsedAmount int64 `json:"used_amount"`
 }
 
-func NewChannel(channel *model.Channel) *Channel {
+func NewChannel(channel *model.PlatformChannel) *PlatformChannel {
 	if channel == nil {
 		return nil
 	}
-	return &Channel{
-		Channel:    channel,
-		UsedAmount: channel.UsedQuota,
+	return &PlatformChannel{
+		PlatformChannel: channel,
+		UsedAmount:      channel.UsedQuota,
 	}
 }
 
@@ -274,11 +274,11 @@ type Log struct {
 // source choice and settlement outcome. It never contains community channel
 // IDs, candidate lists, endpoint topology, or upstream error bodies.
 type PublicRoutingSummary struct {
-	SourcePolicy         string `json:"source_policy,omitempty"`
-	InitialSource        string `json:"initial_source,omitempty"`
-	ActualSource         string `json:"actual_source,omitempty"`
-	PersonalProviderName string `json:"personal_provider_name,omitempty"`
-	FallbackCount        int    `json:"fallback_count"`
+	SourcePolicy        string `json:"source_policy,omitempty"`
+	InitialSource       string `json:"initial_source,omitempty"`
+	ActualSource        string `json:"actual_source,omitempty"`
+	PersonalChannelName string `json:"personal_provider_name,omitempty"`
+	FallbackCount       int    `json:"fallback_count"`
 }
 
 func NewLog(row *model.Log) *Log {
@@ -319,9 +319,9 @@ func newPublicRoutingSummary(row *model.Log) *PublicRoutingSummary {
 		return nil
 	}
 	summary := &PublicRoutingSummary{
-		ActualSource:         strings.TrimSpace(row.UpstreamSource),
-		PersonalProviderName: strings.TrimSpace(row.PersonalProviderName),
-		FallbackCount:        row.FallbackCount,
+		ActualSource:        strings.TrimSpace(row.UpstreamSource),
+		PersonalChannelName: strings.TrimSpace(row.PersonalChannelName),
+		FallbackCount:       row.FallbackCount,
 	}
 	var decision struct {
 		Source       string `json:"source"`
@@ -331,7 +331,7 @@ func newPublicRoutingSummary(row *model.Log) *PublicRoutingSummary {
 		summary.SourcePolicy = strings.TrimSpace(decision.SourcePolicy)
 		switch strings.TrimSpace(decision.Source) {
 		case "personal_provider", "personal_provider_fallback":
-			summary.InitialSource = model.PersonalProviderSourceType
+			summary.InitialSource = model.PersonalChannelSourceType
 		default:
 			summary.InitialSource = "community_package"
 		}

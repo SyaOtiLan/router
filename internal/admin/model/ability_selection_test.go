@@ -6,11 +6,11 @@ import (
 )
 
 func TestSelectRandomSatisfiedChannelExcludesFailedChannels(t *testing.T) {
-	channels := []*Channel{
+	channels := platformChannelCandidates([]*PlatformChannel{
 		{Id: "channel-a"},
 		{Id: "channel-b"},
 		{Id: "channel-c"},
-	}
+	})
 
 	got := SelectRandomSatisfiedChannel(channels, false, map[string]struct{}{
 		"channel-a": {},
@@ -28,11 +28,11 @@ func TestSelectRandomSatisfiedChannelExcludesFailedChannels(t *testing.T) {
 func TestSelectRandomSatisfiedChannelIgnoresFirstPriorityLayerWhenRequested(t *testing.T) {
 	high := int64(10)
 	low := int64(1)
-	channels := []*Channel{
+	channels := platformChannelCandidates([]*PlatformChannel{
 		{Id: "channel-a", Priority: &high},
 		{Id: "channel-b", Priority: &high},
 		{Id: "channel-c", Priority: &low},
-	}
+	})
 
 	got := SelectRandomSatisfiedChannel(channels, true, nil)
 
@@ -47,11 +47,11 @@ func TestSelectRandomSatisfiedChannelIgnoresFirstPriorityLayerWhenRequested(t *t
 func TestSelectRandomSatisfiedChannelKeepsCurrentPriorityTierBeforeDowngrading(t *testing.T) {
 	high := int64(10)
 	low := int64(1)
-	channels := []*Channel{
+	channels := platformChannelCandidates([]*PlatformChannel{
 		{Id: "channel-a", Priority: &high},
 		{Id: "channel-b", Priority: &high},
 		{Id: "channel-c", Priority: &low},
-	}
+	})
 
 	got, stats := SelectRandomSatisfiedChannelWithStats(channels, false, map[string]struct{}{
 		"channel-a": {},
@@ -77,11 +77,11 @@ func TestSelectRandomSatisfiedChannelKeepsCurrentPriorityTierBeforeDowngrading(t
 func TestSelectRandomSatisfiedChannelDowngradesWhenCurrentPriorityTierExhausted(t *testing.T) {
 	high := int64(10)
 	low := int64(1)
-	channels := []*Channel{
+	channels := platformChannelCandidates([]*PlatformChannel{
 		{Id: "channel-a", Priority: &high},
 		{Id: "channel-b", Priority: &high},
 		{Id: "channel-c", Priority: &low},
-	}
+	})
 
 	got, stats := SelectRandomSatisfiedChannelWithStats(channels, false, map[string]struct{}{
 		"channel-a": {},
@@ -106,10 +106,10 @@ func TestSelectRandomSatisfiedChannelDowngradesWhenCurrentPriorityTierExhausted(
 }
 
 func TestSelectRandomSatisfiedChannelReturnsNilWhenAllTiersExhausted(t *testing.T) {
-	channels := []*Channel{
+	channels := platformChannelCandidates([]*PlatformChannel{
 		{Id: "channel-a"},
 		{Id: "channel-b"},
-	}
+	})
 
 	got, stats := SelectRandomSatisfiedChannelWithStats(channels, false, map[string]struct{}{
 		"channel-a": {},
@@ -129,10 +129,10 @@ func TestSelectRandomSatisfiedChannelReturnsNilWhenAllTiersExhausted(t *testing.
 
 func TestSelectRandomSatisfiedChannelUsesRoutePriorityOverride(t *testing.T) {
 	basePriority := int64(0)
-	channels := []*Channel{
-		CloneChannelWithPriority(&Channel{Id: "channel-a", Priority: &basePriority}, 1),
-		CloneChannelWithPriority(&Channel{Id: "channel-b", Priority: &basePriority}, 1),
-		CloneChannelWithPriority(&Channel{Id: "channel-c", Priority: &basePriority}, 0),
+	channels := []*ChannelCandidate{
+		CloneChannelWithPriority(&ChannelCandidate{PlatformChannel: PlatformChannel{Id: "channel-a", Priority: &basePriority}}, 1),
+		CloneChannelWithPriority(&ChannelCandidate{PlatformChannel: PlatformChannel{Id: "channel-b", Priority: &basePriority}}, 1),
+		CloneChannelWithPriority(&ChannelCandidate{PlatformChannel: PlatformChannel{Id: "channel-c", Priority: &basePriority}}, 0),
 	}
 
 	got, stats := SelectRandomSatisfiedChannelWithStats(channels, false, nil)
@@ -151,11 +151,11 @@ func TestSelectRandomSatisfiedChannelUsesRoutePriorityOverride(t *testing.T) {
 }
 
 func TestResolveRuntimeChannelPriorityDemotesHalfOpen(t *testing.T) {
-	priority := resolveRuntimeChannelPriority(&Channel{Status: ChannelStatusHalfOpen}, 100)
+	priority := resolveRuntimeChannelPriority(NewPlatformChannelCandidate(&PlatformChannel{Status: ChannelStatusHalfOpen}), 100)
 	if priority != ChannelHalfOpenPriority {
 		t.Fatalf("half-open priority = %d, want %d", priority, ChannelHalfOpenPriority)
 	}
-	enabledPriority := resolveRuntimeChannelPriority(&Channel{Status: ChannelStatusEnabled}, 100)
+	enabledPriority := resolveRuntimeChannelPriority(NewPlatformChannelCandidate(&PlatformChannel{Status: ChannelStatusEnabled}), 100)
 	if enabledPriority != 100 {
 		t.Fatalf("enabled priority = %d, want 100", enabledPriority)
 	}
@@ -163,14 +163,14 @@ func TestResolveRuntimeChannelPriorityDemotesHalfOpen(t *testing.T) {
 
 func TestChannelGetWeightDefaultsZeroAndNilToOne(t *testing.T) {
 	var zero uint
-	if got := (&Channel{}).GetWeight(); got != 1 {
+	if got := (&PlatformChannel{}).GetWeight(); got != 1 {
 		t.Fatalf("nil weight = %d, want 1", got)
 	}
-	if got := (&Channel{Weight: &zero}).GetWeight(); got != 1 {
+	if got := (&PlatformChannel{Weight: &zero}).GetWeight(); got != 1 {
 		t.Fatalf("zero weight = %d, want 1", got)
 	}
 	custom := uint(7)
-	if got := (&Channel{Weight: &custom}).GetWeight(); got != 7 {
+	if got := (&PlatformChannel{Weight: &custom}).GetWeight(); got != 7 {
 		t.Fatalf("custom weight = %d, want 7", got)
 	}
 }
@@ -180,10 +180,10 @@ func TestSelectRandomSatisfiedChannelUsesWeightWithinSamePriorityTier(t *testing
 	priority := int64(10)
 	heavyWeight := uint(9)
 	lightWeight := uint(1)
-	channels := []*Channel{
+	channels := platformChannelCandidates([]*PlatformChannel{
 		{Id: "channel-heavy", Priority: &priority, Weight: &heavyWeight},
 		{Id: "channel-light", Priority: &priority, Weight: &lightWeight},
-	}
+	})
 	counts := map[string]int{
 		"channel-heavy": 0,
 		"channel-light": 0,
@@ -211,12 +211,12 @@ func TestSelectRandomSatisfiedChannelIgnoresExhaustedHighPriorityAndUsesWeightOn
 	low := int64(1)
 	heavyWeight := uint(9)
 	lightWeight := uint(1)
-	channels := []*Channel{
+	channels := platformChannelCandidates([]*PlatformChannel{
 		{Id: "channel-a", Priority: &high},
 		{Id: "channel-b", Priority: &high},
 		{Id: "channel-c", Priority: &low, Weight: &heavyWeight},
 		{Id: "channel-d", Priority: &low, Weight: &lightWeight},
-	}
+	})
 	counts := map[string]int{
 		"channel-c": 0,
 		"channel-d": 0,
@@ -242,4 +242,12 @@ func TestSelectRandomSatisfiedChannelIgnoresExhaustedHighPriorityAndUsesWeightOn
 	if counts["channel-c"] <= counts["channel-d"] {
 		t.Fatalf("fallback weighted selection ignored: c=%d d=%d", counts["channel-c"], counts["channel-d"])
 	}
+}
+
+func platformChannelCandidates(channels []*PlatformChannel) []*ChannelCandidate {
+	candidates := make([]*ChannelCandidate, 0, len(channels))
+	for _, channel := range channels {
+		candidates = append(candidates, NewPlatformChannelCandidate(channel))
+	}
+	return candidates
 }

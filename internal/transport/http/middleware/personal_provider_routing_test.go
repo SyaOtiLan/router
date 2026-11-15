@@ -23,7 +23,7 @@ func newPersonalProviderRoutingTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&model.PersonalProviderConnection{}, &model.PersonalModelRoute{}, &model.CommunityOfferModelRoute{}); err != nil {
+	if err := db.AutoMigrate(&model.PersonalChannel{}, &model.PersonalChannelModelRoute{}, &model.CommunityOfferModelRoute{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	previousDB := model.DB
@@ -57,11 +57,11 @@ func newPersonalProviderRelayContext(t *testing.T, modelName string, policy stri
 
 func TestDistributePersonalOnlyUsesPrivateConnectionWithoutCommunityEntitlement(t *testing.T) {
 	newPersonalProviderRoutingTestDB(t)
-	connection := &model.PersonalProviderConnection{
+	connection := &model.PersonalChannel{
 		UserId: "user-a", Name: "private OpenAI", Protocol: "openai", BaseURL: "",
 		Models: []string{"private-model"}, Priority: 20,
 	}
-	if err := model.CreatePersonalProviderConnection(connection, "sk-personal"); err != nil {
+	if err := model.CreatePersonalChannel(connection, "sk-personal"); err != nil {
 		t.Fatalf("create private connection: %v", err)
 	}
 	c, recorder := newPersonalProviderRelayContext(t, "private-model", model.PersonalRoutePolicyPersonalOnly)
@@ -71,13 +71,13 @@ func TestDistributePersonalOnlyUsesPrivateConnectionWithoutCommunityEntitlement(
 	if recorder.Code >= http.StatusBadRequest {
 		t.Fatalf("distribute status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if got := c.GetString(ctxkey.ChannelId); got != model.PersonalProviderChannelPrefix+connection.Id {
+	if got := c.GetString(ctxkey.ChannelId); got != model.PersonalChannelIDPrefix+connection.Id {
 		t.Fatalf("channel ID = %q, want personal connection", got)
 	}
 	if got := c.GetString(ctxkey.Group); got != "" {
 		t.Fatalf("personal-only request unexpectedly resolved community group %q", got)
 	}
-	if got := c.GetString(ctxkey.PersonalProviderID); got != connection.Id {
+	if got := c.GetString(ctxkey.PersonalChannelID); got != connection.Id {
 		t.Fatalf("personal provider ID = %q, want %q", got, connection.Id)
 	}
 }
@@ -104,21 +104,21 @@ func TestDistributeResponsesKeepsPinnedPersonalConnectionAcrossPolicies(t *testi
 	newPersonalProviderRoutingTestDB(t)
 	responsestate.ResetForTest()
 	t.Cleanup(responsestate.ResetForTest)
-	pinned := &model.PersonalProviderConnection{
+	pinned := &model.PersonalChannel{
 		UserId: "user-a", Name: "pinned connection", Protocol: "openai", BaseURL: "",
 		Models: []string{"private-model"}, Priority: 1,
 	}
-	preferred := &model.PersonalProviderConnection{
+	preferred := &model.PersonalChannel{
 		UserId: "user-a", Name: "new preferred connection", Protocol: "openai", BaseURL: "",
 		Models: []string{"private-model"}, Priority: 100,
 	}
-	if err := model.CreatePersonalProviderConnection(pinned, "sk-pinned"); err != nil {
+	if err := model.CreatePersonalChannel(pinned, "sk-pinned"); err != nil {
 		t.Fatalf("create pinned connection: %v", err)
 	}
-	if err := model.CreatePersonalProviderConnection(preferred, "sk-preferred"); err != nil {
+	if err := model.CreatePersonalChannel(preferred, "sk-preferred"); err != nil {
 		t.Fatalf("create preferred connection: %v", err)
 	}
-	responsestate.StoreRoute("resp_pinned", model.PersonalProviderChannelPrefix+pinned.Id)
+	responsestate.StoreRoute("resp_pinned", model.PersonalChannelIDPrefix+pinned.Id)
 	c, recorder := newPersonalProviderRelayContext(t, "private-model", model.PersonalRoutePolicyPersonalFirst)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/public/responses", bytes.NewBufferString(`{"model":"private-model","previous_response_id":"resp_pinned"}`))
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -129,7 +129,7 @@ func TestDistributeResponsesKeepsPinnedPersonalConnectionAcrossPolicies(t *testi
 	if recorder.Code >= http.StatusBadRequest {
 		t.Fatalf("distribute status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if got := c.GetString(ctxkey.ChannelId); got != model.PersonalProviderChannelPrefix+pinned.Id {
+	if got := c.GetString(ctxkey.ChannelId); got != model.PersonalChannelIDPrefix+pinned.Id {
 		t.Fatalf("channel ID = %q, want pinned %q", got, pinned.Id)
 	}
 }
@@ -138,15 +138,15 @@ func TestDistributeResponsesRejectsDeletedPinnedPersonalConnection(t *testing.T)
 	db := newPersonalProviderRoutingTestDB(t)
 	responsestate.ResetForTest()
 	t.Cleanup(responsestate.ResetForTest)
-	connection := &model.PersonalProviderConnection{
+	connection := &model.PersonalChannel{
 		UserId: "user-a", Name: "deleted connection", Protocol: "openai", BaseURL: "",
 		Models: []string{"private-model"}, Priority: 1,
 	}
-	if err := model.CreatePersonalProviderConnection(connection, "sk-deleted"); err != nil {
+	if err := model.CreatePersonalChannel(connection, "sk-deleted"); err != nil {
 		t.Fatalf("create connection: %v", err)
 	}
-	responsestate.StoreRoute("resp_deleted", model.PersonalProviderChannelPrefix+connection.Id)
-	if err := db.Delete(&model.PersonalProviderConnection{}, "id = ?", connection.Id).Error; err != nil {
+	responsestate.StoreRoute("resp_deleted", model.PersonalChannelIDPrefix+connection.Id)
+	if err := db.Delete(&model.PersonalChannel{}, "id = ?", connection.Id).Error; err != nil {
 		t.Fatalf("delete connection: %v", err)
 	}
 	c, recorder := newPersonalProviderRelayContext(t, "private-model", model.PersonalRoutePolicyPersonalFirst)

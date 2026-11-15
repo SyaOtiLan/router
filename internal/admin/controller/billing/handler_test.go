@@ -30,11 +30,11 @@ func TestLoadProcurementReportUnconfiguredModelChannelsAvoidsAmbiguousChannelID(
 			channel_id TEXT,
 			status TEXT
 		)`,
-		`CREATE TABLE channels (id TEXT PRIMARY KEY, name TEXT)`,
+		`CREATE TABLE platform_channels (id TEXT PRIMARY KEY, name TEXT)`,
 		`INSERT INTO event_logs (
 			id, type, created_at, actual_model_name, channel_id
 		) VALUES (1, 2, 150, 'model-a', 'channel-a')`,
-		`INSERT INTO channels (id, name) VALUES ('channel-a', 'Channel A')`,
+		`INSERT INTO platform_channels (id, name) VALUES ('channel-a', 'Channel A')`,
 	}
 	for _, statement := range statements {
 		if err := db.Exec(statement).Error; err != nil {

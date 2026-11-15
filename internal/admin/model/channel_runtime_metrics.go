@@ -37,24 +37,24 @@ type ChannelRuntimeMetrics struct {
 }
 
 type ChannelRuntimeMetricQuery struct {
-	Window              ChannelMetricWindow
-	ChannelIDs          []string
-	PersonalProviderIDs []string
-	UserID              string
+	Window             ChannelMetricWindow
+	ChannelIDs         []string
+	PersonalChannelIDs []string
+	UserID             string
 }
 
 type channelRuntimeMetricRow struct {
-	ChannelID          string `gorm:"column:channel_id"`
-	PersonalProviderID string `gorm:"column:personal_provider_id"`
-	BucketStart        int64  `gorm:"column:bucket_start"`
-	SuccessCount       int64  `gorm:"column:success_count"`
-	FailureCount       int64  `gorm:"column:failure_count"`
-	LatencyTotal       int64  `gorm:"column:latency_total"`
-	LatencyCount       int64  `gorm:"column:latency_count"`
-	PromptTokens       int64  `gorm:"column:prompt_tokens"`
-	OutputTokens       int64  `gorm:"column:output_tokens"`
-	SpendQuota         int64  `gorm:"column:spend_quota"`
-	LastObservedAt     int64  `gorm:"column:last_observed_at"`
+	ChannelID         string `gorm:"column:channel_id"`
+	PersonalChannelID string `gorm:"column:personal_provider_id"`
+	BucketStart       int64  `gorm:"column:bucket_start"`
+	SuccessCount      int64  `gorm:"column:success_count"`
+	FailureCount      int64  `gorm:"column:failure_count"`
+	LatencyTotal      int64  `gorm:"column:latency_total"`
+	LatencyCount      int64  `gorm:"column:latency_count"`
+	PromptTokens      int64  `gorm:"column:prompt_tokens"`
+	OutputTokens      int64  `gorm:"column:output_tokens"`
+	SpendQuota        int64  `gorm:"column:spend_quota"`
+	LastObservedAt    int64  `gorm:"column:last_observed_at"`
 }
 
 func ResolveChannelMetricWindow(raw string, now time.Time) ChannelMetricWindow {
@@ -116,16 +116,16 @@ func LoadChannelRuntimeMetrics(query ChannelRuntimeMetricQuery) (map[string]Chan
 	}
 
 	channelIDs := normalizeTrimmedValuesPreserveOrder(query.ChannelIDs)
-	personalIDs := normalizeTrimmedValuesPreserveOrder(query.PersonalProviderIDs)
+	personalIDs := normalizeTrimmedValuesPreserveOrder(query.PersonalChannelIDs)
 	personalChannelIDs := make([]string, 0, len(personalIDs))
 	for _, id := range personalIDs {
-		personalChannelIDs = append(personalChannelIDs, PersonalProviderChannelPrefix+id)
+		personalChannelIDs = append(personalChannelIDs, PersonalChannelIDPrefix+id)
 	}
 	for _, id := range channelIDs {
 		result[id] = emptyChannelRuntimeMetrics(window)
 	}
 	for _, id := range personalIDs {
-		result[PersonalProviderChannelPrefix+id] = emptyChannelRuntimeMetrics(window)
+		result[PersonalChannelIDPrefix+id] = emptyChannelRuntimeMetrics(window)
 	}
 	if len(channelIDs) == 0 && len(personalIDs) == 0 {
 		return result, nil
@@ -173,8 +173,8 @@ func LoadChannelRuntimeMetrics(query ChannelRuntimeMetricQuery) (map[string]Chan
 	aggregates := make(map[string][]healthtrend.Aggregate)
 	for _, row := range rows {
 		key := strings.TrimSpace(row.ChannelID)
-		if personalID := strings.TrimSpace(row.PersonalProviderID); personalID != "" {
-			key = PersonalProviderChannelPrefix + personalID
+		if personalID := strings.TrimSpace(row.PersonalChannelID); personalID != "" {
+			key = PersonalChannelIDPrefix + personalID
 		}
 		if key == "" {
 			continue

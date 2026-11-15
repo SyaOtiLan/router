@@ -169,7 +169,7 @@ func TestNewPublicLogOmitsRoutingTopology(t *testing.T) {
 }
 
 func TestNewChannelAddsAmountField(t *testing.T) {
-	row := &model.Channel{
+	row := &model.PlatformChannel{
 		Id:        "c1",
 		UsedQuota: 2048,
 	}

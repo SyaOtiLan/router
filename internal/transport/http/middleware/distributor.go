@@ -29,7 +29,7 @@ type ModelRequest struct {
 	Model string `json:"model" form:"model"`
 }
 
-func pickChannelByPriority(channels []*model.Channel, ignoreFirstPriority bool) *model.Channel {
+func pickChannelByPriority(channels []*model.ChannelCandidate, ignoreFirstPriority bool) *model.ChannelCandidate {
 	if len(channels) == 0 {
 		return nil
 	}
@@ -53,7 +53,7 @@ func pickChannelByPriority(channels []*model.Channel, ignoreFirstPriority bool) 
 	return targets[rand.Intn(len(targets))]
 }
 
-func pickChannelByPolicy(channels []*model.Channel, policy routing.ProviderRoutingPolicy) *model.Channel {
+func pickChannelByPolicy(channels []*model.ChannelCandidate, policy routing.ProviderRoutingPolicy) *model.ChannelCandidate {
 	if policy.SelectionMethod != routing.SelectionWeightedRandom {
 		return pickChannelByPriority(channels, false)
 	}
@@ -61,7 +61,7 @@ func pickChannelByPolicy(channels []*model.Channel, policy routing.ProviderRouti
 		return nil
 	}
 	firstPriority := channels[0].GetPriority()
-	tier := make([]*model.Channel, 0, len(channels))
+	tier := make([]*model.ChannelCandidate, 0, len(channels))
 	for _, channel := range channels {
 		if channel.GetPriority() != firstPriority {
 			break
@@ -93,7 +93,7 @@ func pickChannelByPolicy(channels []*model.Channel, policy routing.ProviderRouti
 	return tier[len(tier)-1]
 }
 
-func channelIDInList(channels []*model.Channel, channelID string) bool {
+func channelIDInList(channels []*model.ChannelCandidate, channelID string) bool {
 	normalizedChannelID := strings.TrimSpace(channelID)
 	if normalizedChannelID == "" {
 		return false
@@ -109,7 +109,7 @@ func channelIDInList(channels []*model.Channel, channelID string) bool {
 	return false
 }
 
-func channelIDs(channels []*model.Channel) []string {
+func channelIDs(channels []*model.ChannelCandidate) []string {
 	result := make([]string, 0, len(channels))
 	for _, channel := range channels {
 		if channel == nil || strings.TrimSpace(channel.Id) == "" {
@@ -120,7 +120,7 @@ func channelIDs(channels []*model.Channel) []string {
 	return result
 }
 
-func channelProvider(channel *model.Channel, requestModel string) string {
+func channelProvider(channel *model.ChannelCandidate, requestModel string) string {
 	if channel == nil {
 		return ""
 	}
@@ -132,7 +132,7 @@ func channelProvider(channel *model.Channel, requestModel string) string {
 	return ""
 }
 
-func applyProviderRoutingPolicy(channels []*model.Channel, requestModel string, policy routing.ProviderRoutingPolicy) ([]*model.Channel, []model.ChannelCandidateFilter) {
+func applyProviderRoutingPolicy(channels []*model.ChannelCandidate, requestModel string, policy routing.ProviderRoutingPolicy) ([]*model.ChannelCandidate, []model.ChannelCandidateFilter) {
 	if len(channels) == 0 || policy.ProviderScope.Mode == routing.ProviderScopeAny && len(policy.ProviderOrder) == 0 {
 		return channels, nil
 	}
@@ -144,7 +144,7 @@ func applyProviderRoutingPolicy(channels []*model.Channel, requestModel string, 
 	for index, provider := range policy.ProviderOrder {
 		ordered[provider] = index
 	}
-	result := make([]*model.Channel, 0, len(channels))
+	result := make([]*model.ChannelCandidate, 0, len(channels))
 	filtered := make([]model.ChannelCandidateFilter, 0)
 	for _, channel := range channels {
 		provider := channelProvider(channel, requestModel)
@@ -173,7 +173,7 @@ func applyProviderRoutingPolicy(channels []*model.Channel, requestModel string, 
 	return result, filtered
 }
 
-func recordRouteDecision(c *gin.Context, source string, groupID string, requestModel string, requestPath string, candidates []*model.Channel, filteredCandidates []model.ChannelCandidateFilter, selected *model.Channel, selectionMode string) {
+func recordRouteDecision(c *gin.Context, source string, groupID string, requestModel string, requestPath string, candidates []*model.ChannelCandidate, filteredCandidates []model.ChannelCandidateFilter, selected *model.ChannelCandidate, selectionMode string) {
 	if selected == nil {
 		return
 	}
@@ -195,7 +195,7 @@ func recordRouteDecision(c *gin.Context, source string, groupID string, requestM
 	})
 }
 
-func selectPinnedResponsesChannel(c *gin.Context, userID string, userGroup string, requestModel string, requestPath string) (*model.Channel, bool) {
+func selectPinnedResponsesChannel(c *gin.Context, userID string, userGroup string, requestModel string, requestPath string) (*model.ChannelCandidate, bool) {
 	channelID, ok, conflict := lookupPinnedResponsesChannelID(c)
 	if conflict {
 		previousResponseID := strings.TrimSpace(c.GetString(ctxkey.ResponsesPreviousResponseID))
@@ -211,14 +211,16 @@ func selectPinnedResponsesChannel(c *gin.Context, userID string, userGroup strin
 		return nil, false
 	}
 	previousResponseID := strings.TrimSpace(c.GetString(ctxkey.ResponsesPreviousResponseID))
-	var channel *model.Channel
+	var channel *model.ChannelCandidate
 	var err error
-	if model.IsPersonalProviderChannelID(channelID) {
-		channel, err = model.ResolvePersonalProviderChannel(userID, channelID)
+	if model.IsPersonalChannelCandidateID(channelID) {
+		channel, err = model.ResolvePersonalChannelCandidate(userID, channelID)
 	} else if model.IsCommunityOfferChannelID(channelID) {
 		channel, err = model.ResolveCommunityOfferChannel(model.CommunityOfferIDFromChannelID(channelID), requestModel, requestPath)
 	} else {
-		channel, err = model.GetChannelById(channelID)
+		var platformChannel *model.PlatformChannel
+		platformChannel, err = model.GetChannelById(channelID)
+		channel = model.NewPlatformChannelCandidate(platformChannel)
 	}
 	if err != nil {
 		logger.RelayWarnf(c.Request.Context(), "DISTRIBUTE decision=miss reason=responses_route_channel_lookup_failed user_id=%s group=%s response_id=%s channel_id=%s endpoint=%s error=%q", c.GetString(ctxkey.Id), userGroup, previousResponseID, channelID, requestPath, err.Error())
@@ -228,7 +230,7 @@ func selectPinnedResponsesChannel(c *gin.Context, userID string, userGroup strin
 		logger.RelayWarnf(c.Request.Context(), "DISTRIBUTE decision=miss reason=responses_route_channel_disabled user_id=%s group=%s response_id=%s channel_id=%s endpoint=%s", c.GetString(ctxkey.Id), userGroup, previousResponseID, channelID, requestPath)
 		return nil, false
 	}
-	if strings.TrimSpace(requestModel) != "" && !model.IsPersonalProviderChannelID(channelID) && !model.IsCommunityOfferChannelID(channelID) {
+	if strings.TrimSpace(requestModel) != "" && !model.IsPersonalChannelCandidateID(channelID) && !model.IsCommunityOfferChannelID(channelID) {
 		channels, err := model.CacheListSatisfiedChannelsForRequest(userGroup, requestModel, requestPath)
 		if err != nil {
 			logger.RelayWarnf(c.Request.Context(), "DISTRIBUTE decision=miss reason=responses_route_validation_failed user_id=%s group=%s response_id=%s channel_id=%s model=%s endpoint=%s error=%q", c.GetString(ctxkey.Id), userGroup, previousResponseID, channelID, requestModel, requestPath, err.Error())
@@ -240,7 +242,7 @@ func selectPinnedResponsesChannel(c *gin.Context, userID string, userGroup strin
 		}
 	}
 	logger.RelayInfof(c.Request.Context(), "DISTRIBUTE decision=pin reason=responses_route_match user_id=%s group=%s response_id=%s channel_id=%s model=%s endpoint=%s", c.GetString(ctxkey.Id), userGroup, previousResponseID, channelID, requestModel, requestPath)
-	recordRouteDecision(c, "responses_pin", userGroup, requestModel, requestPath, []*model.Channel{channel}, nil, channel, "pinned")
+	recordRouteDecision(c, "responses_pin", userGroup, requestModel, requestPath, []*model.ChannelCandidate{channel}, nil, channel, "pinned")
 	return channel, true
 }
 
@@ -275,7 +277,7 @@ func responseItemIDsFromContext(c *gin.Context) []string {
 // SelectEntitlementChannelForRequest selects a community channel from the
 // user's package and balance entitlements. It is also used by relay retry when
 // a personal-first request needs to fall back after its private upstream fails.
-func SelectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, userID string, initialGroup string, initialSource *model.UserEntitlementSource, requestModel string) (*model.Channel, string, *model.UserEntitlementSource, error) {
+func SelectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, userID string, initialGroup string, initialSource *model.UserEntitlementSource, requestModel string) (*model.ChannelCandidate, string, *model.UserEntitlementSource, error) {
 	requestPath := c.Request.URL.Path
 	if responseStateConflict(c) {
 		logger.RelayWarnf(ctx, "DISTRIBUTE decision=state_recovery reason=responses_route_multiple_channels user_id=%s group=%s model=%s endpoint=%s", userID, initialGroup, requestModel, requestPath)
@@ -469,7 +471,7 @@ func Distribute() func(c *gin.Context) {
 			logger.RelayWarnf(ctx, "DISTRIBUTE decision=abort reason=%s user_id=%s model=%s endpoint=%s status=%d error=%q", reason, userId, requestModel, c.Request.URL.Path, statusCode, groupErr.Error())
 			abortWithMessage(c, statusCode, groupErr.Error())
 		}
-		var channel *model.Channel
+		var channel *model.ChannelCandidate
 		var err error
 		channelId, ok := c.Get(ctxkey.SpecificChannelId)
 		if ok {
@@ -478,7 +480,9 @@ func Distribute() func(c *gin.Context) {
 				return
 			}
 			id := fmt.Sprintf("%v", channelId)
-			channel, err = model.GetChannelById(id)
+			var platformChannel *model.PlatformChannel
+			platformChannel, err = model.GetChannelById(id)
+			channel = model.NewPlatformChannelCandidate(platformChannel)
 			if err != nil {
 				logger.RelayWarnf(ctx, "DISTRIBUTE decision=abort reason=invalid_specific_channel user_id=%s group=%s channel_id=%s endpoint=%s error=%q", userId, userGroup, id, c.Request.URL.Path, err.Error())
 				abortWithMessage(c, http.StatusBadRequest, "无效的渠道 Id")
@@ -489,7 +493,7 @@ func Distribute() func(c *gin.Context) {
 				abortWithMessage(c, http.StatusForbidden, "该渠道已被禁用")
 				return
 			}
-			recordRouteDecision(c, "specific_channel", userGroup, requestModel, c.Request.URL.Path, []*model.Channel{channel}, nil, channel, "explicit")
+			recordRouteDecision(c, "specific_channel", userGroup, requestModel, c.Request.URL.Path, []*model.ChannelCandidate{channel}, nil, channel, "explicit")
 		} else {
 			personalPolicy := model.ResolvePersonalRoutePolicy(userId, &model.Token{RoutePolicy: c.GetString(ctxkey.PersonalRoutePolicy)}, requestModel)
 			c.Set(ctxkey.PersonalRoutePolicy, personalPolicy)
@@ -504,7 +508,7 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 			if pinnedChannelID, pinned, _ := lookupPinnedResponsesChannelID(c); pinned {
-				if !model.IsPersonalProviderChannelID(pinnedChannelID) && !model.IsCommunityOfferChannelID(pinnedChannelID) {
+				if !model.IsPersonalChannelCandidateID(pinnedChannelID) && !model.IsCommunityOfferChannelID(pinnedChannelID) {
 					if groupErr := resolveEntitlement(); groupErr != nil {
 						abortEntitlementResolution(groupErr)
 						return
@@ -515,7 +519,7 @@ func Distribute() func(c *gin.Context) {
 					// A personal or community-offer pin is intentionally fixed to that
 					// exact upstream; failing it over to a different provider would be
 					// surprising, so keep requiring a fresh session.
-					if model.IsPersonalProviderChannelID(pinnedChannelID) || model.IsCommunityOfferChannelID(pinnedChannelID) {
+					if model.IsPersonalChannelCandidateID(pinnedChannelID) || model.IsCommunityOfferChannelID(pinnedChannelID) {
 						abortWithMessage(c, http.StatusConflict, "已绑定的 Responses 会话上游不可用，请重新开始会话")
 						return
 					}
@@ -536,8 +540,8 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 			}
-			selectPersonalChannel := func(decision string, reason string) (*model.Channel, error) {
-				personalChannels, personalErr := model.ListPersonalProviderChannelsForModel(userId, requestModel)
+			selectPersonalChannel := func(decision string, reason string) (*model.ChannelCandidate, error) {
+				personalChannels, personalErr := model.ListPersonalChannelCandidatesForModel(userId, requestModel)
 				if personalErr != nil {
 					logger.RelayWarnf(ctx, "DISTRIBUTE decision=personal_provider_unavailable user_id=%s model=%s endpoint=%s error=%q", userId, requestModel, c.Request.URL.Path, personalErr.Error())
 					return nil, personalErr
@@ -562,7 +566,7 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					c.Set(ctxkey.CommunityOfferID, route.OfferID)
-					recordRouteDecision(c, "community_offer", "", requestModel, c.Request.URL.Path, []*model.Channel{channel}, nil, channel, "explicit_offer")
+					recordRouteDecision(c, "community_offer", "", requestModel, c.Request.URL.Path, []*model.ChannelCandidate{channel}, nil, channel, "explicit_offer")
 				} else if !errors.Is(routeErr, gorm.ErrRecordNotFound) {
 					logger.RelayWarnf(ctx, "DISTRIBUTE decision=community_offer_route_lookup_failed user_id=%s model=%s endpoint=%s error=%q", userId, requestModel, c.Request.URL.Path, routeErr.Error())
 					abortWithMessage(c, http.StatusInternalServerError, "读取社区模型路由失败")
@@ -614,7 +618,7 @@ func Distribute() func(c *gin.Context) {
 				c.Set(ctxkey.EntitlementSourceName, entitlementSource.SourceName)
 			}
 		}
-		if !model.IsPersonalProviderChannelID(channel.Id) && tokenMonetaryQuotaExhausted(c) {
+		if !model.IsPersonalChannelCandidateID(channel.Id) && tokenMonetaryQuotaExhausted(c) {
 			c.Set(ctxkey.RelayErrorCode, "token_quota_exhausted")
 			abortWithMessage(c, http.StatusForbidden, "该令牌额度已用尽")
 			return
@@ -640,17 +644,17 @@ func tokenMonetaryQuotaExhausted(c *gin.Context) bool {
 	return ok && value <= 0
 }
 
-func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) {
+func SetupContextForSelectedChannel(c *gin.Context, channel *model.ChannelCandidate, modelName string) {
 	channelProtocol := channel.GetChannelProtocol()
 	c.Set(ctxkey.Channel, channelProtocol)
 	c.Set(ctxkey.ChannelId, channel.Id)
 	c.Set(ctxkey.ChannelName, channel.DisplayName())
-	if model.IsPersonalProviderChannelID(channel.Id) {
-		c.Set(ctxkey.PersonalProviderID, model.PersonalProviderIDFromChannelID(channel.Id))
-		c.Set(ctxkey.PersonalProviderName, channel.PersonalProviderName)
+	if model.IsPersonalChannelCandidateID(channel.Id) {
+		c.Set(ctxkey.PersonalChannelID, model.PersonalChannelIDFromCandidateID(channel.Id))
+		c.Set(ctxkey.PersonalChannelName, channel.PersonalChannelName)
 	} else {
-		c.Set(ctxkey.PersonalProviderID, "")
-		c.Set(ctxkey.PersonalProviderName, "")
+		c.Set(ctxkey.PersonalChannelID, "")
+		c.Set(ctxkey.PersonalChannelName, "")
 	}
 	if model.IsCommunityOfferChannelID(channel.Id) {
 		c.Set(ctxkey.CommunityOfferID, model.CommunityOfferIDFromChannelID(channel.Id))

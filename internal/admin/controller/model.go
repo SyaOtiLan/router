@@ -1318,7 +1318,7 @@ func GetUserAvailableModels(c *gin.Context) {
 		})
 		return
 	}
-	payload, err = model.MergePersonalProviderModelsIntoEntitlements(id, payload)
+	payload, err = model.MergePersonalChannelModelsIntoEntitlements(id, payload)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -1347,7 +1347,7 @@ func GetUserAvailableModels(c *gin.Context) {
 	for _, item := range payload.Items {
 		modelName := strings.TrimSpace(item.Model)
 		for _, source := range item.Sources {
-			if source.SourceType == model.PersonalProviderSourceType && provider == model.PersonalProviderSourceType {
+			if source.SourceType == model.PersonalChannelSourceType && provider == model.PersonalChannelSourceType {
 				filtered = append(filtered, modelName)
 				break
 			}

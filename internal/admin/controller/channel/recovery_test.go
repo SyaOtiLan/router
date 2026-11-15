@@ -7,7 +7,7 @@ import (
 )
 
 func TestShouldProbeInsufficientBalanceRecovery(t *testing.T) {
-	channel := &model.Channel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
+	channel := &model.PlatformChannel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
 	state := model.ChannelCircuitBreakerState{
 		ChannelId: "channel-1",
 		State:     model.ChannelCircuitBreakerStateCanceled,
@@ -20,7 +20,7 @@ func TestShouldProbeInsufficientBalanceRecovery(t *testing.T) {
 }
 
 func TestShouldProbeInsufficientBalanceRecoverySkipsManualDisabled(t *testing.T) {
-	channel := &model.Channel{Id: "channel-1", Status: model.ChannelStatusManuallyDisabled}
+	channel := &model.PlatformChannel{Id: "channel-1", Status: model.ChannelStatusManuallyDisabled}
 	state := model.ChannelCircuitBreakerState{
 		ChannelId: "channel-1",
 		State:     model.ChannelCircuitBreakerStateCanceled,
@@ -33,7 +33,7 @@ func TestShouldProbeInsufficientBalanceRecoverySkipsManualDisabled(t *testing.T)
 }
 
 func TestShouldProbeInsufficientBalanceRecoverySkipsOtherAutoDisabledReason(t *testing.T) {
-	channel := &model.Channel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
+	channel := &model.PlatformChannel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
 	state := model.ChannelCircuitBreakerState{
 		ChannelId: "channel-1",
 		State:     model.ChannelCircuitBreakerStateCanceled,
@@ -46,7 +46,7 @@ func TestShouldProbeInsufficientBalanceRecoverySkipsOtherAutoDisabledReason(t *t
 }
 
 func TestShouldProbeInsufficientBalanceRecoveryDoesNotRequireBillingEntitlement(t *testing.T) {
-	channel := &model.Channel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
+	channel := &model.PlatformChannel{Id: "channel-1", Status: model.ChannelStatusAutoDisabled}
 	state := model.ChannelCircuitBreakerState{
 		ChannelId: "channel-1",
 		State:     model.ChannelCircuitBreakerStateCanceled,

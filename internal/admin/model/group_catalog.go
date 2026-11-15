@@ -311,7 +311,7 @@ func hydrateGroupCatalogChannelsWithDB(db *gorm.DB, rows []GroupCatalog) error {
 	}
 	sort.Strings(channelIDs)
 
-	channels := make([]Channel, 0, len(channelIDs))
+	channels := make([]PlatformChannel, 0, len(channelIDs))
 	if err := db.
 		Select("id", "name", "protocol", "status", "created_time").
 		Where("id IN ?", channelIDs).

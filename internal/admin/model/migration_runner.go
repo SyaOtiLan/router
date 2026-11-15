@@ -82,8 +82,69 @@ func restoreCompletedChannelModelTestOperationsWithDB(db *gorm.DB) error {
 	return nil
 }
 
+func renameTableIfNeeded(tx *gorm.DB, legacyName, targetName string) error {
+	legacyExists := tx.Migrator().HasTable(legacyName)
+	targetExists := tx.Migrator().HasTable(targetName)
+	if legacyExists && targetExists {
+		return fmt.Errorf("cannot rename table %s to %s: both tables exist", legacyName, targetName)
+	}
+	if !legacyExists {
+		return nil
+	}
+	return tx.Migrator().RenameTable(legacyName, targetName)
+}
+
+func renameIndexIfNeeded(tx *gorm.DB, tableName, legacyName, targetName string) error {
+	legacyExists := tx.Migrator().HasIndex(tableName, legacyName)
+	targetExists := tx.Migrator().HasIndex(tableName, targetName)
+	if legacyExists && targetExists {
+		return fmt.Errorf("cannot rename index %s to %s on %s: both indexes exist", legacyName, targetName, tableName)
+	}
+	if !legacyExists {
+		return nil
+	}
+	return tx.Migrator().RenameIndex(tableName, legacyName, targetName)
+}
+
+func renameChannelPersistenceTables(tx *gorm.DB) error {
+	for _, pair := range [][2]string{
+		{"channels", "platform_channels"},
+		{"personal_provider_connections", PersonalChannelsTableName},
+		{"personal_model_routes", PersonalChannelModelRoutesTableName},
+	} {
+		if err := renameTableIfNeeded(tx, pair[0], pair[1]); err != nil {
+			return err
+		}
+	}
+	for _, pair := range [][3]string{
+		{"platform_channels", "idx_channels_protocol", "idx_platform_channels_protocol"},
+		{"platform_channels", "idx_channels_status", "idx_platform_channels_status"},
+		{"platform_channels", "idx_channels_created_time", "idx_platform_channels_created_time"},
+		{"platform_channels", "idx_channels_updated_at", "idx_platform_channels_updated_at"},
+		{"platform_channels", "idx_channels_name", "idx_platform_channels_name"},
+		{"personal_channels", "idx_personal_provider_user_name", "idx_personal_channel_user_name"},
+		{"personal_channels", "idx_personal_provider_connections_user_id", "idx_personal_channels_user_id"},
+		{"personal_channels", "idx_personal_provider_connections_priority", "idx_personal_channels_priority"},
+		{"personal_channels", "idx_personal_provider_connections_status", "idx_personal_channels_status"},
+		{"personal_channels", "idx_personal_provider_connections_created_at", "idx_personal_channels_created_at"},
+		{"personal_channels", "idx_personal_provider_connections_updated_at", "idx_personal_channels_updated_at"},
+	} {
+		if err := renameIndexIfNeeded(tx, pair[0], pair[1], pair[2]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func runMainVersionedMigrations(db *gorm.DB) error {
 	migrations := []versionedMigration{
+		{
+			Version:     "202611151200_explicit_channel_persistence_names",
+			Description: "rename legacy platform and personal channel tables without copying records",
+			Up: func(tx *gorm.DB) error {
+				return renameChannelPersistenceTables(tx)
+			},
+		},
 		{
 			Version:     "202611151000_token_group_route_order",
 			Description: "persist user-managed token group route order without changing relay routing",
@@ -118,14 +179,14 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 			Version:     "202609231030_personal_provider_routing",
 			Description: "add encrypted personal provider connections, model route rules, and token route policy",
 			Up: func(tx *gorm.DB) error {
-				return tx.AutoMigrate(&PersonalProviderConnection{}, &PersonalModelRoute{}, &Token{}, &Log{})
+				return tx.AutoMigrate(&PersonalChannel{}, &PersonalChannelModelRoute{}, &Token{}, &Log{})
 			},
 		},
 		{
 			Version:     "202609291130_personal_provider_connection_health",
 			Description: "add personal provider connection verification health fields",
 			Up: func(tx *gorm.DB) error {
-				return tx.AutoMigrate(&PersonalProviderConnection{})
+				return tx.AutoMigrate(&PersonalChannel{})
 			},
 		},
 		{
@@ -260,7 +321,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 					return err
 				}
 				channelIDs := make([]string, 0)
-				if err := tx.Model(&Channel{}).Distinct("id").Pluck("id", &channelIDs).Error; err != nil {
+				if err := tx.Model(&PlatformChannel{}).Distinct("id").Pluck("id", &channelIDs).Error; err != nil {
 					return err
 				}
 				for _, channelID := range channelIDs {
@@ -368,7 +429,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 					return err
 				}
 				channelIDs := make([]string, 0)
-				if err := tx.Model(&Channel{}).Distinct("id").Pluck("id", &channelIDs).Error; err != nil {
+				if err := tx.Model(&PlatformChannel{}).Distinct("id").Pluck("id", &channelIDs).Error; err != nil {
 					return err
 				}
 				for _, channelID := range normalizeTrimmedValuesPreserveOrder(channelIDs) {
@@ -466,11 +527,11 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 			Version:     "202604022130_channel_updated_at",
 			Description: "add updated_at column to channels and backfill existing rows from created_time",
 			Up: func(tx *gorm.DB) error {
-				if err := tx.AutoMigrate(&Channel{}); err != nil {
+				if err := tx.AutoMigrate(&PlatformChannel{}); err != nil {
 					return err
 				}
 				return tx.Exec(
-					"UPDATE channels SET updated_at = COALESCE(NULLIF(created_time, 0), ?) WHERE COALESCE(updated_at, 0) = 0",
+					"UPDATE platform_channels SET updated_at = COALESCE(NULLIF(created_time, 0), ?) WHERE COALESCE(updated_at, 0) = 0",
 					helper.GetTimestamp(),
 				).Error
 			},
@@ -813,7 +874,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 					return err
 				}
 				channelIDs := make([]string, 0)
-				if err := tx.Model(&Channel{}).Distinct("id").Pluck("id", &channelIDs).Error; err != nil {
+				if err := tx.Model(&PlatformChannel{}).Distinct("id").Pluck("id", &channelIDs).Error; err != nil {
 					return err
 				}
 				for _, channelID := range channelIDs {
@@ -938,7 +999,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 			Version:     "202605101700_channel_api_base_url_backfill",
 			Description: "backfill channel config.api_base_url from legacy channels.base_url",
 			Up: func(tx *gorm.DB) error {
-				rows := make([]Channel, 0)
+				rows := make([]PlatformChannel, 0)
 				if err := tx.Select("id", "base_url", "config").Find(&rows).Error; err != nil {
 					return err
 				}
@@ -959,7 +1020,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 					if err != nil {
 						return err
 					}
-					if err := tx.Model(&Channel{}).
+					if err := tx.Model(&PlatformChannel{}).
 						Where("id = ?", row.Id).
 						Update("config", strings.TrimSpace(string(raw))).Error; err != nil {
 						return err
@@ -988,7 +1049,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 					VertexAIProjectID string            `json:"vertex_ai_project_id,omitempty"`
 					VertexAIADC       string            `json:"vertex_ai_adc,omitempty"`
 				}
-				channels := make([]Channel, 0)
+				channels := make([]PlatformChannel, 0)
 				if err := tx.Select("id", "config").Find(&channels).Error; err != nil {
 					return err
 				}
@@ -1027,7 +1088,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 					if err != nil {
 						return err
 					}
-					if err := tx.Model(&Channel{}).
+					if err := tx.Model(&PlatformChannel{}).
 						Where("id = ?", channel.Id).
 						Update("config", strings.TrimSpace(string(raw))).Error; err != nil {
 						return err
@@ -1205,7 +1266,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 				if err := tx.AutoMigrate(&ChannelBillingSnapshotItem{}); err != nil {
 					return err
 				}
-				rows := make([]Channel, 0)
+				rows := make([]PlatformChannel, 0)
 				if err := tx.Find(&rows).Error; err != nil {
 					return err
 				}
@@ -1244,13 +1305,13 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 			Version:     "202605200930_drop_channel_balance_columns",
 			Description: "drop legacy channel balance columns",
 			Up: func(tx *gorm.DB) error {
-				if tx.Migrator().HasColumn(&Channel{}, "balance_updated_time") {
-					if err := tx.Migrator().DropColumn(&Channel{}, "balance_updated_time"); err != nil {
+				if tx.Migrator().HasColumn(&PlatformChannel{}, "balance_updated_time") {
+					if err := tx.Migrator().DropColumn(&PlatformChannel{}, "balance_updated_time"); err != nil {
 						return err
 					}
 				}
-				if tx.Migrator().HasColumn(&Channel{}, "balance") {
-					if err := tx.Migrator().DropColumn(&Channel{}, "balance"); err != nil {
+				if tx.Migrator().HasColumn(&PlatformChannel{}, "balance") {
+					if err := tx.Migrator().DropColumn(&PlatformChannel{}, "balance"); err != nil {
 						return err
 					}
 				}
@@ -2496,7 +2557,7 @@ func rebuildGroupModelChannelsForPublishedChannelModelsWithDB(db *gorm.DB) error
 		return fmt.Errorf("database handle is nil")
 	}
 	channelIDs := make([]string, 0)
-	if err := db.Model(&Channel{}).
+	if err := db.Model(&PlatformChannel{}).
 		Select("id").
 		Order("id asc").
 		Pluck("id", &channelIDs).Error; err != nil {
@@ -2515,7 +2576,7 @@ func backfillExplicitPublishedChannelModelsWithDB(db *gorm.DB) error {
 		return fmt.Errorf("database handle is nil")
 	}
 	channelIDs := make([]string, 0)
-	if err := db.Model(&Channel{}).
+	if err := db.Model(&PlatformChannel{}).
 		Select("id").
 		Order("id asc").
 		Pluck("id", &channelIDs).Error; err != nil {
@@ -3285,7 +3346,7 @@ func renameVolcengineOldModelNamesWithDB(db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("database handle is nil")
 	}
-	channelIDs := db.Model(&Channel{}).Select("id").Where("protocol IN ?", []string{"doubao", "volcengine"})
+	channelIDs := db.Model(&PlatformChannel{}).Select("id").Where("protocol IN ?", []string{"doubao", "volcengine"})
 	for oldModelName, officialModel := range volcengineOldModelNameToOfficialModelMap() {
 		for _, tableName := range []string{
 			ChannelModelsTableName,
@@ -3346,7 +3407,7 @@ func cleanupChannelEndpointBaselineWithDB(db *gorm.DB, channelProtocol string, p
 	if normalizedProtocol == "" || normalizedProvider == "" {
 		return nil
 	}
-	channels := make([]Channel, 0)
+	channels := make([]PlatformChannel, 0)
 	if err := db.
 		Select("id").
 		Where("protocol = ?", normalizedProtocol).
@@ -3419,7 +3480,7 @@ func renameDoubaoProtocolToVolcengineWithDB(db *gorm.DB) error {
 		return fmt.Errorf("database handle is nil")
 	}
 	now := helper.GetTimestamp()
-	if err := db.Model(&Channel{}).
+	if err := db.Model(&PlatformChannel{}).
 		Where("protocol = ?", "doubao").
 		Update("protocol", "volcengine").Error; err != nil {
 		return err
@@ -3477,7 +3538,7 @@ func renameVolcengineRealtimeChannelsToVolcengineWithDB(db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("database handle is nil")
 	}
-	return db.Model(&Channel{}).
+	return db.Model(&PlatformChannel{}).
 		Where("protocol = ?", "volcengine-realtime").
 		Update("protocol", "volcengine").Error
 }

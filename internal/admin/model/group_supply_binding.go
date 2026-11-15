@@ -139,16 +139,16 @@ func ReplaceGroupSupplyBindings(groupID string, items []GroupSupplyBindingItem) 
 	})
 }
 
-func ListGroupSupplyChannelsForRequest(groupID string, modelName string, requestPath string) ([]*Channel, error) {
+func ListGroupSupplyChannelsForRequest(groupID string, modelName string, requestPath string) ([]*ChannelCandidate, error) {
 	if DB == nil || !DB.Migrator().HasTable(&GroupSupplyBinding{}) {
-		return []*Channel{}, nil
+		return []*ChannelCandidate{}, nil
 	}
 	bindings := make([]GroupSupplyBinding, 0)
 	if err := DB.Where("\"group\" = ? AND model = ? AND enabled = ?", strings.TrimSpace(groupID), strings.TrimSpace(modelName), true).
 		Order("priority desc, offer_id asc").Find(&bindings).Error; err != nil {
 		return nil, err
 	}
-	channels := make([]*Channel, 0, len(bindings))
+	channels := make([]*ChannelCandidate, 0, len(bindings))
 	for _, binding := range bindings {
 		channel, err := ResolveCommunityOfferChannel(binding.OfferId, binding.Model, requestPath)
 		if err != nil {

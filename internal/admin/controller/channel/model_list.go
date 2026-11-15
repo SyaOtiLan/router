@@ -212,7 +212,7 @@ func GetRecentDisabledChannelModels(c *gin.Context) {
 	}
 	channelNameByID := make(map[string]string, len(channelIDs))
 	if len(channelIDs) > 0 {
-		channels := make([]model.Channel, 0, len(channelIDs))
+		channels := make([]model.PlatformChannel, 0, len(channelIDs))
 		if err := model.DB.Select("id", "name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 			logChannelAdminWarn(c, "list_recent_disabled_models", stringField("reason", err.Error()))
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
@@ -403,7 +403,7 @@ func GetRecentFailedChannelTests(c *gin.Context) {
 	}
 	channelNameByID := make(map[string]string, len(channelIDs))
 	if len(channelIDs) > 0 {
-		channels := make([]model.Channel, 0, len(channelIDs))
+		channels := make([]model.PlatformChannel, 0, len(channelIDs))
 		if err := model.DB.Select("id", "name").Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 			logChannelAdminWarn(c, "list_recent_failed_tests", stringField("reason", err.Error()))
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})

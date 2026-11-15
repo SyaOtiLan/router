@@ -102,7 +102,7 @@ func shouldDisableChannelForBillingEntitlements(collected collectedChannelBillin
 	return false
 }
 
-func collectChannelBillingSnapshot(channel *model.Channel, profile model.ChannelBillingProfile, messageText string) (collectedChannelBillingSnapshot, error) {
+func collectChannelBillingSnapshot(channel *model.PlatformChannel, profile model.ChannelBillingProfile, messageText string) (collectedChannelBillingSnapshot, error) {
 	if !billingServiceConfigured() {
 		return collectedChannelBillingSnapshot{}, fmt.Errorf("渠道账务未配置 Billing 服务")
 	}
@@ -122,7 +122,7 @@ func buildChannelBillingAlertKey(item model.ChannelBillingSnapshotItem) string {
 	return strings.Join(base, "::")
 }
 
-func buildChannelBillingRefreshFailureAlertKey(channel *model.Channel, profile model.ChannelBillingProfile) string {
+func buildChannelBillingRefreshFailureAlertKey(channel *model.PlatformChannel, profile model.ChannelBillingProfile) string {
 	return strings.Join([]string{
 		"refresh",
 		strings.TrimSpace(channel.Id),
@@ -189,7 +189,7 @@ func copyBillingSnapshotItemsForSnapshot(items []model.ChannelBillingSnapshotIte
 	return copied
 }
 
-func resolveChannelBillingFailureRequestURLs(channel *model.Channel, profile model.ChannelBillingProfile) []string {
+func resolveChannelBillingFailureRequestURLs(channel *model.PlatformChannel, profile model.ChannelBillingProfile) []string {
 	return resolveBillingServiceRequestURLs()
 }
 
@@ -253,7 +253,7 @@ func sanitizeBillingAlertReason(err error) string {
 	return model.SanitizeChannelBillingAlertReason(err.Error())
 }
 
-func createBillingRefreshFailureContent(channel *model.Channel, _ model.ChannelBillingProfile, err error) (string, string, string, string) {
+func createBillingRefreshFailureContent(channel *model.PlatformChannel, _ model.ChannelBillingProfile, err error) (string, string, string, string) {
 	if channel == nil || err == nil {
 		return "", "", "", ""
 	}
@@ -291,7 +291,7 @@ func createBillingRefreshFailureContent(channel *model.Channel, _ model.ChannelB
 	`, channelName, channelID, reason)
 }
 
-func createBillingAlertContent(channel *model.Channel, item model.ChannelBillingSnapshotItem, eventType string) (string, string) {
+func createBillingAlertContent(channel *model.PlatformChannel, item model.ChannelBillingSnapshotItem, eventType string) (string, string) {
 	channelName := ""
 	channelID := ""
 	if channel != nil {
@@ -349,7 +349,7 @@ func createBillingAlertContent(channel *model.Channel, item model.ChannelBilling
 	}
 }
 
-func maybeNotifyChannelBillingAlert(channel *model.Channel, snapshotID string, item model.ChannelBillingSnapshotItem, eventType string) error {
+func maybeNotifyChannelBillingAlert(channel *model.PlatformChannel, snapshotID string, item model.ChannelBillingSnapshotItem, eventType string) error {
 	if channel == nil {
 		return nil
 	}
@@ -397,7 +397,7 @@ func maybeNotifyChannelBillingAlert(channel *model.Channel, snapshotID string, i
 	return saveErr
 }
 
-func maybeNotifyChannelBillingRefreshFailure(channel *model.Channel, profile model.ChannelBillingProfile, snapshotID string, cause error) error {
+func maybeNotifyChannelBillingRefreshFailure(channel *model.PlatformChannel, profile model.ChannelBillingProfile, snapshotID string, cause error) error {
 	if channel == nil || cause == nil {
 		return nil
 	}
@@ -460,7 +460,7 @@ func maybeNotifyChannelBillingRefreshFailure(channel *model.Channel, profile mod
 	return saveErr
 }
 
-func evaluateAndNotifyChannelBillingAlerts(channel *model.Channel, profile model.ChannelBillingProfile, snapshot model.ChannelBillingSnapshot, items []model.ChannelBillingSnapshotItem) error {
+func evaluateAndNotifyChannelBillingAlerts(channel *model.PlatformChannel, profile model.ChannelBillingProfile, snapshot model.ChannelBillingSnapshot, items []model.ChannelBillingSnapshotItem) error {
 	if channel == nil {
 		return nil
 	}
@@ -487,7 +487,7 @@ func evaluateAndNotifyChannelBillingAlerts(channel *model.Channel, profile model
 	return nil
 }
 
-func persistCollectedChannelBillingSnapshot(channel *model.Channel, profile model.ChannelBillingProfile, collected collectedChannelBillingSnapshot) (model.ChannelBillingSnapshot, []model.ChannelBillingSnapshotItem, error) {
+func persistCollectedChannelBillingSnapshot(channel *model.PlatformChannel, profile model.ChannelBillingProfile, collected collectedChannelBillingSnapshot) (model.ChannelBillingSnapshot, []model.ChannelBillingSnapshotItem, error) {
 	if channel == nil {
 		return model.ChannelBillingSnapshot{}, nil, fmt.Errorf("渠道不存在")
 	}
@@ -518,7 +518,7 @@ func persistCollectedChannelBillingSnapshot(channel *model.Channel, profile mode
 	return savedSnapshot, finalItems, nil
 }
 
-func persistChannelBillingRefreshFailure(channel *model.Channel, profile model.ChannelBillingProfile, messageText string, cause error) error {
+func persistChannelBillingRefreshFailure(channel *model.PlatformChannel, profile model.ChannelBillingProfile, messageText string, cause error) error {
 	if channel == nil || cause == nil {
 		return nil
 	}
@@ -578,7 +578,7 @@ func splitChannelBillingRequestURLs(raw string) []string {
 	return urls
 }
 
-func refreshAndPersistChannelBillingEntitlements(channel *model.Channel, profile model.ChannelBillingProfile, messageText string) (float64, []string, error) {
+func refreshAndPersistChannelBillingEntitlements(channel *model.PlatformChannel, profile model.ChannelBillingProfile, messageText string) (float64, []string, error) {
 	collected, err := collectChannelBillingSnapshot(channel, profile, messageText)
 	if err != nil {
 		if persistErr := persistChannelBillingRefreshFailure(channel, profile, messageText, err); persistErr != nil {

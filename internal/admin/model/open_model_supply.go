@@ -87,7 +87,7 @@ const (
 	PublisherSettlementDeliveryCancellationObservationSeconds int64 = 24 * 60 * 60
 
 	// CommunityOfferChannelPrefix identifies a transient relay channel created
-	// from one reviewed public offer. It must never be persisted as a Channel:
+	// from one reviewed public offer. It must never be persisted as a PlatformChannel:
 	// a community offer has its own operational and commercial lifecycle.
 	CommunityOfferChannelPrefix = "community-offer:"
 
@@ -269,7 +269,7 @@ type PublisherSettlementDelivery struct {
 func (PublisherSettlementDelivery) TableName() string { return PublisherSettlementDeliveriesTableName }
 
 // CommunityOfferModelRoute is an explicit consumer decision. It is separate
-// from PersonalModelRoute: the latter controls source preference while this
+// from PersonalChannelModelRoute: the latter controls source preference while this
 // record fixes the exact reviewed public offer that may serve one model.
 type CommunityOfferModelRoute struct {
 	UserID    string `json:"user_id" gorm:"type:char(36);primaryKey"`
@@ -1392,7 +1392,7 @@ func CreatePublisherService(userID string, input PublisherServiceInput) (*Publis
 		return nil, err
 	}
 	if input.SourcePersonalConnectionId != "" {
-		if _, err := GetPersonalProviderConnection(userID, input.SourcePersonalConnectionId); err != nil {
+		if _, err := GetPersonalChannel(userID, input.SourcePersonalConnectionId); err != nil {
 			return nil, errors.New("来源个人渠道不存在或无权访问")
 		}
 	}
@@ -1441,7 +1441,7 @@ func UpdatePublisherService(userID string, serviceID string, input PublisherServ
 		return nil, err
 	}
 	if input.SourcePersonalConnectionId != "" && input.SourcePersonalConnectionId != existing.SourcePersonalConnectionId {
-		if _, err := GetPersonalProviderConnection(userID, input.SourcePersonalConnectionId); err != nil {
+		if _, err := GetPersonalChannel(userID, input.SourcePersonalConnectionId); err != nil {
 			return nil, errors.New("来源个人渠道不存在或无权访问")
 		}
 	}
@@ -1904,7 +1904,7 @@ func CommunityOfferIDFromChannelID(channelID string) string {
 // ResolveCommunityOfferChannel materializes a short-lived relay channel from
 // a reviewed offer. The encrypted publisher credential is only used in memory
 // by relay setup and is never exposed through catalog or route APIs.
-func ResolveCommunityOfferChannel(offerID string, modelName string, requestPath string) (*Channel, error) {
+func ResolveCommunityOfferChannel(offerID string, modelName string, requestPath string) (*ChannelCandidate, error) {
 	offerID = strings.TrimSpace(offerID)
 	modelName = strings.TrimSpace(modelName)
 	if offerID == "" || modelName == "" {
@@ -1938,13 +1938,16 @@ func ResolveCommunityOfferChannel(offerID string, modelName string, requestPath 
 		return nil, fmt.Errorf("社区模型服务凭据不可用: %w", err)
 	}
 	baseURL := service.BaseURL
-	channel := &Channel{
-		Id:       CommunityOfferChannelPrefix + offer.Id,
-		Name:     "community-offer-" + offer.Id,
-		Protocol: service.Protocol,
-		Key:      credential,
-		BaseURL:  &baseURL,
-		Status:   ChannelStatusEnabled,
+	channel := &ChannelCandidate{
+		PlatformChannel: PlatformChannel{
+			Id:       CommunityOfferChannelPrefix + offer.Id,
+			Name:     "community-offer-" + offer.Id,
+			Protocol: service.Protocol,
+			Key:      credential,
+			BaseURL:  &baseURL,
+			Status:   ChannelStatusEnabled,
+		},
+		SourceType: ChannelCandidateSourcePublisher,
 	}
 	channel.ChannelModels = []ChannelModel{{
 		ChannelId: channel.Id, Model: modelName, UpstreamModel: serviceModel.UpstreamModel,

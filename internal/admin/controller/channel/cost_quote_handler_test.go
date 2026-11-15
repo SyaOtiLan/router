@@ -20,7 +20,7 @@ func newCostQuoteHandlerTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Channel{},
+		&model.PlatformChannel{},
 		&model.ChannelModel{},
 		&model.ChannelTest{},
 		&model.ChannelModelEndpoint{},
@@ -53,7 +53,7 @@ func decodeCostHandlerJSON(t *testing.T, body []byte) map[string]any {
 func TestGetChannelCostQuoteReconciliationServiceUnconfigured(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := newCostQuoteHandlerTestDB(t)
-	if err := db.Create(&model.Channel{Id: "ch-1", Name: "ch-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&model.PlatformChannel{Id: "ch-1", Name: "ch-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	origBase := config.BillingServiceBaseURL
@@ -101,7 +101,7 @@ func TestGetChannelCostQuoteReconciliationEmptyID(t *testing.T) {
 func TestSyncChannelCostQuotesServiceUnconfigured(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := newCostQuoteHandlerTestDB(t)
-	if err := db.Create(&model.Channel{Id: "ch-1", Name: "ch-1", Protocol: "openai"}).Error; err != nil {
+	if err := db.Create(&model.PlatformChannel{Id: "ch-1", Name: "ch-1", Protocol: "openai"}).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
 	origBase := config.BillingServiceBaseURL

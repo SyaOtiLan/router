@@ -1271,7 +1271,7 @@ func (row ChannelBillingProfile) ParseNotifyConfig() ChannelBillingNotifyConfig 
 	return result
 }
 
-func BuildChannelBillingProfileFromChannelConfig(channel *Channel) (ChannelBillingProfile, bool) {
+func BuildChannelBillingProfileFromChannelConfig(channel *PlatformChannel) (ChannelBillingProfile, bool) {
 	if channel == nil {
 		return ChannelBillingProfile{}, false
 	}
@@ -1284,7 +1284,7 @@ func BuildChannelBillingProfileFromChannelConfig(channel *Channel) (ChannelBilli
 	}, true
 }
 
-func GetEffectiveChannelBillingProfileWithDB(db *gorm.DB, channel *Channel) (ChannelBillingProfile, bool, error) {
+func GetEffectiveChannelBillingProfileWithDB(db *gorm.DB, channel *PlatformChannel) (ChannelBillingProfile, bool, error) {
 	if channel == nil {
 		return ChannelBillingProfile{}, false, fmt.Errorf("渠道不存在")
 	}

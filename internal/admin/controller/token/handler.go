@@ -301,7 +301,7 @@ func validateTokenModelEntitlement(ctx context.Context, userID string, token mod
 		}
 		availableModels[normalizedModel] = struct{}{}
 	}
-	personalModels, err := model.ListPersonalProviderModels(normalizedUserID)
+	personalModels, err := model.ListPersonalChannelModels(normalizedUserID)
 	if err != nil {
 		return err
 	}

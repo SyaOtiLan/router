@@ -1,4 +1,4 @@
-package personalprovider
+package personalchannel
 
 import (
 	"errors"
@@ -27,7 +27,7 @@ type modelRouteInput struct {
 	RoutePolicy string `json:"route_policy"`
 }
 
-func connectionOutput(row *model.PersonalProviderConnection, runtime model.ChannelRuntimeMetrics, window model.ChannelMetricWindow, supply *model.PublisherService) gin.H {
+func connectionOutput(row *model.PersonalChannel, runtime model.ChannelRuntimeMetrics, window model.ChannelMetricWindow, supply *model.PublisherService) gin.H {
 	if row == nil {
 		return nil
 	}
@@ -36,7 +36,7 @@ func connectionOutput(row *model.PersonalProviderConnection, runtime model.Chann
 		supplyStatus = gin.H{"service_id": supply.Id, "status": supply.Status, "last_checked_at": supply.LastCheckedAt, "last_check_ok": supply.LastCheckOK}
 	}
 	return gin.H{
-		"id": row.Id, "channel_id": model.PersonalProviderChannelPrefix + row.Id,
+		"id": row.Id, "channel_id": model.PersonalChannelIDPrefix + row.Id,
 		"source_kind": "personal", "visibility": "private", "owner_id": row.UserId,
 		"name": row.Name, "protocol": row.Protocol, "base_url": row.BaseURL, "models": row.Models,
 		"priority": row.Priority, "status": row.Status, "created_at": row.CreatedAt, "updated_at": row.UpdatedAt,
@@ -51,7 +51,7 @@ func connectionOutput(row *model.PersonalProviderConnection, runtime model.Chann
 
 func ListConnections(c *gin.Context) {
 	userID := c.GetString(ctxkey.Id)
-	rows, err := model.ListPersonalProviderConnections(userID)
+	rows, err := model.ListPersonalChannels(userID)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -61,7 +61,7 @@ func ListConnections(c *gin.Context) {
 	for i := range rows {
 		ids = append(ids, rows[i].Id)
 	}
-	metrics, err := model.LoadChannelRuntimeMetrics(model.ChannelRuntimeMetricQuery{Window: window, PersonalProviderIDs: ids, UserID: userID})
+	metrics, err := model.LoadChannelRuntimeMetrics(model.ChannelRuntimeMetricQuery{Window: window, PersonalChannelIDs: ids, UserID: userID})
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -79,13 +79,13 @@ func ListConnections(c *gin.Context) {
 	}
 	data := make([]gin.H, 0, len(rows))
 	for i := range rows {
-		data = append(data, connectionOutput(&rows[i], metrics[model.PersonalProviderChannelPrefix+rows[i].Id], window, supplyByConnection[rows[i].Id]))
+		data = append(data, connectionOutput(&rows[i], metrics[model.PersonalChannelIDPrefix+rows[i].Id], window, supplyByConnection[rows[i].Id]))
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": data})
 }
 
 func GetConnection(c *gin.Context) {
-	row, err := model.GetPersonalProviderConnection(c.GetString(ctxkey.Id), c.Param("id"))
+	row, err := model.GetPersonalChannel(c.GetString(ctxkey.Id), c.Param("id"))
 	if err != nil {
 		respondConnectionError(c, err)
 		return
@@ -99,8 +99,8 @@ func CreateConnection(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请求格式无效"})
 		return
 	}
-	row := &model.PersonalProviderConnection{UserId: c.GetString(ctxkey.Id), Name: input.Name, Protocol: input.Protocol, BaseURL: input.BaseURL, Models: input.Models, Priority: input.Priority, Status: input.Status}
-	if err := model.CreatePersonalProviderConnection(row, input.APIKey); err != nil {
+	row := &model.PersonalChannel{UserId: c.GetString(ctxkey.Id), Name: input.Name, Protocol: input.Protocol, BaseURL: input.BaseURL, Models: input.Models, Priority: input.Priority, Status: input.Status}
+	if err := model.CreatePersonalChannel(row, input.APIKey); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
@@ -114,7 +114,7 @@ func UpdateConnection(c *gin.Context) {
 		return
 	}
 	userID, connectionID := c.GetString(ctxkey.Id), c.Param("id")
-	existing, err := model.GetPersonalProviderConnection(userID, connectionID)
+	existing, err := model.GetPersonalChannel(userID, connectionID)
 	if err != nil {
 		respondConnectionError(c, err)
 		return
@@ -123,16 +123,16 @@ func UpdateConnection(c *gin.Context) {
 	if status == 0 {
 		status = existing.Status
 	}
-	row := &model.PersonalProviderConnection{Id: existing.Id, UserId: userID, Name: input.Name, Protocol: input.Protocol, BaseURL: input.BaseURL, Models: input.Models, Priority: input.Priority, Status: status}
+	row := &model.PersonalChannel{Id: existing.Id, UserId: userID, Name: input.Name, Protocol: input.Protocol, BaseURL: input.BaseURL, Models: input.Models, Priority: input.Priority, Status: status}
 	var credential *string
 	if strings.TrimSpace(input.APIKey) != "" {
 		credential = &input.APIKey
 	}
-	if err := model.UpdatePersonalProviderConnection(row, credential); err != nil {
+	if err := model.UpdatePersonalChannel(row, credential); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	updated, err := model.GetPersonalProviderConnection(userID, connectionID)
+	updated, err := model.GetPersonalChannel(userID, connectionID)
 	if err != nil {
 		respondConnectionError(c, err)
 		return
@@ -141,7 +141,7 @@ func UpdateConnection(c *gin.Context) {
 }
 
 func DeleteConnection(c *gin.Context) {
-	if err := model.DeletePersonalProviderConnection(c.GetString(ctxkey.Id), c.Param("id")); err != nil {
+	if err := model.DeletePersonalChannel(c.GetString(ctxkey.Id), c.Param("id")); err != nil {
 		respondConnectionError(c, err)
 		return
 	}
@@ -149,7 +149,7 @@ func DeleteConnection(c *gin.Context) {
 }
 
 func VerifyConnection(c *gin.Context) {
-	row, err := model.VerifyPersonalProviderConnection(c.GetString(ctxkey.Id), c.Param("id"))
+	row, err := model.VerifyPersonalChannel(c.GetString(ctxkey.Id), c.Param("id"))
 	if err != nil {
 		if row == nil {
 			respondConnectionError(c, err)
@@ -162,7 +162,7 @@ func VerifyConnection(c *gin.Context) {
 }
 
 func ListModelRoutes(c *gin.Context) {
-	rows, err := model.ListPersonalModelRoutes(c.GetString(ctxkey.Id))
+	rows, err := model.ListPersonalChannelModelRoutes(c.GetString(ctxkey.Id))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
@@ -189,7 +189,7 @@ func UpsertModelRoute(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "模型不在当前账号可用范围内"})
 		return
 	}
-	if err := model.UpsertPersonalModelRoute(c.GetString(ctxkey.Id), input.Model, input.RoutePolicy); err != nil {
+	if err := model.UpsertPersonalChannelModelRoute(c.GetString(ctxkey.Id), input.Model, input.RoutePolicy); err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return
 	}
@@ -202,7 +202,7 @@ func listUserRoutableModels(c *gin.Context) (map[string]struct{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	personalModels, err := model.ListPersonalProviderModels(userID)
+	personalModels, err := model.ListPersonalChannelModels(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func listUserRoutableModels(c *gin.Context) (map[string]struct{}, error) {
 }
 
 func DeleteModelRoute(c *gin.Context) {
-	if err := model.DeletePersonalModelRoute(c.GetString(ctxkey.Id), c.Param("model")); err != nil {
+	if err := model.DeletePersonalChannelModelRoute(c.GetString(ctxkey.Id), c.Param("model")); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusOK, gin.H{"success": false, "message": "模型路由规则不存在或无权访问", "code": "personal_model_route_not_found"})
 			return
@@ -236,7 +236,7 @@ func RoutingQuota(c *gin.Context) {
 	start := time.Now().UTC()
 	start = time.Date(start.Year(), start.Month(), 1, 0, 0, 0, 0, time.UTC)
 	var used int64
-	err := model.LOG_DB.Model(&model.Log{}).Where("user_id = ? AND created_at >= ? AND channel_id LIKE ?", c.GetString(ctxkey.Id), start.Unix(), model.PersonalProviderChannelPrefix+"%").Count(&used).Error
+	err := model.LOG_DB.Model(&model.Log{}).Where("user_id = ? AND created_at >= ? AND channel_id LIKE ?", c.GetString(ctxkey.Id), start.Unix(), model.PersonalChannelIDPrefix+"%").Count(&used).Error
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
 		return

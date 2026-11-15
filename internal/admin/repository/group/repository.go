@@ -23,7 +23,7 @@ func init() {
 	})
 }
 
-func GetRandomSatisfiedChannel(group string, modelName string, ignoreFirstPriority bool) (*model.Channel, error) {
+func GetRandomSatisfiedChannel(group string, modelName string, ignoreFirstPriority bool) (*model.ChannelCandidate, error) {
 	channels, err := ListSatisfiedChannels(group, modelName)
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func GetRandomSatisfiedChannel(group string, modelName string, ignoreFirstPriori
 	return channel, nil
 }
 
-func ListSatisfiedChannels(group string, modelName string) ([]*model.Channel, error) {
+func ListSatisfiedChannels(group string, modelName string) ([]*model.ChannelCandidate, error) {
 	groupCol := `"group"`
 	rows := make([]model.GroupModelChannel, 0)
 	if err := model.DB.Where(groupCol+" = ? and model = ?", group, modelName).
@@ -57,16 +57,16 @@ func ListSatisfiedChannels(group string, modelName string) ([]*model.Channel, er
 		channelIDs = append(channelIDs, channelID)
 	}
 	if len(channelIDs) == 0 {
-		return []*model.Channel{}, nil
+		return []*model.ChannelCandidate{}, nil
 	}
-	channels := make([]*model.Channel, 0, len(channelIDs))
+	channels := make([]*model.ChannelCandidate, 0, len(channelIDs))
 	if err := model.DB.Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 		return nil, err
 	}
-	if err := model.HydrateChannelsWithModels(model.DB, channels); err != nil {
+	if err := model.HydrateChannelCandidatesWithModels(model.DB, channels); err != nil {
 		return nil, err
 	}
-	channelByID := make(map[string]*model.Channel, len(channels))
+	channelByID := make(map[string]*model.ChannelCandidate, len(channels))
 	for _, channel := range channels {
 		if channel == nil {
 			continue
@@ -76,7 +76,7 @@ func ListSatisfiedChannels(group string, modelName string) ([]*model.Channel, er
 		}
 		channelByID[strings.TrimSpace(channel.Id)] = channel
 	}
-	result := make([]*model.Channel, 0, len(rows))
+	result := make([]*model.ChannelCandidate, 0, len(rows))
 	for _, row := range rows {
 		channelID := strings.TrimSpace(row.ChannelId)
 		if channel := channelByID[channelID]; channel != nil {
@@ -90,9 +90,9 @@ func ListSatisfiedChannels(group string, modelName string) ([]*model.Channel, er
 	return result, nil
 }
 
-func AddGroupModelChannels(channel *model.Channel) error {
+func AddGroupModelChannels(channel *model.ChannelCandidate) error {
 	// Runtime routes are refreshed from group_models + group_channels.
-	// Channel creation no longer writes routing truth directly.
+	// ChannelCandidate creation no longer writes routing truth directly.
 	if channel == nil {
 		return nil
 	}
@@ -126,7 +126,7 @@ func listBoundGroupsByChannelID(channelID string) ([]string, error) {
 	return result, nil
 }
 
-func buildGroupModelChannelsForChannel(channel *model.Channel, groups []string) []model.GroupModelChannel {
+func buildGroupModelChannelsForChannel(channel *model.ChannelCandidate, groups []string) []model.GroupModelChannel {
 	if channel == nil || len(groups) == 0 {
 		return nil
 	}
@@ -145,7 +145,7 @@ func buildGroupModelChannelsForChannel(channel *model.Channel, groups []string) 
 	return rows
 }
 
-func DeleteGroupModelChannels(channel *model.Channel) error {
+func DeleteGroupModelChannels(channel *model.ChannelCandidate) error {
 	if channel == nil {
 		return nil
 	}
@@ -163,7 +163,7 @@ func DeleteGroupModelChannels(channel *model.Channel) error {
 	return nil
 }
 
-func UpdateGroupModelChannels(channel *model.Channel) error {
+func UpdateGroupModelChannels(channel *model.ChannelCandidate) error {
 	if channel == nil {
 		return nil
 	}
@@ -223,7 +223,7 @@ func RefreshGroupModelChannelsByChannelStatus(channelId string, _ bool) error {
 	return nil
 }
 
-func GetTopChannelByModel(group string, modelName string) (*model.Channel, error) {
+func GetTopChannelByModel(group string, modelName string) (*model.ChannelCandidate, error) {
 	groupCol := `"group"`
 
 	row := model.GroupModelChannel{}
@@ -233,12 +233,12 @@ func GetTopChannelByModel(group string, modelName string) (*model.Channel, error
 	if err != nil {
 		return nil, err
 	}
-	channel := model.Channel{Id: row.ChannelId}
+	channel := model.ChannelCandidate{PlatformChannel: model.PlatformChannel{Id: row.ChannelId}}
 	err = model.DB.Omit("key").First(&channel, "id = ?", row.ChannelId).Error
 	if err != nil {
 		return nil, err
 	}
-	if err := model.HydrateChannelWithModels(model.DB, &channel); err != nil {
+	if err := model.HydrateChannelCandidatesWithModels(model.DB, []*model.ChannelCandidate{&channel}); err != nil {
 		return nil, err
 	}
 	if channel.Status != model.ChannelStatusEnabled && channel.Status != model.ChannelStatusHalfOpen {

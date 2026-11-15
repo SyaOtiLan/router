@@ -123,7 +123,7 @@ func buildChannelModelTestTaskPayload(modelID string, channelID string, endpoint
 	})
 }
 
-func resolveChannelModelTestTaskTargets(channelRow *model.Channel, testMode string, requestedTestModel string, requestedModels []string, requestedConfigs []channelModelTestTargetItem) []channelModelTestTaskTarget {
+func resolveChannelModelTestTaskTargets(channelRow *model.PlatformChannel, testMode string, requestedTestModel string, requestedModels []string, requestedConfigs []channelModelTestTargetItem) []channelModelTestTaskTarget {
 	if len(requestedConfigs) == 0 {
 		targetRows := resolveChannelTestTargetModels(channelRow, testMode, requestedTestModel, requestedModels)
 		result := make([]channelModelTestTaskTarget, 0, len(targetRows))
@@ -355,7 +355,7 @@ func EnqueueChannelModelEndpointRecoveryTest(channelID string, modelID string, e
 	return scheduleChannelModelVerification(channelID, modelID, endpoint, "runtime")
 }
 
-func enqueueInsufficientBalanceRecoveryTest(channelRow *model.Channel, traceID string) (bool, error) {
+func enqueueInsufficientBalanceRecoveryTest(channelRow *model.PlatformChannel, traceID string) (bool, error) {
 	if channelRow == nil || strings.TrimSpace(channelRow.Id) == "" {
 		return false, nil
 	}

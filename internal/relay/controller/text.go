@@ -169,7 +169,7 @@ func RelayTextHelper(c *gin.Context) *model.ErrorWithStatusCode {
 		return openai.ErrorWrapper(responsesImageToolsErr, "parse_responses_image_tools_failed", http.StatusBadRequest)
 	}
 	maxOutputTokens := resolveTextMaxOutputTokens(textRequest)
-	personalProviderRequest := strings.TrimSpace(meta.PersonalProviderID) != ""
+	personalProviderRequest := strings.TrimSpace(meta.PersonalChannelID) != ""
 	communityOfferRequest := strings.TrimSpace(meta.CommunityOfferID) != ""
 	if communityOfferRequest {
 		// Reject an uncovered request before it reaches a third-party publisher.

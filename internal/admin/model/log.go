@@ -83,8 +83,8 @@ type Log struct {
 	Provider                         string  `json:"provider,omitempty" gorm:"type:varchar(128);index"`
 	ChannelName                      string  `json:"channel_name,omitempty" gorm:"-"`
 	UpstreamSource                   string  `json:"upstream_source" gorm:"type:varchar(32);default:'';index"`
-	PersonalProviderId               string  `json:"personal_provider_id" gorm:"type:char(36);default:'';index"`
-	PersonalProviderName             string  `json:"personal_provider_name" gorm:"type:varchar(96);default:''"`
+	PersonalChannelID                string  `json:"personal_provider_id" gorm:"column:personal_provider_id;type:char(36);default:'';index"`
+	PersonalChannelName              string  `json:"personal_provider_name" gorm:"column:personal_provider_name;type:varchar(96);default:''"`
 	RequestModelName                 string  `json:"request_model_name" gorm:"type:varchar(191);index;default:''"`
 	ActualModelName                  string  `json:"actual_model_name" gorm:"type:varchar(191);index;default:''"`
 	UpstreamEndpoint                 string  `json:"upstream_endpoint" gorm:"type:varchar(191);index;default:''"`
