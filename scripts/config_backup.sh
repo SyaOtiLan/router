@@ -10,6 +10,9 @@ if [[ "$MODULE_BASENAME" =~ ^(.+)-v[^-]+-[[:alnum:]]{7}$ ]]; then
 else
     MODULE_NAME="$MODULE_BASENAME"
 fi
+# Release directories use <module>-service-v..., while backup configuration
+# remains keyed by the module name under /data/<module>.
+MODULE_NAME="${MODULE_NAME%-service}"
 
 CONF_FILE="/data/${MODULE_NAME}/backup.conf"
 PASSPHRASE_FILE="/data/${MODULE_NAME}/.passphrase-file"
