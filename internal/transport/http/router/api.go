@@ -138,20 +138,9 @@ func SetApiRouter(engine *gin.Engine) {
 			publicTokenRoute.DELETE("/:id", token.DeleteToken)
 		}
 
-		personalChannelRoute := publicRouter.Group("/personal-provider")
-		personalChannelRoute.Use(middleware.UserAuth())
-		{
-			personalChannelRoute.GET("/connections", personalchannel.ListConnections)
-			personalChannelRoute.POST("/connections", personalchannel.CreateConnection)
-			personalChannelRoute.GET("/connections/:id", personalchannel.GetConnection)
-			personalChannelRoute.PUT("/connections/:id", personalchannel.UpdateConnection)
-			personalChannelRoute.POST("/connections/:id/verify", personalchannel.VerifyConnection)
-			personalChannelRoute.DELETE("/connections/:id", personalchannel.DeleteConnection)
-			personalChannelRoute.GET("/model-routes", personalchannel.ListModelRoutes)
-			personalChannelRoute.PUT("/model-routes", personalchannel.UpsertModelRoute)
-			personalChannelRoute.DELETE("/model-routes/:model", personalchannel.DeleteModelRoute)
-			personalChannelRoute.GET("/routing-quota", personalchannel.RoutingQuota)
-		}
+		registerPersonalChannelRoutes(publicRouter.Group("/personal-channels"))
+		// Keep the pre-rename API prefix available while deployed clients migrate.
+		registerPersonalChannelRoutes(publicRouter.Group("/personal-provider"))
 
 		publisherRoute := publicRouter.Group("/publisher")
 		publisherRoute.Use(middleware.UserAuth())
@@ -563,4 +552,18 @@ func SetApiRouter(engine *gin.Engine) {
 	{
 		// reserved for future internal endpoints
 	}
+}
+
+func registerPersonalChannelRoutes(route *gin.RouterGroup) {
+	route.Use(middleware.UserAuth())
+	route.GET("/connections", personalchannel.ListConnections)
+	route.POST("/connections", personalchannel.CreateConnection)
+	route.GET("/connections/:id", personalchannel.GetConnection)
+	route.PUT("/connections/:id", personalchannel.UpdateConnection)
+	route.POST("/connections/:id/verify", personalchannel.VerifyConnection)
+	route.DELETE("/connections/:id", personalchannel.DeleteConnection)
+	route.GET("/model-routes", personalchannel.ListModelRoutes)
+	route.PUT("/model-routes", personalchannel.UpsertModelRoute)
+	route.DELETE("/model-routes/:model", personalchannel.DeleteModelRoute)
+	route.GET("/routing-quota", personalchannel.RoutingQuota)
 }
