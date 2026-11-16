@@ -571,7 +571,7 @@ paths:
         - $ref: "#/components/parameters/IDPath"
       responses:
         "200": { $ref: "#/components/responses/APIResponse" }
-  /api/v1/public/personal-provider/connections:
+  /api/v1/public/personal/channels/connections:
     get:
       tags: [Personal Provider Routing]
       summary: List current user personal provider connections without credentials
@@ -583,7 +583,7 @@ paths:
       requestBody: { $ref: "#/components/requestBodies/JSONBody" }
       responses:
         "200": { $ref: "#/components/responses/APIResponse" }
-  /api/v1/public/personal-provider/connections/{id}:
+  /api/v1/public/personal/channels/connections/{id}:
     get:
       tags: [Personal Provider Routing]
       summary: Get current user personal provider connection without credential
@@ -606,7 +606,7 @@ paths:
         - $ref: "#/components/parameters/IDPath"
       responses:
         "200": { $ref: "#/components/responses/APIResponse" }
-  /api/v1/public/personal-provider/model-routes:
+  /api/v1/public/personal/channels/models/routes:
     get:
       tags: [Personal Provider Routing]
       summary: List current user model route overrides
@@ -618,7 +618,7 @@ paths:
       requestBody: { $ref: "#/components/requestBodies/JSONBody" }
       responses:
         "200": { $ref: "#/components/responses/APIResponse" }
-  /api/v1/public/personal-provider/model-routes/{model}:
+  /api/v1/public/personal/channels/models/routes/{model}:
     delete:
       tags: [Personal Provider Routing]
       summary: Delete current user model route override
@@ -629,7 +629,7 @@ paths:
           schema: { type: string }
       responses:
         "200": { $ref: "#/components/responses/APIResponse" }
-  /api/v1/public/personal-provider/routing-quota:
+  /api/v1/public/personal/channels/routing/quota:
     get:
       tags: [Personal Provider Routing]
       summary: Get current period personal routing usage

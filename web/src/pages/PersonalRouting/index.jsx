@@ -106,12 +106,12 @@ function PersonalRouting() {
         quotaResponse,
         modelsResponse,
       ] = await Promise.all([
-        API.get('/api/v1/public/personal-provider/connections', {
+        API.get('/api/v1/public/personal/channels/connections', {
           params: { period },
         }),
-        API.get('/api/v1/public/personal-provider/model-routes'),
+        API.get('/api/v1/public/personal/channels/models/routes'),
         API.get('/api/v1/public/community-offer-routing/model-routes'),
-        API.get('/api/v1/public/personal-provider/routing-quota'),
+        API.get('/api/v1/public/personal/channels/routing/quota'),
         API.get('/api/v1/public/user/models/available'),
       ]);
       if (!connectionResponse.data?.success)
@@ -205,11 +205,11 @@ function PersonalRouting() {
       setSaving(true);
       const response = editing
         ? await API.put(
-            `/api/v1/public/personal-provider/connections/${editing.id}`,
+            `/api/v1/public/personal/channels/connections/${editing.id}`,
             payload
           )
         : await API.post(
-            '/api/v1/public/personal-provider/connections',
+            '/api/v1/public/personal/channels/connections',
             payload
           );
       if (!response.data?.success) throw new Error(response.data?.message);
@@ -227,7 +227,7 @@ function PersonalRouting() {
   const toggleConnection = async (row, checked) => {
     try {
       const response = await API.put(
-        `/api/v1/public/personal-provider/connections/${row.id}`,
+        `/api/v1/public/personal/channels/connections/${row.id}`,
         {
           name: row.name,
           protocol: row.protocol,
@@ -247,7 +247,7 @@ function PersonalRouting() {
   const deleteConnection = async (row) => {
     try {
       const response = await API.delete(
-        `/api/v1/public/personal-provider/connections/${row.id}`
+        `/api/v1/public/personal/channels/connections/${row.id}`
       );
       if (!response.data?.success) throw new Error(response.data?.message);
       showSuccess('自用渠道已移除');
@@ -261,7 +261,7 @@ function PersonalRouting() {
     setVerifyingConnectionID(row.id);
     try {
       const response = await API.post(
-        `/api/v1/public/personal-provider/connections/${row.id}/verify`
+        `/api/v1/public/personal/channels/connections/${row.id}/verify`
       );
       if (!response.data?.success) throw new Error(response.data?.message);
       showSuccess('连接和 API Key 验证通过');
@@ -278,7 +278,7 @@ function PersonalRouting() {
     try {
       const values = await routeForm.validateFields();
       const response = await API.put(
-        '/api/v1/public/personal-provider/model-routes',
+        '/api/v1/public/personal/channels/models/routes',
         values
       );
       if (!response.data?.success) throw new Error(response.data?.message);
@@ -293,7 +293,7 @@ function PersonalRouting() {
   const deleteRoute = async (row) => {
     try {
       const response = await API.delete(
-        `/api/v1/public/personal-provider/model-routes/${encodeURIComponent(
+        `/api/v1/public/personal/channels/models/routes/${encodeURIComponent(
           row.model
         )}`
       );
