@@ -138,9 +138,7 @@ func SetApiRouter(engine *gin.Engine) {
 			publicTokenRoute.DELETE("/:id", token.DeleteToken)
 		}
 
-		registerPersonalChannelRoutes(publicRouter.Group("/personal-channels"))
-		// Keep the pre-rename API prefix available while deployed clients migrate.
-		registerPersonalChannelRoutes(publicRouter.Group("/personal-provider"))
+		registerPersonalChannelRoutes(publicRouter.Group("/personal/channels"))
 
 		publisherRoute := publicRouter.Group("/publisher")
 		publisherRoute.Use(middleware.UserAuth())
@@ -562,8 +560,8 @@ func registerPersonalChannelRoutes(route *gin.RouterGroup) {
 	route.PUT("/connections/:id", personalchannel.UpdateConnection)
 	route.POST("/connections/:id/verify", personalchannel.VerifyConnection)
 	route.DELETE("/connections/:id", personalchannel.DeleteConnection)
-	route.GET("/model-routes", personalchannel.ListModelRoutes)
-	route.PUT("/model-routes", personalchannel.UpsertModelRoute)
-	route.DELETE("/model-routes/:model", personalchannel.DeleteModelRoute)
-	route.GET("/routing-quota", personalchannel.RoutingQuota)
+	route.GET("/models/routes", personalchannel.ListModelRoutes)
+	route.PUT("/models/routes", personalchannel.UpsertModelRoute)
+	route.DELETE("/models/routes/:model", personalchannel.DeleteModelRoute)
+	route.GET("/routing/quota", personalchannel.RoutingQuota)
 }
