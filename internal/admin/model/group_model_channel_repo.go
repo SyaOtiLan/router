@@ -5,6 +5,7 @@ import "context"
 type GroupModelChannelRepository struct {
 	GetRandomSatisfiedChannel                func(group string, model string, ignoreFirstPriority bool) (*ChannelCandidate, error)
 	ListSatisfiedChannels                    func(group string, model string) ([]*ChannelCandidate, error)
+	ListSatisfiedChannelsWithContext         func(ctx context.Context, group string, model string) ([]*ChannelCandidate, error)
 	AddGroupModelChannels                    func(channel *ChannelCandidate) error
 	DeleteGroupModelChannels                 func(channel *ChannelCandidate) error
 	UpdateGroupModelChannels                 func(channel *ChannelCandidate) error

@@ -376,6 +376,7 @@ func resetConflictingResponsesState(c *gin.Context) error {
 	c.Set(ctxkey.ResponsesPreviousResponseID, "")
 	c.Set(ctxkey.ResponsesItemIDs, nil)
 	c.Set(ctxkey.ResponsesStatefulRequest, false)
+	c.Set(ctxkey.ResponsesStateReset, true)
 	return nil
 }
 
@@ -625,6 +626,7 @@ func Distribute() func(c *gin.Context) {
 		}
 		logger.Debugf(ctx, "user id %s, user group: %s, request model: %s, using channel #%s", userId, userGroup, requestModel, channel.Id)
 		SetupContextForSelectedChannel(c, channel, requestModel)
+		submitGroupRouteShadow(c, userGroup, channel)
 		c.Next()
 	}
 }

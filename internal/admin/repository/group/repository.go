@@ -14,6 +14,7 @@ func init() {
 	model.BindGroupModelChannelRepository(model.GroupModelChannelRepository{
 		GetRandomSatisfiedChannel:                GetRandomSatisfiedChannel,
 		ListSatisfiedChannels:                    ListSatisfiedChannels,
+		ListSatisfiedChannelsWithContext:         ListSatisfiedChannelsWithContext,
 		AddGroupModelChannels:                    AddGroupModelChannels,
 		DeleteGroupModelChannels:                 DeleteGroupModelChannels,
 		UpdateGroupModelChannels:                 UpdateGroupModelChannels,
@@ -36,9 +37,14 @@ func GetRandomSatisfiedChannel(group string, modelName string, ignoreFirstPriori
 }
 
 func ListSatisfiedChannels(group string, modelName string) ([]*model.ChannelCandidate, error) {
+	return ListSatisfiedChannelsWithContext(context.Background(), group, modelName)
+}
+
+func ListSatisfiedChannelsWithContext(ctx context.Context, group string, modelName string) ([]*model.ChannelCandidate, error) {
 	groupCol := `"group"`
 	rows := make([]model.GroupModelChannel, 0)
-	if err := model.DB.Where(groupCol+" = ? and model = ?", group, modelName).
+	db := model.DB.WithContext(ctx)
+	if err := db.Where(groupCol+" = ? and model = ?", group, modelName).
 		Order("priority desc, channel_id asc").
 		Find(&rows).Error; err != nil {
 		return nil, err
@@ -60,10 +66,10 @@ func ListSatisfiedChannels(group string, modelName string) ([]*model.ChannelCand
 		return []*model.ChannelCandidate{}, nil
 	}
 	channels := make([]*model.ChannelCandidate, 0, len(channelIDs))
-	if err := model.DB.Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
+	if err := db.Where("id IN ?", channelIDs).Find(&channels).Error; err != nil {
 		return nil, err
 	}
-	if err := model.HydrateChannelCandidatesWithModels(model.DB, channels); err != nil {
+	if err := model.HydrateChannelCandidatesWithModels(db, channels); err != nil {
 		return nil, err
 	}
 	channelByID := make(map[string]*model.ChannelCandidate, len(channels))
