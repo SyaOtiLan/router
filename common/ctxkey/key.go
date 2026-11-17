@@ -29,6 +29,7 @@ const (
 	ResponsesPreviousResponseID = "responses_previous_response_id"
 	ResponsesItemIDs            = "responses_item_ids"
 	ResponsesStatefulRequest    = "responses_stateful_request"
+	ResponsesStateReset         = "responses_state_reset"
 	KeyRequestBody              = "key_request_body"
 	UpstreamURL                 = "upstream_url"
 	UpstreamStatus              = "upstream_status"
