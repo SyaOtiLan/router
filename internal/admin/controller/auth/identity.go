@@ -98,6 +98,15 @@ func VerifyIdentityWalletLogin(c *gin.Context) {
 		identityError(c, "登录会话无效或已过期")
 		return
 	}
+	claimed := false
+	completed := false
+	defer func() {
+		if claimed && !completed {
+			_ = model.DB.Model(&model.IdentityLoginSession{}).
+				Where("session_id = ? AND status = ?", row.SessionID, model.IdentityLoginSessionStatusProcessing).
+				Update("status", model.IdentityLoginSessionStatusFailed).Error
+		}
+	}()
 
 	// Verify the presentation signature locally
 	pres, err := common.VerifyIdentityPresentation(req.Presentation, row.Audience, row.Nonce)
@@ -110,7 +119,7 @@ func VerifyIdentityWalletLogin(c *gin.Context) {
 		requiredScopes = routerIdentityRequiredScopes
 	}
 	verifiedCredentials, err := common.VerifyIdentityPresentationCredentials(pres, common.IdentityCredentialVerificationOptions{
-		TrustDir:                config.IdentityTrustDir,
+		NodeURL:                 config.IdentityNodeURL,
 		RequiredScopes:          requiredScopes,
 		RequiredCredentialTypes: []string{"WalletAccountCredential", "EmailCredential", "UsernameCredential"},
 	})
@@ -127,7 +136,6 @@ func VerifyIdentityWalletLogin(c *gin.Context) {
 		identityError(c, "Router 需要已验证用户名，请先在夜莺钱包插件中完成身份用户名验证")
 		return
 	}
-
 	// Verify wallet address from the presentation matches the request
 	walletProofAddr, walletProofChain := extractWalletProof(req.Presentation)
 	addr := model.NormalizeWalletAddress(walletProofAddr)
@@ -141,6 +149,15 @@ func VerifyIdentityWalletLogin(c *gin.Context) {
 		identityError(c, "钱包身份账户凭证无效")
 		return
 	}
+	// Claim the one-time challenge atomically after cryptographic validation.
+	claim := model.DB.Model(&model.IdentityLoginSession{}).
+		Where("session_id = ? AND status = ? AND expires_at >= ?", row.SessionID, model.IdentityLoginSessionStatusPending, time.Now().Unix()).
+		Updates(map[string]any{"status": model.IdentityLoginSessionStatusProcessing})
+	if claim.Error != nil || claim.RowsAffected != 1 {
+		identityError(c, "登录会话已使用或已过期")
+		return
+	}
+	claimed = true
 
 	// Resolve or create the local Router user by wallet identity DID. Wallet
 	// address is only the verified account associated with this identity.
@@ -173,6 +190,7 @@ func VerifyIdentityWalletLogin(c *gin.Context) {
 		identityError(c, "无法保存登录会话")
 		return
 	}
+	completed = true
 
 	if err := usercontroller.SetupSession(user, c); err != nil {
 		identityError(c, "无法保存会话信息，请重试")
@@ -307,6 +325,9 @@ func findOrCreateWalletIdentityUser(did string, addr string, identityUsername st
 			_ = model.DB.Model(&legacy).Update("wallet_address", nil)
 			return findOrCreateWalletIdentityUser(identityDID, normalizedAddress, identityUsername, ctx)
 		}
+		if err := validateLegacyWalletIdentityBinding(legacy.WalletIdentityDID, identityDID); err != nil {
+			return nil, err
+		}
 		if legacy.WalletIdentityDID == nil || model.NormalizeWalletIdentityDID(*legacy.WalletIdentityDID) == "" {
 			_ = model.DB.Model(&legacy).Update("wallet_identity_did", identityDID)
 			legacy.WalletIdentityDID = &identityDID
@@ -318,6 +339,18 @@ func findOrCreateWalletIdentityUser(did string, addr string, identityUsername st
 		return nil, errors.New("未找到钱包身份关联的账户，请先绑定或由管理员开启自动注册")
 	}
 	return autoCreateWalletIdentityUser(identityDID, normalizedAddress, identityUsername, ctx)
+}
+
+func validateLegacyWalletIdentityBinding(existingDID *string, requestedDID string) error {
+	if existingDID == nil {
+		return nil
+	}
+	existing := model.NormalizeWalletIdentityDID(*existingDID)
+	requested := model.NormalizeWalletIdentityDID(requestedDID)
+	if existing != "" && existing != requested {
+		return errors.New("钱包地址已关联其他钱包身份")
+	}
+	return nil
 }
 
 func syncWalletIdentityAddress(user *model.User, addr string) {

@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	IdentityLoginSessionStatusPending  = "pending"
-	IdentityLoginSessionStatusComplete = "complete"
-	IdentityLoginSessionStatusFailed   = "failed"
+	IdentityLoginSessionStatusPending    = "pending"
+	IdentityLoginSessionStatusProcessing = "processing"
+	IdentityLoginSessionStatusComplete   = "complete"
+	IdentityLoginSessionStatusFailed     = "failed"
 )
 
 var identityUsernamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{2,19}$`)
