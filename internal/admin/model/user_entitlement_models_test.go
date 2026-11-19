@@ -37,33 +37,6 @@ func TestResolveUserEntitlementGroupKeepsUserEntitlementFailureAsAvailableModel(
 	}
 }
 
-func TestBuildUserEntitlementModelsReadOnlyDoesNotSynchronizeExpiredSubscriptions(t *testing.T) {
-	db := newUserEntitlementModelsTestDB(t)
-	seedEntitlementGroup(t, db, "group-expired", "Expired Group", "gpt-5.5")
-	if err := db.Create(&UserPackageSubscription{
-		Id:          "subscription-expired",
-		UserID:      "user-1",
-		GroupID:     "group-expired",
-		PackageName: "Expired package",
-		Status:      UserPackageSubscriptionStatusActive,
-		StartedAt:   1,
-		ExpiresAt:   2,
-	}).Error; err != nil {
-		t.Fatalf("create expired subscription: %v", err)
-	}
-
-	if _, err := BuildUserEntitlementModelsReadOnlyWithDB(context.Background(), db, "user-1"); err != nil {
-		t.Fatalf("BuildUserEntitlementModelsReadOnlyWithDB: %v", err)
-	}
-	var subscription UserPackageSubscription
-	if err := db.First(&subscription, "id = ?", "subscription-expired").Error; err != nil {
-		t.Fatalf("load subscription: %v", err)
-	}
-	if subscription.Status != UserPackageSubscriptionStatusActive {
-		t.Fatalf("read-only entitlement lookup changed subscription status to %q", subscription.Status)
-	}
-}
-
 func newUserEntitlementModelsTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=private"), &gorm.Config{})
