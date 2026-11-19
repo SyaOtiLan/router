@@ -163,10 +163,6 @@ type IdentityConfig struct {
 
 type RelayConfig struct {
 	TimeoutSeconds                         int      `yaml:"timeout_seconds"`
-	GroupRouteShadowEnabled                bool     `yaml:"group_route_shadow_enabled"`
-	GroupRouteShadowTokenAllowlist         []string `yaml:"group_route_shadow_token_allowlist"`
-	GroupRouteShadowSampleRate             float64  `yaml:"group_route_shadow_sample_rate"`
-	GroupRouteShadowTimeoutMS              int      `yaml:"group_route_shadow_timeout_ms"`
 	Proxy                                  string   `yaml:"proxy"`
 	UserContentRequestProxy                string   `yaml:"user_content_request_proxy"`
 	UserContentRequestTimeoutSecs          int      `yaml:"user_content_request_timeout_seconds"`
@@ -296,10 +292,6 @@ func defaultAppConfig() AppConfig {
 		},
 		Relay: RelayConfig{
 			TimeoutSeconds:                         0,
-			GroupRouteShadowEnabled:                false,
-			GroupRouteShadowTokenAllowlist:         []string{},
-			GroupRouteShadowSampleRate:             0,
-			GroupRouteShadowTimeoutMS:              250,
 			Proxy:                                  "",
 			UserContentRequestProxy:                "",
 			UserContentRequestTimeoutSecs:          30,
@@ -511,17 +503,6 @@ func ApplyAppConfig(cfg *AppConfig, portFlagSet bool, logDirFlagSet bool) error 
 	if config.RelayTimeout < 0 {
 		return fmt.Errorf("invalid relay.timeout_seconds: %d", config.RelayTimeout)
 	}
-	if cfg.Relay.GroupRouteShadowSampleRate < 0 || cfg.Relay.GroupRouteShadowSampleRate > 1 {
-		return fmt.Errorf("relay.group_route_shadow_sample_rate must be between 0 and 1")
-	}
-	config.GroupRouteShadowEnabled = cfg.Relay.GroupRouteShadowEnabled
-	config.GroupRouteShadowTokenAllowlist = normalizeRelayTokenIDAllowlist(cfg.Relay.GroupRouteShadowTokenAllowlist)
-	config.GroupRouteShadowSampleRate = cfg.Relay.GroupRouteShadowSampleRate
-	if cfg.Relay.GroupRouteShadowTimeoutMS > 0 {
-		config.GroupRouteShadowTimeout = time.Duration(cfg.Relay.GroupRouteShadowTimeoutMS) * time.Millisecond
-	} else {
-		config.GroupRouteShadowTimeout = 250 * time.Millisecond
-	}
 	config.RelayProxy = strings.TrimSpace(cfg.Relay.Proxy)
 	config.UserContentRequestProxy = strings.TrimSpace(cfg.Relay.UserContentRequestProxy)
 	if cfg.Relay.UserContentRequestTimeoutSecs > 0 {
@@ -649,23 +630,6 @@ func ApplyAppConfig(cfg *AppConfig, portFlagSet bool, logDirFlagSet bool) error 
 
 	setCompatibilityEnvs()
 	return nil
-}
-
-func normalizeRelayTokenIDAllowlist(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		normalized := strings.TrimSpace(value)
-		if normalized == "" {
-			continue
-		}
-		if _, ok := seen[normalized]; ok {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		result = append(result, normalized)
-	}
-	return result
 }
 
 func normalizeGinMode(mode string) string {
