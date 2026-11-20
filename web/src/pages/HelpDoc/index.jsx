@@ -1,45 +1,69 @@
 import React, { useMemo, useRef } from 'react';
+import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
-import usageDocHtml from '../../assets/help/usage.html?raw';
+import clientGuideMarkdown from '../../../../docs/客户端/README.md?raw';
 import { AppFilterHeader } from '../../router-ui';
 import useCopyableCodeBlocks from './useCopyableCodeBlocks';
 import './HelpDoc.css';
 
-// 指南里的 API Base URL 统一指向当前部署 origin,与令牌页(EditToken)一致,
-// 避免复制到写死的示例域名后指向错误的服务。
 const API_BASE = typeof window !== 'undefined' ? window.location.origin : '';
+const clientGuideImages = import.meta.glob('../../../../docs/客户端/images/*', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
+
+function buildClientGuide(markdown) {
+  const body = markdown.replace(/^# .+\r?\n+/, '');
+  const renderer = new marked.Renderer();
+  renderer.heading = (text, level, raw, slugger) => {
+    const id = slugger.slug(raw);
+    return `<h${level} id="${id}">${text}</h${level}>`;
+  };
+  renderer.image = (href, imageTitle, text) => {
+    const relativePath = decodeURIComponent(href).replace(/^\.\//, '');
+    const imageUrl = clientGuideImages[`../../../../docs/客户端/${relativePath}`];
+    if (!imageUrl) return false;
+    const titleAttribute = imageTitle ? ` title="${imageTitle}"` : '';
+    return `<img src="${imageUrl}" alt="${text}"${titleAttribute}>`;
+  };
+
+  const toc = [];
+  const slugger = new marked.Slugger();
+  marked.lexer(body).forEach((token) => {
+    if (token.type !== 'heading') return;
+    const id = slugger.slug(token.text);
+    if (token.depth > 1 && token.depth <= 3) {
+      toc.push({
+        level: token.depth,
+        id,
+        text: marked.parseInline(token.text),
+      });
+    }
+  });
+
+  const html = marked.parse(body, { renderer }).replace(
+    /(<pre><code\b[^>]*>[\s\S]*?<\/code><\/pre>)/g,
+    (block) =>
+      /YOUR_YEYING_ROUTER_API_KEY|YOUR_OPENAI_API_KEY/.test(block)
+        ? `${block}<div class="router-help-doc-token-tip">需要令牌？<a href="/workspace/token">获取</a></div>`
+        : block,
+  );
+  const nav = toc
+    .map(({ level, id, text }) => {
+      const sub = level > 2 ? ' toc-item--sub' : '';
+      return `<a href="#${id}" class="toc-item${sub}">${text}</a>`;
+    })
+    .join('');
+
+  return `<div class="usage-doc-page"><div class="doc-body"><aside class="doc-sidebar"><div class="toc-header">目录</div><div class="toc-divider"></div><nav class="toc-items">${nav}</nav></aside><main class="doc-content"><article class="doc-section markdown-section">${html}</article></main></div></div>`
+    .replaceAll('https://router.yeying.pub', API_BASE);
+}
 
 const HelpDoc = () => {
   const { t } = useTranslation();
   const containerRef = useRef(null);
-  const html = useMemo(() => {
-    return usageDocHtml
-      .replaceAll('CLI 工具使用文档', t('header.cli_guide'))
-      .replaceAll('https://api.hanbbq.top', API_BASE)
-      .replaceAll('https://router.yeying.pub', API_BASE)
-      .replace(
-        /<p class="hero-subtitle"[^>]*>\s*API BaseURL（CF节点）：[^<]*<\/p>/g,
-        '',
-      )
-      .replace(
-        /<p class="hero-subtitle"[^>]*>\s*如果第一个节点无法使用就换另外一个CF节点\s*<\/p>/g,
-        '',
-      )
-      .replace(
-        /<pre><code class="language-[^"]*">([\s\S]*?)<\/code><\/pre>/g,
-        (block, code) => {
-          const normalizedCode = String(code || '');
-          if (
-            !/your-api-key-here|CCH_API_KEY|OPENAI_API_KEY|ANTHROPIC_AUTH_TOKEN|GOOGLE_API_KEY|REPLACE_WITH_RANDOM_TOKEN|\"token\":/i.test(
-              normalizedCode,
-            )
-          ) {
-            return block;
-          }
-          return `${block}<div class="router-help-doc-token-tip">需要令牌？<a href="/workspace/token">获取</a></div>`;
-        },
-      );
-  }, [t]);
+  const html = useMemo(() => buildClientGuide(clientGuideMarkdown), []);
 
   useCopyableCodeBlocks(containerRef, [html]);
 
