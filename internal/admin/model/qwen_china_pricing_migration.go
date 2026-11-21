@@ -50,8 +50,8 @@ func refreshQwenChinaPricingWithDB(db *gorm.DB) error {
 		model                              string
 		textIn, textOut, audioIn, audioOut float64
 	}{
-		{model: "qwen3.5-omni-plus", textIn: 7, textOut: 53, audioIn: 40, audioOut: 213},
-		{model: "qwen3.5-omni-flash", textIn: 2.2, textOut: 18, audioIn: 13.3, audioOut: 72},
+		{model: "qwen3.5-omni-plus", textIn: 0.007, textOut: 0.04, audioIn: 0.053, audioOut: 0.213},
+		{model: "qwen3.5-omni-flash", textIn: 0.0022, textOut: 0.0133, audioIn: 0.018, audioOut: 0.072},
 	} {
 		if err := db.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "provider"}, {Name: "model"}}, DoUpdates: clause.AssignmentColumns([]string{"tags", "supported_endpoints", "input_price", "output_price", "price_unit", "currency", "source", "updated_at"})}).Create(&ProviderModel{
 			Provider: "qwen", Model: omni.model, Tags: omniTags, SupportedEndpoints: string(omniEndpoints),
@@ -70,13 +70,17 @@ func refreshQwenChinaPricingWithDB(db *gorm.DB) error {
 		}
 	}
 	rows := []qwenChinaPriceComponent{
-		{model: "qwen3.5-omni-plus-realtime", component: ProviderModelPriceComponentRealtimeText, input: 10, output: 80, unit: ProviderPriceUnitPer1KTokens},
-		{model: "qwen3.5-omni-plus-realtime", component: ProviderModelPriceComponentRealtimeAudio, input: 60, output: 300, unit: ProviderPriceUnitPer1KTokens},
-		{model: "qwen3.5-omni-flash-realtime", component: ProviderModelPriceComponentRealtimeText, input: 3.3, output: 27, unit: ProviderPriceUnitPer1KTokens},
-		{model: "qwen3.5-omni-flash-realtime", component: ProviderModelPriceComponentRealtimeAudio, input: 20, output: 107, unit: ProviderPriceUnitPer1KTokens},
-		{model: "qwen3.5-livetranslate-flash-realtime", component: ProviderModelPriceComponentRealtimeText, input: 3.3, output: 160, unit: ProviderPriceUnitPer1KTokens},
-		{model: "qwen3.5-livetranslate-flash-realtime", component: ProviderModelPriceComponentRealtimeAudio, input: 40, output: 100, unit: ProviderPriceUnitPer1KTokens},
-		{model: "qwen-tts-realtime", component: ProviderModelPriceComponentRealtimeText, input: 2.4, output: 12, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen3.5-omni-plus-realtime", component: ProviderModelPriceComponentRealtimeText, input: 0.01, output: 0.08, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen3.5-omni-plus-realtime", component: ProviderModelPriceComponentRealtimeAudio, input: 0.06, output: 0.3, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen3.5-omni-flash-realtime", component: ProviderModelPriceComponentRealtimeText, input: 0.0033, output: 0.027, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen3.5-omni-flash-realtime", component: ProviderModelPriceComponentRealtimeAudio, input: 0.02, output: 0.107, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen3.5-livetranslate-flash-realtime", component: ProviderModelPriceComponentRealtimeText, input: 0.0033, output: 0.1, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen3.5-livetranslate-flash-realtime", component: ProviderModelPriceComponentRealtimeAudio, input: 0.04, output: 0.16, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen-tts-realtime", component: ProviderModelPriceComponentRealtimeText, input: 0.0024, output: 0.012, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen-audio-3.1-realtime-plus", component: ProviderModelPriceComponentRealtimeText, input: 0.005, output: 0.04, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen-audio-3.1-realtime-plus", component: ProviderModelPriceComponentRealtimeAudio, input: 0.04, output: 0.15, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen-audio-3.1-realtime-flash", component: ProviderModelPriceComponentRealtimeText, input: 0.0015, output: 0.0045, unit: ProviderPriceUnitPer1KTokens},
+		{model: "qwen-audio-3.1-realtime-flash", component: ProviderModelPriceComponentRealtimeAudio, input: 0.006, output: 0.012, unit: ProviderPriceUnitPer1KTokens},
 		{model: "qwen3-tts-flash-realtime", component: ProviderModelPriceComponentRealtimeText, input: 0.1, output: 0, unit: ProviderPriceUnitPer1KChars},
 		{model: "qwen3-tts-instruct-flash-realtime", component: ProviderModelPriceComponentRealtimeText, input: 0.1, output: 0, unit: ProviderPriceUnitPer1KChars},
 	}
@@ -126,6 +130,7 @@ func refreshQwenChinaPricingWithDB(db *gorm.DB) error {
 		}
 	}
 	audioEndpoints, _ := json.Marshal([]string{"/v1/audio/transcriptions"})
+	emptyEndpoints, _ := json.Marshal([]string{})
 	for _, audio := range []struct {
 		model, endpoint string
 		input, output   float64
@@ -136,11 +141,16 @@ func refreshQwenChinaPricingWithDB(db *gorm.DB) error {
 		{model: "qwen3-tts-instruct-flash", endpoint: "/v1/audio/speech", input: 0.08, unit: ProviderPriceUnitPer1KChars, tags: []string{ProviderModelTagAudio}},
 		{model: "qwen3-tts-vd-2026-01-26", endpoint: "/v1/audio/speech", input: 0.08, unit: ProviderPriceUnitPer1KChars, tags: []string{ProviderModelTagAudio}},
 		{model: "qwen3-tts-vc-2026-01-22", endpoint: "/v1/audio/speech", input: 0.08, unit: ProviderPriceUnitPer1KChars, tags: []string{ProviderModelTagAudio}},
+		{model: "qwen-audio-3.1-tts-plus", endpoint: "", input: 0.14, unit: ProviderPriceUnitPer1KChars, tags: []string{ProviderModelTagAudio, ProviderModelTagNativeAdapterRequired}},
+		{model: "qwen-audio-3.1-tts-flash", endpoint: "", input: 0.0015, output: 0.012, unit: ProviderPriceUnitPer1KTokens, tags: []string{ProviderModelTagAudio, ProviderModelTagNativeAdapterRequired}},
+		{model: "qwen-audio-3.1-tts-next", endpoint: "", input: 0.006, output: 0.012, unit: ProviderPriceUnitPer1KTokens, tags: []string{ProviderModelTagAudio, ProviderModelTagNativeAdapterRequired}},
 		{model: "qwen3-asr-flash", endpoint: "/v1/audio/transcriptions", input: 0.00022, unit: ProviderPriceUnitPerSecond, tags: []string{ProviderModelTagAudio}},
 		{model: "qwen3-asr-flash-realtime", endpoint: "/v1/realtime", input: 0.00033, unit: ProviderPriceUnitPerSecond, tags: []string{ProviderModelTagAudio, ProviderModelTagRealtime}},
 	} {
 		endpoints := audioEndpoints
-		if audio.endpoint == "/v1/audio/speech" {
+		if audio.endpoint == "" {
+			endpoints = emptyEndpoints
+		} else if audio.endpoint == "/v1/audio/speech" {
 			endpoints, _ = json.Marshal([]string{audio.endpoint})
 		} else if audio.endpoint == "/v1/realtime" {
 			endpoints, _ = json.Marshal([]string{audio.endpoint})

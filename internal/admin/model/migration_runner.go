@@ -2390,6 +2390,13 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 				return upsertProviderMigrationProvidersWithDB(tx, "qwen", "minimax", "xai", "deepgram")
 			},
 		},
+		{
+			Version:     "202611211200_refresh_official_provider_catalog",
+			Description: "refresh official OpenAI, Anthropic, Qwen, DeepSeek, MiniMax, xAI, and Deepgram catalog additions, retirements, and pricing",
+			Up: func(tx *gorm.DB) error {
+				return upsertProviderMigrationProvidersWithDB(tx, "openai", "anthropic", "qwen", "deepseek", "minimax", "xai", "deepgram")
+			},
+		},
 	}
 	return runVersionedMigrations(db, migrationScopeMain, migrations)
 }

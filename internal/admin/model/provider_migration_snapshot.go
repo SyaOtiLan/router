@@ -22,6 +22,9 @@ var providerCatalogCorrection20261026JSON []byte
 //go:embed provider_catalog_refresh_20261029.json
 var providerCatalogRefresh20261029JSON []byte
 
+//go:embed provider_catalog_refresh_20261121.json
+var providerCatalogRefresh20261121JSON []byte
+
 func LoadProviderMigrationSeeds(now int64) ([]ProviderSeed, error) {
 	snapshotSeeds, err := unmarshalProviderMigrationSeeds(providerMigrationSnapshotJSON, "provider migration snapshot")
 	if err != nil {
@@ -43,7 +46,11 @@ func LoadProviderMigrationSeeds(now int64) ([]ProviderSeed, error) {
 	if err != nil {
 		return nil, err
 	}
-	seeds := mergeProviderMigrationSeedSets(snapshotSeeds, expansionSeeds, refreshSeeds, correctionSeeds, latestRefreshSeeds)
+	currentRefreshSeeds, err := unmarshalProviderMigrationSeeds(providerCatalogRefresh20261121JSON, "provider catalog refresh 20261121")
+	if err != nil {
+		return nil, err
+	}
+	seeds := mergeProviderMigrationSeedSets(snapshotSeeds, expansionSeeds, refreshSeeds, correctionSeeds, latestRefreshSeeds, currentRefreshSeeds)
 	normalized := make([]ProviderSeed, 0, len(seeds))
 	for _, seed := range seeds {
 		seed.ModelDetails = normalizeProviderMigrationSeedModelDetails(

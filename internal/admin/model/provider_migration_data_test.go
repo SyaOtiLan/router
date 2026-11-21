@@ -1458,7 +1458,7 @@ func TestBuildProviderMigrationSeeds_OfficialPricingBackfillForPreviouslyUnprice
 		"deepseek": {
 			"deepseek-flash":    {modelType: ProviderModelTypeText, input: 0.0003, output: 0.0012, priceUnit: ProviderPriceUnitPer1KTokens, currency: ProviderPriceCurrencyUSD},
 			"deepseek-v4-flash": {modelType: ProviderModelTypeText, input: 0.0003, output: 0.0012, priceUnit: ProviderPriceUnitPer1KTokens, currency: ProviderPriceCurrencyUSD},
-			"deepseek-v4-pro":   {modelType: ProviderModelTypeText, input: 0.00066, output: 0.00198, priceUnit: ProviderPriceUnitPer1KTokens, currency: ProviderPriceCurrencyUSD},
+			"deepseek-v4-pro":   {modelType: ProviderModelTypeText, input: 0.00132, output: 0.00396, priceUnit: ProviderPriceUnitPer1KTokens, currency: ProviderPriceCurrencyUSD},
 			"deepseek-chat":     {modelType: ProviderModelTypeText, input: 0.0003, output: 0.0012, priceUnit: ProviderPriceUnitPer1KTokens, currency: ProviderPriceCurrencyUSD},
 			"deepseek-reasoner": {modelType: ProviderModelTypeText, input: 0.0003, output: 0.0012, priceUnit: ProviderPriceUnitPer1KTokens, currency: ProviderPriceCurrencyUSD},
 		},
