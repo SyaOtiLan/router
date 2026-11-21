@@ -38,10 +38,6 @@ var ChannelBillingAutoRefreshLastRunAt int64 = 0
 var BillingServiceBaseURL = ""
 var BillingServiceAPIKey = ""
 var BillingServiceTimeoutSeconds = 20
-var GroupRouteShadowEnabled = false
-var GroupRouteShadowTokenAllowlist []string
-var GroupRouteShadowSampleRate = 0.0
-var GroupRouteShadowTimeout = 250 * time.Millisecond
 var BillingTargetMargin = 0.0
 var BillingRiskBuffer = 0.0
 

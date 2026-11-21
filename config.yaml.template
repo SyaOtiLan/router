@@ -234,13 +234,6 @@ billing_service:
 relay:
   # 上游请求总超时（秒）；0 表示使用默认策略。
   timeout_seconds: 0
-  # 分组影子路由只读观测；默认关闭。启用时还必须配置 Token allowlist 和采样率。
-  group_route_shadow_enabled: false
-  group_route_shadow_token_allowlist: []
-  # 固定 Token ID 哈希采样比例，范围 0..1；0 表示不采样，1 表示覆盖 allowlist 中所有 Token。
-  group_route_shadow_sample_rate: 0
-  # 后台影子任务数据库查询超时，毫秒。
-  group_route_shadow_timeout_ms: 250
   # 全局代理（如 http://127.0.0.1:7890）；留空不走代理。
   proxy: ""
   # 用户内容抓取/外链请求代理（可与 proxy 不同）。

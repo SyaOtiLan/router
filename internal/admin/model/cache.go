@@ -17,7 +17,6 @@ import (
 )
 
 var (
-	errNoSatisfiedChannels    = errors.New("channel not found")
 	TokenCacheSeconds         = config.SyncFrequency
 	UserId2GroupCacheSeconds  = config.SyncFrequency
 	UserId2QuotaCacheSeconds  = config.SyncFrequency
@@ -360,120 +359,11 @@ func CacheListSatisfiedChannels(group string, model string) ([]*ChannelCandidate
 	defer channelSyncLock.RUnlock()
 	channels := group2model2channels[group][model]
 	if len(channels) == 0 {
-		return nil, errNoSatisfiedChannels
+		return nil, errors.New("channel not found")
 	}
 	result := make([]*ChannelCandidate, 0, len(channels))
 	result = append(result, channels...)
 	return result, nil
-}
-
-// CacheListPlatformSatisfiedChannelsForRequestWithStats returns platform-only
-// candidates for shadow routing. Unlike the general request selector, it does
-// not look up community offers or other supply adapters and performs no writes.
-func CacheListPlatformSatisfiedChannelsForRequestWithStats(ctx context.Context, group string, model string, requestPath string) ([]*ChannelCandidate, ChannelCandidateStats, error) {
-	var channels []*ChannelCandidate
-	var err error
-	if config.MemoryCacheEnabled {
-		channels, err = CacheListSatisfiedChannels(group, model)
-	} else {
-		channels, err = ListSatisfiedChannelsWithContext(ctx, group, model)
-	}
-	if err != nil {
-		if errors.Is(err, errNoSatisfiedChannels) {
-			return []*ChannelCandidate{}, ChannelCandidateStats{}, nil
-		}
-		return nil, ChannelCandidateStats{}, err
-	}
-	var filtered []*ChannelCandidate
-	var filterErr error
-	if config.MemoryCacheEnabled {
-		filtered, filterErr = cacheFilterChannelsByRequestEndpoint(group, channels, model, requestPath)
-	} else {
-		filtered, filterErr = filterPlatformChannelsByRequestEndpointWithContext(ctx, group, channels, model, requestPath)
-	}
-	if filterErr != nil {
-		return nil, ChannelCandidateStats{}, filterErr
-	}
-	eligible := make(map[string]struct{}, len(filtered))
-	for _, channel := range filtered {
-		if channel != nil {
-			eligible[strings.TrimSpace(channel.Id)] = struct{}{}
-		}
-	}
-	filteredCandidates := make([]ChannelCandidateFilter, 0, len(channels)-len(filtered))
-	for _, channel := range channels {
-		if channel == nil {
-			continue
-		}
-		channelID := strings.TrimSpace(channel.Id)
-		if _, ok := eligible[channelID]; !ok {
-			filteredCandidates = append(filteredCandidates, ChannelCandidateFilter{ChannelID: channelID, Reason: "endpoint_unsupported"})
-		}
-	}
-	return filtered, ChannelCandidateStats{
-		ListedCount:           len(channels),
-		EndpointFilteredCount: len(filtered),
-		FilteredCandidates:    filteredCandidates,
-	}, nil
-}
-
-// filterPlatformChannelsByRequestEndpointWithContext mirrors the normal
-// endpoint filter while keeping shadow reads on the task's bounded context.
-// Group bindings may expose a logical model name whose endpoint capability is
-// stored under the upstream model name, so both records must be consulted.
-func filterPlatformChannelsByRequestEndpointWithContext(ctx context.Context, group string, channels []*ChannelCandidate, modelName string, requestPath string) ([]*ChannelCandidate, error) {
-	if NormalizeRequestedChannelModelEndpoint(requestPath) == "" || len(channels) == 0 {
-		return append([]*ChannelCandidate{}, channels...), nil
-	}
-	if DB == nil {
-		return nil, fmt.Errorf("database handle is nil")
-	}
-	channelIDs := make([]string, 0, len(channels))
-	for _, channel := range channels {
-		if channel != nil {
-			if channelID := strings.TrimSpace(channel.Id); channelID != "" {
-				channelIDs = append(channelIDs, channelID)
-			}
-		}
-	}
-	channelIDs = normalizeTrimmedValuesPreserveOrder(channelIDs)
-	if len(channelIDs) == 0 {
-		return []*ChannelCandidate{}, nil
-	}
-	db := DB.WithContext(ctx)
-	groupCol := `"group"`
-	bindings := make([]GroupModelChannel, 0, len(channelIDs))
-	if err := db.Where(groupCol+" = ? AND model = ? AND channel_id IN ?", strings.TrimSpace(group), strings.TrimSpace(modelName), channelIDs).Find(&bindings).Error; err != nil {
-		return nil, err
-	}
-	upstreamByGroup := map[string]map[string]map[string]string{
-		strings.TrimSpace(group): {
-			strings.TrimSpace(modelName): {},
-		},
-	}
-	for _, binding := range bindings {
-		upstreamByGroup[strings.TrimSpace(group)][strings.TrimSpace(modelName)][strings.TrimSpace(binding.ChannelId)] = NormalizeGroupModelChannelUpstreamModel(modelName, binding.UpstreamModel)
-	}
-
-	modelCandidates := make(map[string]struct{})
-	for _, channelID := range channelIDs {
-		for _, candidate := range endpointLookupCandidatesForChannel(group, modelName, channelID, upstreamByGroup) {
-			modelCandidates[candidate] = struct{}{}
-		}
-	}
-	modelNames := make([]string, 0, len(modelCandidates))
-	for candidate := range modelCandidates {
-		modelNames = append(modelNames, candidate)
-	}
-	if len(modelNames) == 0 {
-		return []*ChannelCandidate{}, nil
-	}
-	endpointRows := make([]ChannelModelEndpoint, 0)
-	if err := db.Where("channel_id IN ? AND model IN ?", channelIDs, modelNames).Find(&endpointRows).Error; err != nil {
-		return nil, err
-	}
-	supportByChannelID := buildChannelModelEndpointSupportCache(endpointRows)
-	return filterChannelsByRequestEndpointWithMappings(group, channels, modelName, requestPath, supportByChannelID, upstreamByGroup), nil
 }
 
 type ChannelCandidateStats struct {

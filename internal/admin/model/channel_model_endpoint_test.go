@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"testing"
 
 	"github.com/yeying-community/router/common/config"
@@ -245,49 +244,6 @@ func TestFilterChannelsByRequestEndpointUsesPublishedModelUpstreamMapping(t *tes
 	)
 	if len(got) != 1 || got[0].Id != "channel-1" {
 		t.Fatalf("filtered channels = %#v, want channel-1", got)
-	}
-}
-
-func TestFilterPlatformChannelsByRequestEndpointUsesGroupUpstreamMapping(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:shadow_endpoint_group_mapping?mode=memory&cache=private"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite db: %v", err)
-	}
-	if err := db.AutoMigrate(&GroupModelChannel{}, &ChannelModelEndpoint{}); err != nil {
-		t.Fatalf("auto migrate: %v", err)
-	}
-	if err := db.Create(&[]GroupModelChannel{
-		{Group: "group-1", Model: "logical-model", ChannelId: "channel-supported", UpstreamModel: "provider-model"},
-		{Group: "group-1", Model: "logical-model", ChannelId: "channel-unsupported", UpstreamModel: "provider-model"},
-	}).Error; err != nil {
-		t.Fatalf("create group model bindings: %v", err)
-	}
-	if err := db.Create(&[]ChannelModelEndpoint{
-		{ChannelId: "channel-supported", Model: "provider-model", Endpoint: ChannelModelEndpointResponses, Enabled: true},
-		{ChannelId: "channel-unsupported", Model: "provider-model", Endpoint: ChannelModelEndpointChat, Enabled: true},
-	}).Error; err != nil {
-		t.Fatalf("create endpoint capabilities: %v", err)
-	}
-
-	previousDB := DB
-	previousMemoryCacheEnabled := config.MemoryCacheEnabled
-	DB = db
-	config.MemoryCacheEnabled = false
-	t.Cleanup(func() {
-		DB = previousDB
-		config.MemoryCacheEnabled = previousMemoryCacheEnabled
-	})
-
-	channels := platformChannelCandidates([]*PlatformChannel{
-		{Id: "channel-supported"},
-		{Id: "channel-unsupported"},
-	})
-	got, err := filterPlatformChannelsByRequestEndpointWithContext(context.Background(), "group-1", channels, "logical-model", "/v1/responses")
-	if err != nil {
-		t.Fatalf("filter platform candidates: %v", err)
-	}
-	if len(got) != 1 || got[0].Id != "channel-supported" {
-		t.Fatalf("filtered candidates = %#v, want only channel-supported", channelIDsForTest(got))
 	}
 }
 

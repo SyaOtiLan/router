@@ -77,16 +77,6 @@ func TestApplyAppConfigRequiresRedisConnStringForRedisCache(t *testing.T) {
 	}
 }
 
-func TestApplyAppConfigRejectsInvalidGroupRouteShadowSampleRate(t *testing.T) {
-	cfg := defaultAppConfig()
-	cfg.Relay.GroupRouteShadowSampleRate = 1.01
-
-	err := ApplyAppConfig(&cfg, false, false)
-	if err == nil || !strings.Contains(err.Error(), "group_route_shadow_sample_rate") {
-		t.Fatalf("ApplyAppConfig error = %v, want group route shadow sample rate validation error", err)
-	}
-}
-
 func TestNormalizeTrustedIssuerDIDsRequiresDidKey(t *testing.T) {
 	const validIssuer = "did:key:z6MknfU5M7AQe5P27LTneQDa8WuTQKsMADeFBrn8RKG4DqGu"
 

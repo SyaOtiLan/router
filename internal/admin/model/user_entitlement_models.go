@@ -87,10 +87,6 @@ func hydrateEntitlementSourceGroupNameWithDB(db *gorm.DB, row *UserEntitlementSo
 }
 
 func listUserEntitlementSourcesWithDB(db *gorm.DB, userID string, now int64) ([]UserEntitlementSource, error) {
-	return listUserEntitlementSourcesWithDBOptions(db, userID, now, true)
-}
-
-func listUserEntitlementSourcesWithDBOptions(db *gorm.DB, userID string, now int64, syncSubscriptions bool) ([]UserEntitlementSource, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database handle is nil")
 	}
@@ -102,10 +98,8 @@ func listUserEntitlementSourcesWithDBOptions(db *gorm.DB, userID string, now int
 	if effectiveNow <= 0 {
 		effectiveNow = helper.GetTimestamp()
 	}
-	if syncSubscriptions {
-		if err := syncUserPackageSubscriptionsWithDB(db, normalizedUserID, effectiveNow); err != nil {
-			return nil, err
-		}
+	if err := syncUserPackageSubscriptionsWithDB(db, normalizedUserID, effectiveNow); err != nil {
+		return nil, err
 	}
 	sources := make([]UserEntitlementSource, 0)
 	packageRows := make([]UserPackageSubscription, 0)
@@ -386,18 +380,7 @@ func listEntitlementGroupModelProviders(db *gorm.DB, groupID string, models []st
 }
 
 func BuildUserEntitlementModelsWithDB(ctx context.Context, db *gorm.DB, userID string) (UserEntitlementModelsPayload, error) {
-	return buildUserEntitlementModelsWithDB(ctx, db, userID, true)
-}
-
-// BuildUserEntitlementModelsReadOnlyWithDB builds the current model-entitlement
-// view without synchronizing subscription status or writing any business data.
-// It is intended for observational paths such as shadow routing.
-func BuildUserEntitlementModelsReadOnlyWithDB(ctx context.Context, db *gorm.DB, userID string) (UserEntitlementModelsPayload, error) {
-	return buildUserEntitlementModelsWithDB(ctx, db, userID, false)
-}
-
-func buildUserEntitlementModelsWithDB(ctx context.Context, db *gorm.DB, userID string, syncSubscriptions bool) (UserEntitlementModelsPayload, error) {
-	sources, err := listUserEntitlementSourcesWithDBOptions(db, userID, helper.GetTimestamp(), syncSubscriptions)
+	sources, err := listUserEntitlementSourcesWithDB(db, userID, helper.GetTimestamp())
 	if err != nil {
 		return UserEntitlementModelsPayload{}, err
 	}

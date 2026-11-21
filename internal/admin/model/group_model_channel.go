@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	commonutils "github.com/yeying-community/router/common/utils"
@@ -44,14 +43,6 @@ func GetRandomSatisfiedChannel(group string, model string, ignoreFirstPriority b
 
 func ListSatisfiedChannels(group string, model string) ([]*ChannelCandidate, error) {
 	return mustGroupModelChannelRepo().ListSatisfiedChannels(group, model)
-}
-
-func ListSatisfiedChannelsWithContext(ctx context.Context, group string, model string) ([]*ChannelCandidate, error) {
-	repo := mustGroupModelChannelRepo()
-	if repo.ListSatisfiedChannelsWithContext == nil {
-		return nil, fmt.Errorf("context-aware group channel listing is not configured")
-	}
-	return repo.ListSatisfiedChannelsWithContext(ctx, group, model)
 }
 
 func (channel *ChannelCandidate) AddGroupModelChannels() error {
