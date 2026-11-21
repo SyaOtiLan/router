@@ -204,14 +204,22 @@ func migrateBillingCurrencyChargeRateWithDB(db *gorm.DB) error {
 			return err
 		}
 	}
-	err = db.Exec(`
-		UPDATE billing_currencies
-		SET charge_rate = yyc_per_unit
-		WHERE COALESCE(charge_rate, 0) <= 0
-		  AND COALESCE(yyc_per_unit, 0) > 0
-	`).Error
-	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "yyc_per_unit") {
+	// The current baseline already has charge_rate and does not include the
+	// retired yyc_per_unit column. Checking first is required on PostgreSQL:
+	// catching an undefined-column error does not clear the failed transaction.
+	hasLegacyRate, err := billingCurrencyColumnExistsWithDB(db, "yyc_per_unit")
+	if err != nil {
 		return err
+	}
+	if hasLegacyRate {
+		if err := db.Exec(`
+			UPDATE billing_currencies
+			SET charge_rate = yyc_per_unit
+			WHERE COALESCE(charge_rate, 0) <= 0
+			  AND COALESCE(yyc_per_unit, 0) > 0
+		`).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
