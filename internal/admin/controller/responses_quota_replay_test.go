@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/yeying-community/router/common/ctxkey"
+	relaycontroller "github.com/yeying-community/router/internal/relay/controller"
 	relaymodel "github.com/yeying-community/router/internal/relay/model"
 	"github.com/yeying-community/router/internal/relay/responsestate"
 	"github.com/yeying-community/router/internal/relay/routing"
@@ -41,6 +43,44 @@ func TestResponsesQuotaReplayUnlocksOnlyCompleteToolHistory(t *testing.T) {
 	if len(state.ItemIDs) != 0 || state.PreviousResponseID != "" || !state.HasToolOutput ||
 		!bytes.Equal(raw, c.MustGet(ctxkey.KeyRequestBody).([]byte)) || c.Request.ContentLength != int64(len(raw)) {
 		t.Fatal("replay body/context inconsistent")
+	}
+}
+
+func TestResponsesQuotaReplayRecognizesUpstream429Formats(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		errorType  string
+		errorCode  any
+		wantReplay bool
+	}{
+		{name: "prepaid balance", errorCode: "credit_balance_exhausted", wantReplay: true},
+		{name: "organization spend", errorCode: "organization_spend_limit_exceeded", wantReplay: true},
+		{name: "project spend", errorCode: "project_spend_limit_exceeded", wantReplay: true},
+		{name: "organization usage", errorCode: "organization_usage_limit_exceeded", wantReplay: true},
+		{name: "Codex subscription type", errorType: "usage_limit_reached", wantReplay: true},
+		{name: "Codex subscription code", errorCode: "usage_limit_reached", wantReplay: true},
+		{name: "temporary throttling", errorType: "rate_limit_error", errorCode: "slow_down"},
+		{name: "request rate", errorCode: "rate_limit_exceeded"},
+		{name: "usage not included in plan", errorType: "usage_not_included"},
+		{name: "Router-local quota", errorType: "insufficient_quota", errorCode: "user_quota_limit_exceeded"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := quotaReplayContext()
+			body, err := json.Marshal(map[string]relaymodel.Error{"error": {Type: tc.errorType, Code: tc.errorCode}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			upstream := relaycontroller.RelayErrorHandler(nil, &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Body:       io.NopCloser(bytes.NewReader(body)),
+			})
+			if got := prepareResponsesQuotaReplay(c, upstream); got != tc.wantReplay {
+				t.Fatalf("prepareResponsesQuotaReplay = %v, want %v", got, tc.wantReplay)
+			}
+			if got := shouldRetry(c, upstream); got != tc.wantReplay {
+				t.Fatalf("shouldRetry = %v, want %v", got, tc.wantReplay)
+			}
+		})
 	}
 }
 
