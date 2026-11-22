@@ -61,3 +61,21 @@ func TestRedemptionQuotaAmountSnapshotRoundTripsWithoutFloatPrecisionLoss(t *tes
 		t.Fatalf("snapshot=%s, want %s", actual.QuotaAmountSnapshot, want)
 	}
 }
+
+func TestMigrateRedemptionGroupFaceValueHandlesCurrentBaselineSchema(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=private"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&Redemption{}); err != nil {
+		t.Fatalf("create current baseline schema: %v", err)
+	}
+	for _, column := range []string{"face_value_amount", "face_value_unit", "quota"} {
+		if db.Migrator().HasColumn("redemptions", column) {
+			t.Fatalf("current baseline unexpectedly contains legacy column %q", column)
+		}
+	}
+	if err := migrateRedemptionGroupFaceValueWithDB(db); err != nil {
+		t.Fatalf("historical redemption migration rejected current baseline schema: %v", err)
+	}
+}

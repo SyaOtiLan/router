@@ -1,0 +1,1245 @@
+[
+  {
+    "Provider": "anthropic",
+    "ModelDetails": [
+      {
+        "model": "claude-fable-5-2",
+        "source": "migration",
+        "tags": [
+          "text",
+          "reasoning",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "Claude Fable 5.2 是 Anthropic 的 Claude API 模型，支持长上下文推理。",
+        "supported_endpoints": [
+          "/v1/messages"
+        ],
+        "input_price": 0.008,
+        "output_price": 0.04,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://platform.claude.com/docs/en/models/overview"
+      }
+    ]
+  },
+  {
+    "Provider": "deepgram",
+    "ModelDetails": [
+      {
+        "model": "flux-general-en",
+        "source": "migration",
+        "tags": [
+          "audio",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "Deepgram Flux General EN 是面向英文语音代理的实时语音转写模型。 Router 尚无 Deepgram 原生实时协议适配。",
+        "supported_endpoints": [],
+        "input_price": 0.0065,
+        "price_unit": "per_minute",
+        "currency": "USD",
+        "source_url": "https://deepgram.com/pricing"
+      },
+      {
+        "model": "flux-general-multi",
+        "source": "migration",
+        "tags": [
+          "audio",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "Deepgram Flux General Multi 是面向十种语言的实时语音转写模型。 Router 尚无 Deepgram 原生实时协议适配。",
+        "supported_endpoints": [],
+        "input_price": 0.0078333333,
+        "price_unit": "per_minute",
+        "currency": "USD",
+        "source_url": "https://deepgram.com/pricing"
+      }
+    ]
+  },
+  {
+    "Provider": "deepseek",
+    "ModelDetails": [
+      {
+        "model": "deepseek-flash",
+        "type": "text",
+        "tags": [
+          "text",
+          "reasoning",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "DeepSeek Flash 是 DeepSeek V4.1 Flash 的稳定 API 模型名；目录价格使用官方峰时费率。",
+        "supported_endpoints": [
+          "/v1/chat/completions",
+          "/v1/messages"
+        ],
+        "input_price": 0.0003,
+        "output_price": 0.0012,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source": "migration",
+        "updated_at": 1700000000,
+        "source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "price_components": [
+          {
+            "component": "text_cache_read",
+            "input_price": 6e-06,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+            "sort_order": 910
+          }
+        ]
+      },
+      {
+        "model": "deepseek-v4-pro",
+        "type": "text",
+        "tags": [
+          "text",
+          "reasoning",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "DeepSeek V4 Pro 是 DeepSeek 面向复杂推理任务的模型；目录价格使用官方峰时费率。",
+        "supported_endpoints": [
+          "/v1/chat/completions",
+          "/v1/messages"
+        ],
+        "input_price": 0.00132,
+        "output_price": 0.00396,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source": "migration",
+        "updated_at": 1700000000,
+        "source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "price_components": [
+          {
+            "component": "text_cache_read",
+            "input_price": 4.4e-05,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+            "sort_order": 910
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "Provider": "minimax",
+    "ModelDetails": [
+      {
+        "model": "MiniMax-H3",
+        "tags": [
+          "video",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "MiniMax H3 视频生成模型，默认登记 768P 输出费；2K 和输入素材价按官方价组件区分。 Router 当前没有对应的 MiniMax 原生端点适配。",
+        "supported_endpoints": [],
+        "input_price": 0.08,
+        "output_price": 0.08,
+        "price_unit": "per_second",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "price_components": [
+          {
+            "component": "video_generation",
+            "condition": "resolution=768p",
+            "input_price": 0.08,
+            "output_price": 0.08,
+            "price_unit": "per_second",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 10
+          },
+          {
+            "component": "video_generation",
+            "condition": "resolution=2k",
+            "input_price": 0.13,
+            "output_price": 0.13,
+            "price_unit": "per_second",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 20
+          }
+        ]
+      },
+      {
+        "model": "MiniMax-H3-Highspeed",
+        "tags": [
+          "video",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "MiniMax H3 Highspeed 视频生成模型，768P 输出和视频输入按秒计价。 Router 当前没有对应的 MiniMax 原生端点适配。",
+        "supported_endpoints": [],
+        "input_price": 0.06,
+        "output_price": 0.06,
+        "price_unit": "per_second",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      {
+        "model": "MiniMax-H3-Image",
+        "source": "migration",
+        "tags": [
+          "image",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "MiniMax H3 Image 是 MiniMax 官方图像生成与编辑模型；Router 尚无对应 MiniMax 图像协议适配。",
+        "supported_endpoints": [],
+        "currency": "USD",
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "price_components": [
+          {
+            "component": "image_generation",
+            "condition": "size=1024x1024",
+            "input_price": 0.02179,
+            "price_unit": "per_image",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 10
+          },
+          {
+            "component": "image_generation",
+            "condition": "size=2048x2048",
+            "input_price": 0.02333,
+            "price_unit": "per_image",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 20
+          },
+          {
+            "component": "image_generation",
+            "condition": "size=4096x4096",
+            "input_price": 0.06879,
+            "price_unit": "per_image",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 30
+          }
+        ]
+      },
+      {
+        "model": "MiniMax-H3-Image-Highspeed",
+        "source": "migration",
+        "tags": [
+          "image",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "MiniMax H3 Image Highspeed 是 MiniMax 官方高速图像生成与编辑模型；Router 尚无对应 MiniMax 图像协议适配。",
+        "supported_endpoints": [],
+        "currency": "USD",
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "price_components": [
+          {
+            "component": "image_generation",
+            "condition": "size=1024x1024",
+            "input_price": 0.03529,
+            "price_unit": "per_image",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 10
+          },
+          {
+            "component": "image_generation",
+            "condition": "size=2048x2048",
+            "input_price": 0.03622,
+            "price_unit": "per_image",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 20
+          },
+          {
+            "component": "image_generation",
+            "condition": "size=4096x4096",
+            "input_price": 0.13001,
+            "price_unit": "per_image",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 30
+          }
+        ]
+      },
+      {
+        "model": "MiniMax-H3-Lite",
+        "tags": [
+          "video",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "MiniMax H3 Lite 视频生成模型，基础价按 768P 输出登记，其他分辨率使用价格组件。 Router 当前没有对应的 MiniMax 原生端点适配。",
+        "supported_endpoints": [],
+        "input_price": 0.04,
+        "output_price": 0.04,
+        "price_unit": "per_second",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "price_components": [
+          {
+            "component": "video_generation",
+            "condition": "resolution=768p",
+            "input_price": 0.04,
+            "output_price": 0.04,
+            "price_unit": "per_second",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 10
+          },
+          {
+            "component": "video_generation",
+            "condition": "resolution=480p",
+            "input_price": 0.025,
+            "output_price": 0.025,
+            "price_unit": "per_second",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 20
+          }
+        ]
+      },
+      {
+        "model": "MiniMax-H3-Max",
+        "tags": [
+          "video",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "MiniMax H3 Max 视频生成模型，基础价按 768P 输出登记，输入视频价按分辨率组件区分。 Router 当前没有对应的 MiniMax 原生端点适配。",
+        "supported_endpoints": [],
+        "input_price": 0.143,
+        "output_price": 0.08,
+        "price_unit": "per_second",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/pricing/overview",
+        "price_components": [
+          {
+            "component": "video_generation",
+            "condition": "resolution=768p",
+            "input_price": 0.143,
+            "output_price": 0.08,
+            "price_unit": "per_second",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 10
+          },
+          {
+            "component": "video_generation",
+            "condition": "resolution=480p",
+            "input_price": 0.0553,
+            "output_price": 0.05,
+            "price_unit": "per_second",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://platform.minimax.io/docs/pricing/overview",
+            "sort_order": 20
+          }
+        ]
+      },
+      {
+        "model": "MiniMax-M2.5",
+        "tags": [
+          "text"
+        ],
+        "status": "deprecated",
+        "is_deleted": true,
+        "description": "MiniMax-M2.5 已由 MiniMax 官方列为退役模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions"
+        ],
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/faq/models"
+      },
+      {
+        "model": "MiniMax-M2.5-highspeed",
+        "tags": [
+          "text"
+        ],
+        "status": "deprecated",
+        "is_deleted": true,
+        "description": "MiniMax-M2.5-highspeed 已由 MiniMax 官方列为退役模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions"
+        ],
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/faq/models"
+      },
+      {
+        "model": "MiniMax-M2.7",
+        "tags": [
+          "text"
+        ],
+        "status": "deprecated",
+        "is_deleted": true,
+        "description": "MiniMax-M2.7 已由 MiniMax 官方列为退役模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions"
+        ],
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/faq/models"
+      },
+      {
+        "model": "MiniMax-M2.7-highspeed",
+        "tags": [
+          "text"
+        ],
+        "status": "deprecated",
+        "is_deleted": true,
+        "description": "MiniMax-M2.7-highspeed 已由 MiniMax 官方列为退役模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions"
+        ],
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/faq/models"
+      },
+      {
+        "model": "speech-2.8-hd",
+        "tags": [
+          "audio",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "MiniMax Speech 2.8 HD 文本转语音模型，按输入字符数计价。 Router 当前没有对应的 MiniMax 原生端点适配。",
+        "supported_endpoints": [],
+        "input_price": 0.1,
+        "price_unit": "per_1k_chars",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      {
+        "model": "speech-2.8-turbo",
+        "tags": [
+          "audio",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "MiniMax Speech 2.8 Turbo 文本转语音模型，按输入字符数计价。 Router 当前没有对应的 MiniMax 原生端点适配。",
+        "supported_endpoints": [],
+        "input_price": 0.06,
+        "price_unit": "per_1k_chars",
+        "currency": "USD",
+        "source": "migration",
+        "source_url": "https://platform.minimax.io/docs/pricing/overview"
+      }
+    ]
+  },
+  {
+    "Provider": "openai",
+    "ModelDetails": [
+      {
+        "model": "gpt-6.1-terra",
+        "source": "migration",
+        "tags": [
+          "text",
+          "reasoning",
+          "tool_calling",
+          "vision"
+        ],
+        "status": "active",
+        "description": "GPT-6.1 Terra 是 OpenAI 面向视觉推理与计算机操作的高效率模型。",
+        "supported_endpoints": [
+          "/v1/responses",
+          "/v1/chat/completions"
+        ],
+        "input_price": 0.001,
+        "output_price": 0.005,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://developers.openai.com/api/docs/models"
+      },
+      {
+        "model": "gpt-6.2-astra",
+        "source": "migration",
+        "tags": [
+          "text",
+          "reasoning",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "GPT-6.2 Astra 是 OpenAI 面向高难度任务的旗舰模型。",
+        "supported_endpoints": [
+          "/v1/responses",
+          "/v1/chat/completions"
+        ],
+        "input_price": 0.008,
+        "output_price": 0.04,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://developers.openai.com/api/docs/models"
+      },
+      {
+        "model": "gpt-6.2-sol",
+        "source": "migration",
+        "tags": [
+          "text",
+          "reasoning",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "GPT-6.2 Sol 是 OpenAI 面向日常任务和大规模代理工作流的通用模型。",
+        "supported_endpoints": [
+          "/v1/responses",
+          "/v1/chat/completions"
+        ],
+        "input_price": 0.002,
+        "output_price": 0.01,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://developers.openai.com/api/docs/models"
+      },
+      {
+        "model": "gpt-image-2.6-flare",
+        "source": "migration",
+        "tags": [
+          "image"
+        ],
+        "status": "active",
+        "description": "GPT Image 2.6 Flare 是 OpenAI 面向快速迭代的图像生成与编辑模型。",
+        "supported_endpoints": [
+          "/v1/responses",
+          "/v1/images/generations",
+          "/v1/images/edits"
+        ],
+        "input_price": 0.008,
+        "output_price": 0.03,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://developers.openai.com/api/docs/pricing",
+        "price_components": [
+          {
+            "component": "text",
+            "input_price": 0.008,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://developers.openai.com/api/docs/pricing",
+            "sort_order": 10
+          },
+          {
+            "component": "image_generation",
+            "input_price": 0.008,
+            "output_price": 0.03,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://developers.openai.com/api/docs/pricing",
+            "sort_order": 20
+          }
+        ]
+      },
+      {
+        "model": "gpt-image-2.6-sunburst",
+        "source": "migration",
+        "tags": [
+          "image"
+        ],
+        "status": "active",
+        "description": "GPT Image 2.6 Sunburst 是 OpenAI 的高质量图像生成与编辑模型。",
+        "supported_endpoints": [
+          "/v1/responses",
+          "/v1/images/generations",
+          "/v1/images/edits"
+        ],
+        "input_price": 0.008,
+        "output_price": 0.03,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://developers.openai.com/api/docs/pricing",
+        "price_components": [
+          {
+            "component": "text",
+            "input_price": 0.008,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://developers.openai.com/api/docs/pricing",
+            "sort_order": 10
+          },
+          {
+            "component": "image_generation",
+            "input_price": 0.008,
+            "output_price": 0.03,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://developers.openai.com/api/docs/pricing",
+            "sort_order": 20
+          }
+        ]
+      },
+      {
+        "model": "gpt-live-1.1",
+        "source": "migration",
+        "tags": [
+          "audio",
+          "realtime"
+        ],
+        "status": "active",
+        "description": "GPT Live 1.1 是 OpenAI 面向多语言全双工语音会话的实时模型。",
+        "supported_endpoints": [
+          "/v1/realtime"
+        ],
+        "input_price": 0.05,
+        "output_price": 0.02,
+        "price_unit": "per_minute",
+        "currency": "USD",
+        "source_url": "https://developers.openai.com/api/docs/pricing"
+      }
+    ]
+  },
+  {
+    "Provider": "qwen",
+    "ModelDetails": [
+      {
+        "model": "qwen-audio-3.1-realtime-flash",
+        "source": "migration",
+        "tags": [
+          "audio",
+          "realtime"
+        ],
+        "status": "active",
+        "description": "qwen-audio-3.1-realtime-flash 是阿里云百炼的实时语音对话模型。",
+        "supported_endpoints": [
+          "/v1/realtime"
+        ],
+        "input_price": 0.0015,
+        "output_price": 0.0045,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "price_components": [
+          {
+            "component": "realtime_text",
+            "input_price": 0.0015,
+            "output_price": 0.0045,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 10
+          },
+          {
+            "component": "realtime_audio",
+            "input_price": 0.006,
+            "output_price": 0.012,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 20
+          }
+        ]
+      },
+      {
+        "model": "qwen-audio-3.1-realtime-plus",
+        "source": "migration",
+        "tags": [
+          "audio",
+          "realtime"
+        ],
+        "status": "active",
+        "description": "qwen-audio-3.1-realtime-plus 是阿里云百炼的实时语音对话模型。",
+        "supported_endpoints": [
+          "/v1/realtime"
+        ],
+        "input_price": 0.005,
+        "output_price": 0.04,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "price_components": [
+          {
+            "component": "realtime_text",
+            "input_price": 0.005,
+            "output_price": 0.04,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 10
+          },
+          {
+            "component": "realtime_audio",
+            "input_price": 0.04,
+            "output_price": 0.15,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 20
+          }
+        ]
+      },
+      {
+        "model": "qwen-audio-3.1-tts-flash",
+        "source": "migration",
+        "tags": [
+          "audio",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "qwen-audio-3.1-tts-flash 是阿里云百炼的按输入和输出 Token 计费的语音合成模型。",
+        "supported_endpoints": [],
+        "input_price": 0.0015,
+        "output_price": 0.012,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing"
+      },
+      {
+        "model": "qwen-audio-3.1-tts-next",
+        "source": "migration",
+        "tags": [
+          "audio",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "qwen-audio-3.1-tts-next 是阿里云百炼的Qwen Audio TTS Next 是阿里云百炼的音频生成模型。",
+        "supported_endpoints": [],
+        "input_price": 0.006,
+        "output_price": 0.012,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing"
+      },
+      {
+        "model": "qwen-audio-3.1-tts-plus",
+        "source": "migration",
+        "tags": [
+          "audio",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "qwen-audio-3.1-tts-plus 是阿里云百炼的按输入字符计费的语音合成模型。",
+        "supported_endpoints": [],
+        "input_price": 0.14,
+        "output_price": 0,
+        "price_unit": "per_1k_chars",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing"
+      },
+      {
+        "model": "qwen3-vl-embedding",
+        "source": "migration",
+        "tags": [
+          "embedding"
+        ],
+        "status": "active",
+        "description": "qwen3-vl-embedding 是阿里云百炼的向量化模型。",
+        "supported_endpoints": [
+          "/v1/embeddings"
+        ],
+        "input_price": 0.0007,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing"
+      },
+      {
+        "model": "qwen3.5-omni-flash",
+        "source": "migration",
+        "tags": [
+          "text",
+          "audio",
+          "vision",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "qwen3.5-omni-flash 是阿里云百炼的全模态理解与生成模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions"
+        ],
+        "input_price": 0.0022,
+        "output_price": 0.0133,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "price_components": [
+          {
+            "component": "text",
+            "input_price": 0.0022,
+            "output_price": 0.0133,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 10
+          },
+          {
+            "component": "audio_input",
+            "input_price": 0.018,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 20
+          },
+          {
+            "component": "audio_output",
+            "output_price": 0.072,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 30
+          }
+        ]
+      },
+      {
+        "model": "qwen3.5-omni-plus",
+        "source": "migration",
+        "tags": [
+          "text",
+          "audio",
+          "vision",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "qwen3.5-omni-plus 是阿里云百炼的全模态理解与生成模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions"
+        ],
+        "input_price": 0.007,
+        "output_price": 0.04,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "price_components": [
+          {
+            "component": "text",
+            "input_price": 0.007,
+            "output_price": 0.04,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 10
+          },
+          {
+            "component": "audio_input",
+            "input_price": 0.053,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 20
+          },
+          {
+            "component": "audio_output",
+            "output_price": 0.213,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 30
+          }
+        ]
+      },
+      {
+        "model": "qwen3.7-text-embedding",
+        "source": "migration",
+        "tags": [
+          "embedding"
+        ],
+        "status": "active",
+        "description": "qwen3.7-text-embedding 是阿里云百炼的向量化模型。",
+        "supported_endpoints": [
+          "/v1/embeddings"
+        ],
+        "input_price": 0.0005,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing"
+      },
+      {
+        "model": "qwen3.7-text-embedding-flash",
+        "source": "migration",
+        "tags": [
+          "embedding"
+        ],
+        "status": "active",
+        "description": "qwen3.7-text-embedding-flash 是阿里云百炼的向量化模型。",
+        "supported_endpoints": [
+          "/v1/embeddings"
+        ],
+        "input_price": 0.000125,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing"
+      },
+      {
+        "model": "qwen3.7-text-rerank",
+        "source": "migration",
+        "tags": [
+          "text",
+          "native_adapter_required"
+        ],
+        "status": "active",
+        "description": "Qwen3.7 Text Rerank 是阿里云百炼的文本重排序模型；Router 当前没有重排序端点适配。",
+        "supported_endpoints": [],
+        "input_price": 0.0005,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing"
+      },
+      {
+        "model": "qwen3.8-omni-flash-realtime",
+        "tags": [
+          "audio",
+          "realtime",
+          "vision",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "Qwen3.8 Omni Flash Realtime 是阿里云百炼的实时全模态语音模型。",
+        "supported_endpoints": [
+          "/v1/realtime"
+        ],
+        "input_price": 0.0015,
+        "output_price": 0.0045,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source": "migration",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+        "price_components": [
+          {
+            "component": "realtime_text",
+            "input_price": 0.0015,
+            "output_price": 0.0045,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 10
+          },
+          {
+            "component": "realtime_audio",
+            "input_price": 0.006,
+            "output_price": 0.012,
+            "price_unit": "per_1k_tokens",
+            "currency": "CNY",
+            "source": "migration",
+            "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing",
+            "sort_order": 20
+          }
+        ]
+      },
+      {
+        "model": "qwen4-max",
+        "source": "migration",
+        "tags": [
+          "text",
+          "reasoning",
+          "vision",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "Qwen4-Max 是阿里云百炼面向复杂推理、编程和视觉理解的模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions"
+        ],
+        "input_price": 0.01,
+        "output_price": 0.03,
+        "price_unit": "per_1k_tokens",
+        "currency": "CNY",
+        "source_url": "https://help.aliyun.com/zh/model-studio/model-pricing"
+      }
+    ]
+  },
+  {
+    "Provider": "xai",
+    "ModelDetails": [
+      {
+        "model": "grok-4.20",
+        "type": "text",
+        "status": "active",
+        "description": "Grok 4.20 是 xAI 官方目录中 Grok 4.20 0309 Reasoning 的稳定别名。",
+        "supported_endpoints": [
+          "/v1/chat/completions",
+          "/v1/responses"
+        ],
+        "input_price": 0.00125,
+        "output_price": 0.0025,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source": "migration",
+        "updated_at": 1700000000,
+        "tags": [
+          "text",
+          "reasoning",
+          "vision",
+          "tool_calling"
+        ],
+        "source_url": "https://docs.x.ai/docs/models",
+        "price_components": [
+          {
+            "component": "text",
+            "condition": "prompt_tokens_lte=200000",
+            "input_price": 0.00125,
+            "output_price": 0.0025,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 10
+          },
+          {
+            "component": "text",
+            "condition": "prompt_tokens_gt=200000",
+            "input_price": 0.0025,
+            "output_price": 0.005,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 20
+          },
+          {
+            "component": "text_cache_read",
+            "condition": "prompt_tokens_lte=200000",
+            "input_price": 0.0002,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 910
+          },
+          {
+            "component": "text_cache_read",
+            "condition": "prompt_tokens_gt=200000",
+            "input_price": 0.0004,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 920
+          }
+        ]
+      },
+      {
+        "model": "grok-4.20-0309-non-reasoning",
+        "source": "migration",
+        "tags": [
+          "text",
+          "vision",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "Grok 4.20 0309 Non-Reasoning 是 xAI 的文本与图像输入模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions",
+          "/v1/responses"
+        ],
+        "input_price": 0.00125,
+        "output_price": 0.0025,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://docs.x.ai/docs/models",
+        "price_components": [
+          {
+            "component": "text",
+            "condition": "prompt_tokens_lte=200000",
+            "input_price": 0.00125,
+            "output_price": 0.0025,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 10
+          },
+          {
+            "component": "text",
+            "condition": "prompt_tokens_gt=200000",
+            "input_price": 0.0025,
+            "output_price": 0.005,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 20
+          },
+          {
+            "component": "text_cache_read",
+            "condition": "prompt_tokens_lte=200000",
+            "input_price": 0.0002,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 910
+          },
+          {
+            "component": "text_cache_read",
+            "condition": "prompt_tokens_gt=200000",
+            "input_price": 0.0004,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 920
+          }
+        ]
+      },
+      {
+        "model": "grok-4.20-0309-reasoning",
+        "source": "migration",
+        "tags": [
+          "text",
+          "reasoning",
+          "vision",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "Grok 4.20 0309 Reasoning 是 xAI 支持推理的文本与图像输入模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions",
+          "/v1/responses"
+        ],
+        "input_price": 0.00125,
+        "output_price": 0.0025,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://docs.x.ai/docs/models",
+        "price_components": [
+          {
+            "component": "text",
+            "condition": "prompt_tokens_lte=200000",
+            "input_price": 0.00125,
+            "output_price": 0.0025,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 10
+          },
+          {
+            "component": "text",
+            "condition": "prompt_tokens_gt=200000",
+            "input_price": 0.0025,
+            "output_price": 0.005,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 20
+          },
+          {
+            "component": "text_cache_read",
+            "condition": "prompt_tokens_lte=200000",
+            "input_price": 0.0002,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 910
+          },
+          {
+            "component": "text_cache_read",
+            "condition": "prompt_tokens_gt=200000",
+            "input_price": 0.0004,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 920
+          }
+        ]
+      },
+      {
+        "model": "grok-4.20-multi-agent-0309",
+        "source": "migration",
+        "tags": [
+          "text",
+          "reasoning",
+          "vision",
+          "tool_calling"
+        ],
+        "status": "active",
+        "description": "Grok 4.20 Multi-Agent 0309 是 xAI 面向多代理任务的推理模型。",
+        "supported_endpoints": [
+          "/v1/chat/completions",
+          "/v1/responses"
+        ],
+        "input_price": 0.00125,
+        "output_price": 0.0025,
+        "price_unit": "per_1k_tokens",
+        "currency": "USD",
+        "source_url": "https://docs.x.ai/docs/models",
+        "price_components": [
+          {
+            "component": "text",
+            "condition": "prompt_tokens_lte=200000",
+            "input_price": 0.00125,
+            "output_price": 0.0025,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 10
+          },
+          {
+            "component": "text",
+            "condition": "prompt_tokens_gt=200000",
+            "input_price": 0.0025,
+            "output_price": 0.005,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 20
+          },
+          {
+            "component": "text_cache_read",
+            "condition": "prompt_tokens_lte=200000",
+            "input_price": 0.0002,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 910
+          },
+          {
+            "component": "text_cache_read",
+            "condition": "prompt_tokens_gt=200000",
+            "input_price": 0.0004,
+            "price_unit": "per_1k_tokens",
+            "currency": "USD",
+            "source": "migration",
+            "source_url": "https://docs.x.ai/docs/models",
+            "sort_order": 920
+          }
+        ]
+      }
+    ]
+  }
+]

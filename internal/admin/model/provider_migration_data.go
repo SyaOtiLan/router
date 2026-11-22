@@ -130,11 +130,17 @@ func qwenProviderSupportedEndpoints(modelType string, modelName string, current 
 	if normalizedModelName == "" {
 		return nil, false
 	}
+	if normalizeModelType(modelType, modelName) == ProviderModelTypeEmbedding {
+		return []string{ChannelModelEndpointEmbeddings}, true
+	}
 	switch {
 	case strings.HasSuffix(normalizedModelName, "-realtime"),
 		strings.Contains(normalizedModelName, "omni-realtime"):
 		return []string{ChannelModelEndpointRealtime}, true
 	case strings.Contains(normalizedModelName, "tts"):
+		if strings.HasPrefix(normalizedModelName, "qwen-audio-3.1-tts-") && len(current) > 0 {
+			return NormalizeProviderModelSupportedEndpointsForModel(modelType, modelName, current), true
+		}
 		return []string{}, true
 	case strings.HasPrefix(normalizedModelName, "qwen-image"):
 		return []string{ChannelModelEndpointImages, ChannelModelEndpointImageEdit}, true
