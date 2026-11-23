@@ -431,7 +431,7 @@ func EnqueueRuntimeDisabledCapabilityRecoveryTests(limit int) (int, error) {
 		return createdCount, err
 	}
 	for _, row := range endpointRows {
-		if strings.TrimSpace(row.DisabledBy) != "runtime" && row.DisabledBy != model.ChannelEndpointDisabledByRuntimeQuota {
+		if strings.TrimSpace(row.DisabledBy) != "runtime" {
 			continue
 		}
 		key := strings.TrimSpace(row.ChannelId) + "::" + strings.TrimSpace(row.Model) + "::" + model.NormalizeRequestedChannelModelEndpoint(row.Endpoint)

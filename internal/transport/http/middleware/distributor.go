@@ -19,7 +19,6 @@ import (
 	"github.com/yeying-community/router/common/logger"
 	"github.com/yeying-community/router/internal/admin/model"
 	relaychannel "github.com/yeying-community/router/internal/relay/channel"
-	relaymodel "github.com/yeying-community/router/internal/relay/model"
 	"github.com/yeying-community/router/internal/relay/responsestate"
 	"github.com/yeying-community/router/internal/relay/routeobs"
 	"github.com/yeying-community/router/internal/relay/routing"
@@ -29,8 +28,6 @@ import (
 type ModelRequest struct {
 	Model string `json:"model" form:"model"`
 }
-
-var errResponsesPoolQuotaExhausted = errors.New("responses upstream pool quota exhausted")
 
 func pickChannelByPriority(channels []*model.ChannelCandidate, ignoreFirstPriority bool) *model.ChannelCandidate {
 	if len(channels) == 0 {
@@ -282,7 +279,6 @@ func responseItemIDsFromContext(c *gin.Context) []string {
 // a personal-first request needs to fall back after its private upstream fails.
 func SelectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, userID string, initialGroup string, initialSource *model.UserEntitlementSource, requestModel string) (*model.ChannelCandidate, string, *model.UserEntitlementSource, error) {
 	requestPath := c.Request.URL.Path
-	allQuotaDisabled := normalizeRelayPath(requestPath) == model.ChannelModelEndpointResponses && !tokenMonetaryQuotaExhausted(c)
 	if responseStateConflict(c) {
 		logger.RelayWarnf(ctx, "DISTRIBUTE decision=state_recovery reason=responses_route_multiple_channels user_id=%s group=%s model=%s endpoint=%s", userID, initialGroup, requestModel, requestPath)
 		if err := resetConflictingResponsesState(c); err != nil {
@@ -308,7 +304,6 @@ func SelectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, use
 				})
 			}
 		} else {
-			allQuotaDisabled = false
 			logger.RelayWarnf(ctx, "DISTRIBUTE entitlement source reload failed user_id=%s model=%s endpoint=%s error=%q", userID, requestModel, requestPath, err.Error())
 		}
 	}
@@ -317,7 +312,6 @@ func SelectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, use
 	}
 	var lastStats model.ChannelCandidateStats
 	var lastErr error
-	quotaGroups := 0
 	for _, candidate := range candidateSources {
 		groupID := strings.TrimSpace(candidate.groupID)
 		if groupID == "" {
@@ -329,7 +323,6 @@ func SelectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, use
 		candidates, stats, err := model.CacheListSatisfiedChannelsForRequestWithStats(groupID, requestModel, requestPath)
 		lastStats = stats
 		if err != nil {
-			allQuotaDisabled = false
 			lastErr = err
 			logger.RelayWarnf(ctx, "DISTRIBUTE decision=skip reason=list_candidates_failed user_id=%s group=%s model=%s endpoint=%s listed_candidates=%d endpoint_filtered_candidates=%d error=%q", userID, groupID, requestModel, requestPath, stats.ListedCount, stats.EndpointFilteredCount, err.Error())
 			continue
@@ -343,22 +336,11 @@ func SelectEntitlementChannelForRequest(ctx context.Context, c *gin.Context, use
 		}
 		channel := pickChannelByPolicy(candidates, policy)
 		if channel == nil {
-			if allQuotaDisabled {
-				channels, loadErr := model.CacheListSatisfiedChannels(groupID, requestModel)
-				channels, _ = applyProviderRoutingPolicy(channels, requestModel, policy)
-				allQuotaDisabled = loadErr == nil && model.AllResponsesCandidatesQuotaDisabled(ctx, groupID, requestModel, channels)
-				if allQuotaDisabled {
-					quotaGroups++
-				}
-			}
 			logger.RelayWarnf(ctx, "DISTRIBUTE decision=skip reason=no_available_channel user_id=%s group=%s model=%s endpoint=%s listed_candidates=%d endpoint_filtered_candidates=%d", userID, groupID, requestModel, requestPath, stats.ListedCount, stats.EndpointFilteredCount)
 			continue
 		}
 		recordRouteDecision(c, "automatic", groupID, requestModel, requestPath, candidates, stats.FilteredCandidates, channel, "priority_random")
 		return channel, groupID, candidate.source, nil
-	}
-	if allQuotaDisabled && quotaGroups > 0 {
-		return nil, "", nil, errResponsesPoolQuotaExhausted
 	}
 	message := fmt.Sprintf("当前权益下对于模型 %s 无可用渠道", requestModel)
 	if strings.TrimSpace(initialGroup) != "" {
@@ -612,21 +594,10 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 				} else if channel, userGroup, entitlementSource, err = SelectEntitlementChannelForRequest(ctx, c, userId, userGroup, entitlementSource, requestModel); err != nil {
-					selectionErr := err
 					if personalPolicy == model.PersonalRoutePolicyCommunityFirst && personalSupported {
 						channel, err = selectPersonalChannel("personal_provider_fallback", "community_first_fallback")
 					}
-					if channel == nil && err == nil {
-						err = selectionErr
-					}
 					if err != nil {
-						if errors.Is(err, errResponsesPoolQuotaExhausted) {
-							quota := relaymodel.ResponsesPoolQuotaError()
-							c.Set(ctxkey.RelayErrorType, quota.Type)
-							c.Set(ctxkey.RelayErrorCode, quota.Code)
-							abortWithMessage(c, quota.StatusCode, quota.Message)
-							return
-						}
 						statusCode := http.StatusServiceUnavailable
 						message := err.Error()
 						if strings.HasPrefix(message, "state_incompatible: ") {

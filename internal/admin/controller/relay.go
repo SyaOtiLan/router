@@ -94,7 +94,6 @@ func Relay(c *gin.Context) {
 		failedChannelIDs[trimmedChannelID] = struct{}{}
 	}
 	appendFallbackFailureAttempt(c, 1, bizErr)
-	quotaPool := snapshotResponsesQuotaPool(c, bizErr, policy, userId, group, originalModel, initialProvider, channelId)
 	go processChannelRelayError(ctx, userId, group, channelId, channelName, originalModel, requestPath, *bizErr)
 	traceID := c.GetString(helper.TraceIDKey)
 	allowFallbackForError := shouldRetryRemainingCandidates(bizErr)
@@ -114,9 +113,6 @@ func Relay(c *gin.Context) {
 	}
 	retryCount := 0
 	retryable := shouldRetry(c, bizErr)
-	if retryAllRemainingCandidates && !retryable && prepareResponsesQuotaReplay(c, bizErr) {
-		retryable = shouldRetry(c, bizErr)
-	}
 	// A personal-first selection intentionally does not require a community
 	// entitlement up front. Once that private upstream fails, resolve the
 	// community side lazily and continue through its normal candidate set.
@@ -265,7 +261,6 @@ func Relay(c *gin.Context) {
 			failedChannelIDs[trimmedChannelID] = struct{}{}
 		}
 		appendFallbackFailureAttempt(c, retryCount+1, bizErr)
-		quotaPool = quotaPool.afterFailure(channelId, bizErr)
 		go processChannelRelayError(ctx, userId, group, channelId, channelName, originalModel, requestPath, *bizErr)
 		retryAllRemainingCandidates = shouldRetry(c, bizErr) && shouldRetryRemainingCandidates(bizErr)
 	}
@@ -296,9 +291,7 @@ func Relay(c *gin.Context) {
 		}
 	}
 	if bizErr != nil {
-		if !quotaPool.reportExhaustion(c, bizErr) {
-			normalizeFinalRelayError(bizErr)
-		}
+		normalizeFinalRelayError(bizErr)
 		c.Set(ctxkey.RelayError, bizErr.Error.Message)
 		c.Set(ctxkey.RelayErrorType, bizErr.Error.Type)
 		c.Set(ctxkey.RelayErrorCode, errorCodeString(bizErr.Error.Code))
@@ -647,9 +640,6 @@ func isUpstreamQuotaRelayError(err *model.ErrorWithStatusCode) bool {
 	if lowerCode == "insufficient_quota" || lowerCode == "insufficient_user_quota" || lowerCode == "billing_hard_limit_reached" || lowerCode == "1113" {
 		return true
 	}
-	if err.StatusCode == http.StatusTooManyRequests && err.Error.IsQuotaExhausted() {
-		return true
-	}
 	lowerMessage := strings.ToLower(strings.TrimSpace(err.Message))
 	return strings.Contains(lowerMessage, "额度") ||
 		strings.Contains(lowerMessage, "余额不足") ||
@@ -863,11 +853,7 @@ func processChannelRelayError(ctx context.Context, userId string, groupID string
 func disableUpstreamQuotaChannelModelEndpoint(ctx context.Context, channelId string, channelName string, requestModel string, requestPath string, err model.ErrorWithStatusCode) {
 	normalizedEndpoint := dbmodel.NormalizeRequestedChannelModelEndpoint(requestPath)
 	reason := upstreamQuotaEndpointDisableReason(err)
-	disabledBy := "runtime"
-	if normalizedEndpoint == dbmodel.ChannelModelEndpointResponses && confirmedUpstreamQuota(&err) {
-		disabledBy = dbmodel.ChannelEndpointDisabledByRuntimeQuota
-	}
-	disabled, disableErr := dbmodel.DisableChannelModelRequestEndpointCapabilityWithReason(channelId, requestModel, normalizedEndpoint, reason, disabledBy)
+	disabled, disableErr := dbmodel.DisableChannelModelRequestEndpointCapabilityWithReason(channelId, requestModel, normalizedEndpoint, reason, "runtime")
 	logChannelModelRequestEndpointDisableResult(ctx, channelId, channelName, requestModel, normalizedEndpoint, err, disabled, disableErr)
 	if disableErr != nil {
 		monitor.Emit(channelId, false)

@@ -90,12 +90,12 @@ func RelayErrorHandler(meta *relaymeta.Meta, resp *http.Response) (ErrorWithStat
 	if err != nil {
 		return
 	}
-	if errResponse.Error.Message != "" ||
-		(resp.StatusCode == http.StatusTooManyRequests && (errResponse.Error.Type != "" || errResponse.Error.Code != nil)) {
-		// A structured 429 can carry a quota type or code without a message.
+	if errResponse.Error.Message != "" {
+		// OpenAI format error, so we override the default one
 		ErrorWithStatusCode.Error = errResponse.Error
+	} else {
+		ErrorWithStatusCode.Error.Message = errResponse.ToMessage()
 	}
-	ErrorWithStatusCode.Error.Message = errResponse.ToMessage()
 	if ErrorWithStatusCode.Error.Message == "" {
 		ErrorWithStatusCode.Error.Message = fmt.Sprintf("bad response status code %d", resp.StatusCode)
 	}

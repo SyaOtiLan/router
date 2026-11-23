@@ -12,8 +12,7 @@ import (
 )
 
 const (
-	ChannelModelEndpointsTableName        = "channel_model_endpoints"
-	ChannelEndpointDisabledByRuntimeQuota = "runtime_quota"
+	ChannelModelEndpointsTableName = "channel_model_endpoints"
 )
 
 type ChannelModelEndpoint struct {
@@ -544,7 +543,6 @@ func RestoreRuntimeDisabledChannelModelEndpointCapabilityWithDB(db *gorm.DB, cha
 func isRuntimeDisabledChannelModelEndpoint(row ChannelModelEndpoint) bool {
 	return !row.Enabled &&
 		(strings.TrimSpace(row.DisabledBy) == "runtime" ||
-			row.DisabledBy == ChannelEndpointDisabledByRuntimeQuota ||
 			row.DisabledAt > 0 ||
 			strings.TrimSpace(row.DisabledReason) != "")
 }
@@ -736,13 +734,6 @@ func buildDisabledChannelModelEndpointRows(rows []ChannelModelEndpoint, channelI
 		}
 		if normalized.ChannelId == normalizedChannelID && normalized.Model == normalizedModelName && normalized.Endpoint == normalizedEndpoint {
 			found = true
-			if normalizedDisabledBy == ChannelEndpointDisabledByRuntimeQuota && !normalized.Enabled &&
-				normalized.DisabledBy != ChannelEndpointDisabledByRuntimeQuota {
-				// A late upstream failure cannot turn an independently disabled
-				// endpoint into evidence of quota exhaustion.
-				result = append(result, normalized)
-				continue
-			}
 			if normalized.Enabled ||
 				strings.TrimSpace(normalized.DisabledReason) != normalizedReason ||
 				strings.TrimSpace(normalized.DisabledBy) != normalizedDisabledBy ||
