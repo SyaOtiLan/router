@@ -122,14 +122,28 @@ type responsesStreamTextPayload struct {
 func StreamResponsesHandler(c *gin.Context, resp *http.Response, modelName string, promptTokens int) (*model.ErrorWithStatusCode, *model.Usage) {
 	responseText := ""
 	scanner := newOpenAIStreamScanner(resp.Body)
+	var prefix []string
+	if c.Request != nil && relaymode.GetByPath(c.Request.URL.Path) == relaymode.Responses && !c.Writer.Written() {
+		var quota *model.ErrorWithStatusCode
+		prefix, quota = readResponsesQuotaPrefix(scanner)
+		if quota != nil {
+			_ = resp.Body.Close()
+			return quota, nil
+		}
+	}
 	var usage *model.Usage
 	currentEvent := ""
 	doneRendered := false
 
 	common.SetEventStreamHeaders(c)
 
-	for scanner.Scan() {
-		rawLine := scanner.Text()
+	for i := 0; i < len(prefix) || scanner.Scan(); i++ {
+		var rawLine string
+		if i < len(prefix) {
+			rawLine = prefix[i]
+		} else {
+			rawLine = scanner.Text()
+		}
 		line := strings.TrimSuffix(rawLine, "\r")
 
 		_, _ = c.Writer.Write([]byte(rawLine + "\n"))
