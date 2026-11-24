@@ -72,7 +72,9 @@ func defaultProviderModelDeleted(provider string, modelName string) bool {
 		return modelName == "gemini-live-2.5-flash-preview"
 	case "minimax":
 		switch modelName {
-		case "minimax-m2", "minimax-m2.1", "minimax-m2.1-highspeed":
+		case "minimax-m2", "minimax-m2.1", "minimax-m2.1-highspeed",
+			"minimax-m2.5", "minimax-m2.5-highspeed",
+			"minimax-m2.7", "minimax-m2.7-highspeed":
 			return true
 		default:
 			return false
@@ -119,6 +121,7 @@ func defaultProviderModelStatus(provider string, modelName string) string {
 			"gpt-image-1",
 			"gpt-image-1-mini",
 			"gpt-image-1.5",
+			"gpt-image-2",
 			"gpt-realtime",
 			"gpt-realtime-mini",
 			"o3",
@@ -160,7 +163,9 @@ func defaultProviderModelStatus(provider string, modelName string) string {
 		}
 	case "minimax":
 		switch modelName {
-		case "minimax-m2", "minimax-m2.1", "minimax-m2.1-highspeed":
+		case "minimax-m2", "minimax-m2.1", "minimax-m2.1-highspeed",
+			"minimax-m2.5", "minimax-m2.5-highspeed",
+			"minimax-m2.7", "minimax-m2.7-highspeed":
 			return ProviderModelStatusDeprecated
 		}
 	case "xai":

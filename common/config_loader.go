@@ -143,9 +143,9 @@ type NotifyConfig struct {
 }
 
 type BillingConfig struct {
-	BaseURL                  string `yaml:"base_url"`
-	APIKey                   string `yaml:"api_key"`
-	TimeoutSeconds           int    `yaml:"timeout_seconds"`
+	BaseURL        string `yaml:"base_url"`
+	APIKey         string `yaml:"api_key"`
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
 	// CostRateFloorEnabled gates the online cost floor's use of cached
 	// billing-service cost quotes (see BillingServiceCostRateFloorEnabled).
 	CostRateFloorEnabled bool `yaml:"cost_rate_floor_enabled"`
@@ -158,7 +158,6 @@ type IdentityConfig struct {
 	NodeURL     string `yaml:"node_url"`
 	AppID       string `yaml:"app_id"`
 	CallbackURL string `yaml:"callback_url"`
-	TrustDir    string `yaml:"trust_dir"`
 }
 
 type RelayConfig struct {
@@ -288,7 +287,7 @@ func defaultAppConfig() AppConfig {
 			TimeoutSeconds: 20,
 		},
 		Identity: IdentityConfig{
-			TrustDir: "/data/node",
+			NodeURL: "",
 		},
 		Relay: RelayConfig{
 			TimeoutSeconds:                         0,
@@ -404,10 +403,6 @@ func ApplyAppConfig(cfg *AppConfig, portFlagSet bool, logDirFlagSet bool) error 
 	config.IdentityNodeURL = strings.TrimRight(strings.TrimSpace(cfg.Identity.NodeURL), "/")
 	config.IdentityAppID = strings.TrimSpace(cfg.Identity.AppID)
 	config.IdentityCallbackURL = strings.TrimSpace(cfg.Identity.CallbackURL)
-	config.IdentityTrustDir = strings.TrimSpace(cfg.Identity.TrustDir)
-	if config.IdentityTrustDir == "" {
-		config.IdentityTrustDir = "/data/node"
-	}
 	SQLDSN = strings.TrimSpace(cfg.Database.SQLDSN)
 	LogSQLDSN = strings.TrimSpace(cfg.Database.LogSQLDSN)
 	SQLMaxIdleConns = cfg.Database.MaxIdleConns

@@ -57,7 +57,6 @@ var BillingServiceCostRateFloorTTLSeconds int64 = 900
 var IdentityNodeURL = ""
 var IdentityAppID = ""
 var IdentityCallbackURL = ""
-var IdentityTrustDir = "/data/node"
 
 // Any options with "Secret", "Token" in its key won't be return by GetOptions
 

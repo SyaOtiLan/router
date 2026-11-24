@@ -137,6 +137,32 @@ func TestNormalizeProviderModelSupportedEndpointsForQwenSpecialModels(t *testing
 		t.Fatalf("qwen tts normalized endpoints = %#v, want empty", qwenTTS)
 	}
 
+	qwenAudioTTS, handled := qwenProviderSupportedEndpoints(
+		ProviderModelTypeAudio,
+		"qwen-audio-3.1-tts-plus",
+		[]string{ChannelModelEndpointAudio},
+	)
+	if !handled || len(qwenAudioTTS) != 0 {
+		t.Fatalf("Qwen Audio TTS proprietary models must not be inferred as OpenAI audio/speech endpoints: %#v", qwenAudioTTS)
+	}
+	qwenAudioTTS = NormalizeProviderModelSupportedEndpointsForModel(
+		ProviderModelTypeAudio,
+		"qwen-audio-3.1-tts-plus",
+		[]string{ChannelModelEndpointAudio, ChannelModelEndpointChat},
+	)
+	if len(qwenAudioTTS) != 0 {
+		t.Fatalf("Qwen Audio TTS unsupported endpoints were not filtered: %#v", qwenAudioTTS)
+	}
+
+	qwenEmbedding, handled := qwenProviderSupportedEndpoints(
+		ProviderModelTypeEmbedding,
+		"qwen3-vl-embedding",
+		[]string{ChannelModelEndpointChat, ChannelModelEndpointEmbeddings},
+	)
+	if len(qwenEmbedding) != 1 || qwenEmbedding[0] != ChannelModelEndpointEmbeddings {
+		t.Fatalf("qwen embedding endpoints = %#v, want embeddings", qwenEmbedding)
+	}
+
 	qwenImage, handled := qwenProviderSupportedEndpoints(
 		ProviderModelTypeImage,
 		"qwen-image-2.0",

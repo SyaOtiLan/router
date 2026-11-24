@@ -117,3 +117,31 @@ func TestMigrateBillingCurrencyChargeRateCopiesLegacyYYCPerUnit(t *testing.T) {
 		t.Fatalf("YYC charge_rate=%v, want 1", got)
 	}
 }
+
+func TestMigrateBillingCurrencyChargeRateHandlesCurrentBaselineSchema(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=private"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&BillingCurrency{}); err != nil {
+		t.Fatalf("create current baseline schema: %v", err)
+	}
+	if db.Migrator().HasColumn(BillingCurrenciesTableName, "yyc_per_unit") {
+		t.Fatal("current baseline unexpectedly contains legacy yyc_per_unit column")
+	}
+
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := migrateBillingCurrencyChargeRateWithDB(tx); err != nil {
+			return err
+		}
+		return tx.Create(&BillingCurrency{
+			Code:       "USD",
+			Name:       "US Dollar",
+			ChargeRate: 500000,
+			Status:     BillingCurrencyStatusEnabled,
+			Source:     BillingCurrencySourceSystemDefault,
+		}).Error
+	}); err != nil {
+		t.Fatalf("migration left the current-schema transaction unusable: %v", err)
+	}
+}

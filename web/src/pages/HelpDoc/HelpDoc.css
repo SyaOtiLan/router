@@ -166,6 +166,32 @@
   margin: 10px 0;
 }
 
+.router-help-doc-page .markdown-section table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0 18px;
+  font-size: 14px;
+}
+
+.router-help-doc-page .markdown-section th,
+.router-help-doc-page .markdown-section td {
+  border: 1px solid #d1d5db;
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.router-help-doc-page .markdown-section th {
+  background: #f3f4f6;
+  color: #111827;
+  font-weight: 600;
+}
+
+.router-help-doc-page .markdown-section td {
+  background: #ffffff;
+  color: #374151;
+}
+
 .router-help-doc-page .markdown-section ul,
 .router-help-doc-page .markdown-section ol {
   padding-left: 22px;
@@ -335,6 +361,11 @@
   }
 
   .router-help-doc-page .router-guide-endpoint-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .router-help-doc-page .markdown-section table {
     display: block;
     overflow-x: auto;
   }

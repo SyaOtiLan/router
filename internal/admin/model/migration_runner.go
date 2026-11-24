@@ -540,31 +540,7 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 			Version:     "202604022330_redemption_group_face_value",
 			Description: "add redemption group binding and multi-unit face value fields",
 			Up: func(tx *gorm.DB) error {
-				if err := tx.AutoMigrate(&Redemption{}); err != nil {
-					return err
-				}
-				if err := tx.Exec(
-					`ALTER TABLE redemptions
-					 ALTER COLUMN face_value_amount TYPE numeric(30,8)
-					 USING face_value_amount::numeric`,
-				).Error; err != nil {
-					return err
-				}
-				if err := tx.Exec(
-					"UPDATE redemptions SET face_value_unit = ? WHERE COALESCE(face_value_unit, '') = ''",
-					"YYC",
-				).Error; err != nil {
-					return err
-				}
-				return tx.Exec(
-					`UPDATE redemptions
-					 SET face_value_amount = LEAST(
-					   quota::numeric,
-					   9999999999999999999999.99999999::numeric
-					 )
-					 WHERE COALESCE(face_value_amount, 0) = 0
-					   AND COALESCE(quota, 0) > 0`,
-				).Error
+				return migrateRedemptionGroupFaceValueWithDB(tx)
 			},
 		},
 		{
@@ -2414,8 +2390,63 @@ func runMainVersionedMigrations(db *gorm.DB) error {
 				return upsertProviderMigrationProvidersWithDB(tx, "qwen", "minimax", "xai", "deepgram")
 			},
 		},
+		{
+			Version:     "202611211200_refresh_official_provider_catalog",
+			Description: "refresh official OpenAI, Anthropic, Qwen, DeepSeek, MiniMax, xAI, and Deepgram catalog additions, retirements, and pricing",
+			Up: func(tx *gorm.DB) error {
+				return upsertProviderMigrationProvidersWithDB(tx, "openai", "anthropic", "qwen", "deepseek", "minimax", "xai", "deepgram")
+			},
+		},
 	}
 	return runVersionedMigrations(db, migrationScopeMain, migrations)
+}
+
+// migrateRedemptionGroupFaceValueWithDB upgrades the legacy redemption columns
+// when they exist. The current baseline model stores these values in
+// quota_amount_snapshot/quota_currency_snapshot and intentionally no longer
+// declares face_value_amount, face_value_unit, or quota. A fresh database runs
+// the baseline before historical migrations, so unconditionally altering the
+// removed columns makes a clean install fail.
+func migrateRedemptionGroupFaceValueWithDB(tx *gorm.DB) error {
+	if tx == nil {
+		return fmt.Errorf("database handle is nil")
+	}
+	if err := tx.AutoMigrate(&Redemption{}); err != nil {
+		return err
+	}
+	hasAmount := tx.Migrator().HasColumn("redemptions", "face_value_amount")
+	hasUnit := tx.Migrator().HasColumn("redemptions", "face_value_unit")
+	hasQuota := tx.Migrator().HasColumn("redemptions", "quota")
+
+	if hasAmount && tx.Dialector.Name() == "postgres" {
+		if err := tx.Exec(
+			`ALTER TABLE redemptions
+			 ALTER COLUMN face_value_amount TYPE numeric(30,8)
+			 USING face_value_amount::numeric`,
+		).Error; err != nil {
+			return err
+		}
+	}
+	if hasUnit {
+		if err := tx.Exec(
+			"UPDATE redemptions SET face_value_unit = ? WHERE COALESCE(face_value_unit, '') = ''",
+			"YYC",
+		).Error; err != nil {
+			return err
+		}
+	}
+	if hasAmount && hasQuota {
+		return tx.Exec(
+			`UPDATE redemptions
+			 SET face_value_amount = LEAST(
+			   quota::numeric,
+			   9999999999999999999999.99999999::numeric
+			 )
+			 WHERE COALESCE(face_value_amount, 0) = 0
+			   AND COALESCE(quota, 0) > 0`,
+		).Error
+	}
+	return nil
 }
 
 func migrateUserPackageSubscriptionCreatedAtWithDB(db *gorm.DB) error {

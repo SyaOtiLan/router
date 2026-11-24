@@ -1,80 +1,40 @@
-# Codex App、Cline、Continue、Chatbox、Cherry Studio 接入夜莺 Router
+# 使用指导
 
-## 一、Codex App 接入
+本手册说明如何在 macOS、Linux、Windows环境中使用夜莺 Router。
+本文给出指导示例，模型版本、客户端界面等可能随版本变化，具体以实际情况为准。
 
-**测试环境**
+## 使用前
 
-| 项目 | 内容 |
-| --- | --- |
-| 操作系统 | Windows 10 Pro 26H1（Build 28000.2954，64 位） |
-| 客户端 | Codex App Windows 客户端 `26.915.4065.0` |
+- API Base URL：`https://router.yeying.pub`。
+- API Key 为您在夜莺 Router 获取的令牌(YOUR_YEYING_ROUTER_API_KEY)，在配置时请注意替换。
+- 请求中的模型名必须是令牌可访问的模型，目前各个厂家会不定期进行迭代，配置时请注意。
+- Router 按协议和端点转发，不会把不支持的端点自动转换成另一种协议。
+- OpenAI 兼容客户端使用 `https://router.yeying.pub/v1`。
+- Claude Code 的`ANTHROPIC_BASE_URL` 填 `https://router.yeying.pub`，客户端会请求 `/v1/messages`。
 
-### 1. 下载 Codex App
 
-请前往 OpenAI 官方 Codex 页面下载：
+## CLI配置
 
-```text
-https://openai.com/codex
+### Codex CLI
+
+#### 安装
+
+从 [Codex CLI 官方文档](https://developers.openai.com/codex/cli) 查看当前安装方式。
+Codex CLI 可在 macOS、Linux 和 Windows 使用；npm 安装需要先安装 Node.js LTS。
+Windows环境如果原生终端环境不兼容，可使用 WSL。
+
+```bash
+npm install -g @openai/codex
 ```
 
-Windows 用户也可以通过 Microsoft Store 安装。
+安装后运行 `codex --version` 检查命令是否可用。
 
-### 2. 使用 API Key 登录
+#### 配置
 
-首次打开 Codex App 时，在登录页面点击 `使用其他方式登录`，不要点击上方的 `继续登录`。
-
-![点击使用其他方式登录](assets/codex-yeying-router/05-sign-in-another-way.png)
-
-进入 API Key 登录页面后，输入夜莺 Router API Key，然后点击 `继续`。
-
-![输入夜莺 Router API Key](assets/codex-yeying-router/06-enter-api-key.jpg)
-
-注意：在登录页输入 API Key 后，仍然必须在 `config.toml` 中再填写一次。登录页不会把 API Key 自动同步到 `config.toml`。请在下面的配置示例中，将 `YOUR_YEYING_ROUTER_API_KEY` 整段替换为同一个夜莺 Router API Key。
-
-### 3. 打开 config.toml
-
-推荐从 Codex App 设置里打开配置文件，避免找错目录。
-
-打开 Codex App 后，点击左下角账号或工作区入口。
-
-![点击左下角账号入口](assets/codex-yeying-router/01-open-account-menu.png)
-
-在弹出的菜单中点击 `Settings`。
-
-![点击 Settings](assets/codex-yeying-router/02-open-settings.png)
-
-在设置页左侧搜索框输入：
-
-```text
-config.toml
-```
-
-![搜索 config.toml](assets/codex-yeying-router/03-search-config-toml.png)
-
-点击左侧搜索结果中的 `config.toml`，再点击右侧的 `Open config.toml`。
-
-![点击 Open config.toml](assets/codex-yeying-router/04-open-config-toml.png)
-
-如果需要手动查找，也可以打开：
-
-```text
-C:\Users\你的用户名\.codex
-```
-
-在这个文件夹中找到或新建：
-
-```text
-config.toml
-```
-
-注意文件名必须是 `config.toml`，不要保存成 `config.toml.txt`。
-
-### 4. 写入配置
-
-打开 `config.toml` 后，将下面配置放在文件最前面、原有的 `[desktop]` 或 `[windows]` 等配置段之前，并把 `YOUR_YEYING_ROUTER_API_KEY` 替换为自己的夜莺 Router API Key。
+在 macOS/Linux 的 `~/.codex/config.toml`，或 Windows 的 `%USERPROFILE%\.codex\config.toml` 中写入：
 
 ```toml
-model = "gpt-5.6-sol"
+model = "gpt-6-sol"
 model_provider = "yeying"
 
 [model_providers.yeying]
@@ -84,132 +44,171 @@ wire_api = "responses"
 experimental_bearer_token = "YOUR_YEYING_ROUTER_API_KEY"
 ```
 
-保存后，完全退出 Codex App，再重新打开。
+若配置文件已有其他内容，只合并这些字段，并避免重复定义同一个配置段。保存后重新打开终端。
 
-### 5. 验证
+#### 验证
 
-重新打开后，点击 `New chat` 新建会话，不要在原来的会话中继续重试。发送：
+在项目目录运行 `codex`，新建会话并发送 `请只回复 OK`。收到模型回复即表示连通。若客户端提示模型不存在，请先确认该模型在令牌可用范围内，且支持 Responses 端点。
 
-```text
-请只回复 OK
+### Claude Code
+
+#### 安装
+
+查看 [Claude Code 官方安装文档](https://docs.anthropic.com/en/docs/claude-code/setup)。
+macOS/Linux 可使用官方安装脚本。
+Windows 可使用官方 PowerShell 安装程序，也可按官方文档使用 npm 安装，npm 方式需要 Node.js LTS。
+
+```bash
+# macOS / Linux
+curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-如果模型正常回复，说明 Codex App 已经通过夜莺 Router 调用模型。
-
----
-
-## 二、VS Code 插件接入
-
-VS Code 中推荐优先配置 Cline。如果客户正在使用 Continue，也可以按 Continue 的方式配置。
-
-## 方案 A：Cline
-
-**测试环境**
-
-| 项目 | 内容 |
-| --- | --- |
-| 操作系统 | Windows 10 Pro 26H1（Build 28000.2954，64 位） |
-| 编辑器 | VS Code Windows 版 `1.138.0` |
-| 插件 | Cline（扩展 ID：`saoudrizwan.claude-dev`，测试版本：`4.1.19`） |
-
-### 1. 安装 Cline
-
-打开 VS Code 扩展市场，搜索并安装：
-
-```text
-Cline
+```powershell
+# Windows PowerShell
+irm https://claude.ai/install.ps1 | iex
 ```
 
-也可以打开扩展页面：
+安装后运行 `claude --version` 检查命令是否可用。
 
-```text
-https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev
+#### 配置
+
+在用户配置文件 `~/.claude/settings.json`（Windows 对应 `%USERPROFILE%\.claude\settings.json`）中加入：
+
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://router.yeying.pub",
+    "ANTHROPIC_AUTH_TOKEN": "YOUR_YEYING_ROUTER_API_KEY"
+  }
+}
 ```
 
-### 2. 选择自带 API Key
+保留已有设置并合并 `env` 字段。Anthropic Base URL 不要附加 `/v1`。
 
-打开 Cline 面板，选择：
+#### 验证
 
-```text
-Bring my own API key
+打开新终端，在项目目录运行 `claude`，发送 `reply exactly OK`。收到 `OK` 表示调用成功。
+
+
+## APP配置
+
+### ChatGPT
+
+#### 安装
+
+从 [ChatGPT 下载页面](https://chatgpt.com/download/) 获取客户端安装文件。
+
+
+#### 配置
+
+ChatGPT 官方客户端和网页端使用 OpenAI 自有服务，不提供自定义 API Base URL 或第三方 Router API Key 配置。
+经过笔者在Ubuntu 24.04.5 LTS环境中实际验证，只要按照前述配置Codex CLI之后，安装的ChatGPT客户端同样可以使用。
+
+#### 验证
+
+登录 ChatGPT 客户端并发送一条消息，可验证服务是否可用。
+
+
+
+### Codex App
+
+#### 安装
+
+从 [OpenAI Codex 页面](https://openai.com/codex) 获取 macOS 或 Windows 客户端；Windows 也可从 Microsoft Store 安装。
+笔者在Ubuntu 24.04.5 LTS环境中打开上述页面，下载的为ChatGPT客户端。
+
+#### 配置
+
+首次启动时选择“使用其他方式登录”并输入夜莺 Router API Key。登录页的 Key 不会写入 `config.toml`，还需在 macOS/Linux 的 `~/.codex/config.toml` 或 Windows 的 `%USERPROFILE%\.codex\config.toml` 配置：
+
+```toml
+model = "gpt-6-sol"
+model_provider = "yeying"
+
+[model_providers.yeying]
+name = "Yeying Router"
+base_url = "https://router.yeying.pub/v1"
+wire_api = "responses"
+experimental_bearer_token = "YOUR_YEYING_ROUTER_API_KEY"
 ```
 
-然后点击：
+也可在 Codex App Settings 中搜索 `config.toml` 并打开配置文件。保存后完全退出并重新打开应用。
 
-```text
-Continue
-```
+#### 验证
 
-![选择 Bring my own API key](assets/cline-yeying-router/01-bring-own-api-key.png)
+新建会话，发送 `请只回复 OK`。如果成功回复，说明 Codex App 已连通 Router。遇到 401 时先检查配置文件中的令牌，再完全重启应用。
 
-### 3. 填写配置
+### Cursor
 
-| 配置项 | 填写内容 |
+#### 安装
+
+从 [Cursor 下载页](https://cursor.com/) 安装：
+
+- macOS：下载 Apple Silicon、Intel 或 Universal `.dmg`，拖入 Applications。
+- Windows：下载 x64 或 ARM64 安装包并运行安装程序。
+- Linux：下载官方 Linux 版本 笔者在Ubuntu 24.04.5 LTS环境中打开上述页面，下载的为cursor_3.30.14_amd64.deb文件。
+
+#### 配置
+
+打开 Cursor Settings → Models → API Keys，在 OpenAI API Key 中填写 Router API Key，并开启 `Override OpenAI Base URL`，地址填写 `https://router.yeying.pub/v1`。启用或添加一个已授权且可用的模型，例如 `gpt-6-sol`，并保存设置。
+
+#### 验证
+
+在新会话中发送 `reply exactly OK`，收到模型回复表示接入成功。笔者在Ubuntu 24.04.5 LTS环境安装后使用时显示使用的模型为Grok 4.7, 选择模型会提示“Upgrade to Pro”，笔者并没有进行升级。
+
+
+### Cherry Studio
+
+#### 安装
+
+从 [Cherry Studio 官网](https://cherry-ai.com) 下载 macOS、Windows 或 Linux 对应安装包并完成安装。
+
+#### 配置
+
+进入模型服务设置，添加 Provider, Provider Name可以自定义，填写Router API Key， 配置OpenAI Base URL `https://router.yeying.pub/v1`，然后选择可用模型名。保存后将该模型设为当前对话模型。
+
+#### 验证
+
+新建对话并发送 `reply exactly OK`。收到回复表示接入成功。
+
+
+## VS Code插件
+
+先从 [Visual Studio Code 下载页](https://code.visualstudio.com/download) 安装适用于 macOS、Linux 或 Windows 的 VS Code，再在扩展市场安装对应插件。
+macOS快捷键为 `Cmd+Shift+X`，Windows/Linux快捷键为 `Ctrl+Shift+X`。
+
+### Cline
+
+#### 安装
+
+在 VS Code 扩展市场搜索并安装 [Cline](https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev)，然后重新加载 VS Code。该插件的配置方式在 macOS、Linux、Windows 一致。
+
+#### 配置
+
+打开 Cline 面板，选择 Bring my own API key，并填写：
+
+| 配置项 | 内容 |
 | --- | --- |
 | API Provider | `OpenAI Compatible` |
 | Base URL | `https://router.yeying.pub/v1` |
-| OpenAI Compatible API Key | 夜莺 Router API Key |
-| Model ID | `gpt-5.6-sol` |
+| API Key | 夜莺 Router API Key |
+| Model ID | 令牌可用的模型，如 `gpt-6-sol` |
 
-![填写 OpenAI Compatible 配置](assets/cline-yeying-router/02-openai-compatible-config.png)
+保存配置并返回 Cline 对话。
 
-填写完成后点击 `Continue`。
+#### 验证
 
-### 4. 验证
+发送 `reply exactly OK`。收到 `OK` 表示调用成功。若出现 403 或额度不足，检查令牌额度、套餐和模型权限。
 
-在 Cline 对话里发送：
+### Continue
 
-```text
-reply exactly OK
-```
+#### 安装
 
-如果返回 `OK`，说明 Cline 已经通过夜莺 Router 调用模型。
+在 VS Code 扩展市场搜索并安装 [Continue](https://marketplace.visualstudio.com/items?itemName=Continue.continue)，然后重新加载 VS Code。插件在 macOS、Linux、Windows 上使用相同配置。
 
-如果返回 `403 Forbidden` 或“令牌额度不足”，通常表示请求已经到达夜莺 Router，但当前 API Key 的额度、套餐或模型权限不足，请联系管理员检查该 Key 的额度和模型权限。
+#### 配置
 
-## 方案 B：Continue
-
-**测试环境**
-
-| 项目 | 内容 |
-| --- | --- |
-| 操作系统 | Windows 10 Pro 26H1（Build 28000.2954，64 位） |
-| 编辑器 | VS Code Windows 版 `1.138.0` |
-| 插件 | Continue（扩展 ID：`continue.continue`，测试版本：`2.0.0`） |
-
-### 1. 安装 Continue
-
-打开 VS Code 扩展市场，搜索并安装：
-
-```text
-Continue
-```
-
-也可以打开扩展页面：
-
-```text
-https://marketplace.visualstudio.com/items?itemName=Continue.continue
-```
-
-### 2. 打开配置目录
-
-打开 Windows 文件资源管理器，在地址栏输入：
-
-```text
-C:\Users\你的用户名\.continue
-```
-
-如果没有 `.continue` 文件夹，可以手动创建。
-
-### 3. 配置 config.yaml
-
-在 `.continue` 文件夹中创建或打开：
-
-```text
-config.yaml
-```
-
-将下面内容复制进去，并把 `YOUR_YEYING_ROUTER_API_KEY` 替换为自己的夜莺 Router API Key。
+在用户主目录的 `.continue/config.yaml`（Windows 为 `%USERPROFILE%\.continue\config.yaml`）创建或更新配置，将 API Key 替换为自己的 Router API Key：
 
 ```yaml
 name: Yeying Router
@@ -217,9 +216,9 @@ version: 1.0.0
 schema: v1
 
 models:
-  - name: Yeying gpt-5.6-sol
+  - name: Yeying gpt-6-sol
     provider: openai
-    model: gpt-5.6-sol
+    model: gpt-6-sol
     apiBase: https://router.yeying.pub/v1
     apiKey: YOUR_YEYING_ROUTER_API_KEY
     roles:
@@ -230,147 +229,47 @@ models:
       - tool_use
 ```
 
-保存后，重启 VS Code。
+保存文件并重启 VS Code。
 
-### 4. 验证
+#### 验证
 
-打开 Continue 面板，发送：
+打开 Continue 面板并发送 `reply exactly OK`。收到 `OK` 表示接入成功。
 
-```text
-reply exactly OK
-```
 
-如果返回 `OK`，说明 Continue 已经通过夜莺 Router 调用模型。
 
----
+## 常见问题
 
-## 三、Chatbox 接入
+### Codex CLI / Codex App：401 Unauthorized
 
-**测试环境**
-
-| 项目 | 内容 |
-| --- | --- |
-| 操作系统 | Windows 10 Pro 26H1（Build 28000.2954，64 位） |
-| 客户端 | Chatbox Windows 客户端 `1.23.1` |
-
-Chatbox 是普通聊天客户端，适合用于日常对话和模型可用性验证。
-
-### 1. 下载 Chatbox
-
-打开 Chatbox 官网下载并安装：
-
-```text
-https://chatboxai.app
-```
-
-### 2. 打开模型提供方设置
-
-打开 Chatbox 后，进入：
-
-```text
-设置 → 模型提供方 → OpenAI
-```
-
-### 3. 填写夜莺 Router 配置
-
-在 OpenAI 配置页中填写：
-
-| 配置项 | 填写内容 |
-| --- | --- |
-| API 密钥 | 夜莺 Router API Key |
-| API 主机 | `https://router.yeying.pub/v1` |
-| 模型 | `gpt-5.6-sol` |
-
-![Chatbox OpenAI 配置](assets/chatbox-yeying-router/01-openai-provider-config.png)
-
-如果模型列表中没有 `gpt-5.6-sol`，可以点击 `新建` 手动添加模型。
-
-### 4. 验证
-
-填写完成后，点击页面中的 `检查`。
-
-如果检查通过，说明 Chatbox 已经可以通过夜莺 Router 调用模型。
-
-也可以回到聊天页面，选择 `gpt-5.6-sol`，发送：
-
-```text
-reply exactly OK
-```
-
-如果返回 `OK`，说明聊天调用正常。
-
----
-
-## 四、Cherry Studio 接入
-
-**测试环境**
-
-| 项目 | 内容 |
-| --- | --- |
-| 操作系统 | Windows 10 Pro 26H1（Build 28000.2954，64 位） |
-| 客户端 | Cherry Studio Windows 客户端 `2.1.0` |
-
-Cherry Studio 是桌面模型客户端，适合用于日常对话、多模型切换和模型可用性验证。
-
-### 1. 下载 Cherry Studio
-
-打开 Cherry Studio 官网下载并安装：
-
-```text
-https://cherry-ai.com
-```
-
-### 2. 打开模型服务设置
-
-打开 Cherry Studio 后，进入模型服务或模型提供方设置页面。
-
-如果列表中有 OpenRouter 或 OpenAI Compatible 类型，可以直接使用对应类型；如果没有，可以添加一个 OpenAI 兼容的自定义服务。
-
-### 3. 填写夜莺 Router 配置
-
-| 配置项 | 填写内容 |
-| --- | --- |
-| API 地址 / Base URL | `https://router.yeying.pub/v1` |
-| API Key | 夜莺 Router API Key |
-| 模型 | `gpt-5.6-sol` |
-
-保存配置后，将该模型设为当前聊天模型。
-
-### 4. 验证
-
-在 Cherry Studio 对话里发送：
-
-```text
-reply exactly OK
-```
-
-如果返回 `OK`，说明 Cherry Studio 已经通过夜莺 Router 调用模型。
-
----
-
-## 五、常见问题
-
-### 401 Unauthorized
-
-如果出现 401，通常是 Codex App 没有正确带上夜莺 Router API Key。
-
-请重点检查 `config.toml`：
-
-```toml
-model = "gpt-5.6-sol"
-model_provider = "yeying"
-
-[model_providers.yeying]
-name = "Yeying Router"
-base_url = "https://router.yeying.pub/v1"
-wire_api = "responses"
-experimental_bearer_token = "YOUR_YEYING_ROUTER_API_KEY"
-```
-
-需要确认：
-
-- `experimental_bearer_token` 已替换为真实 API Key。
-- `base_url` 是 `https://router.yeying.pub/v1`。
-- 保存配置后，已经完全退出 Codex App 并重新打开。
+- 检查 `config.toml` 中 `experimental_bearer_token` 是否为 Router API Key，且没有多余空格。
+- 检查 Base URL 填写是否正确，是否以 `/v1` 结尾、`wire_api` 是否为 `responses`。
+- 保存后完全退出并重新打开客户端，再新建会话测试。
 - 不要额外添加 `requires_openai_auth = true`。
 
+### Claude Code：认证失败或请求发往官方服务
+
+- 检查 `ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_BASE_URL` 是否在 Claude Code 启动环境中生效。
+- Anthropic Base URL 使用 `https://router.yeying.pub`，不要附加 `/v1`。
+- 如果环境变量保存在 shell 配置中，重开终端后再运行 `claude`。
+- 确认令牌和模型支持 `/v1/messages`。
+
+### Gemini CLI：不能经 Router 调用
+
+当前 Router 未开放 Google Gemini 原生 API 路径。`GOOGLE_GEMINI_BASE_URL`、`/v1beta` 都不能作为 Router 的可用接入方式。请用 Google 官方服务验证 Gemini CLI，或改用本手册中支持的 OpenAI/Anthropic 协议客户端验证 Router。
+
+### Cursor / Cline / Continue / Chatbox / Cherry Studio：401 或模型不存在
+
+- OpenAI 兼容 Base URL 应为 `https://router.yeying.pub/v1`。
+- 确认 API Key 是 Router 令牌，而不是上游供应商 Key。
+- 确认模型 ID 与令牌权限一致，并且该模型支持客户端所调用的端点。
+- 保存配置并重启客户端或 VS Code。
+
+### 403 Forbidden、额度不足或模型无权限
+
+请求通常已到达 Router，但令牌的额度、套餐或模型权限不足。检查令牌状态和可用模型范围，必要时联系管理员。
+
+
+
+### 人工协助
+
+记录客户端名称和版本、操作系统、完整错误信息、脱敏后的相关配置，以及请求使用的模型和端点，再联系管理员排查。切记不要发送完整 API Key。
